@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>harvester-view</title>
+<style>
+:root{
+  --bg:#f6f7f9;--panel:#fff;--ink:#1c2330;--ink2:#5b6472;--line:#dde2ea;
+  --accent:#2563eb;--mark:#ffe58f;--warn-bg:#fff7d6;--warn-ink:#8a6d00;
+  --err-bg:#fde8e8;--err-ink:#a12622;--ok-bg:#e6f4ea;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#14171c;--panel:#1d2129;--ink:#e6e9ef;--ink2:#9aa3b2;
+        --line:#313845;--accent:#5b8def;--mark:#8a6d00;--warn-bg:#3a3212;
+        --warn-ink:#ffd666;--err-bg:#3c1a1a;--err-ink:#ff9b9b;--ok-bg:#173325;}
+}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.55 "Segoe UI",system-ui,-apple-system,
+  "Microsoft YaHei",sans-serif;background:var(--bg);color:var(--ink)}
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;
+  background:var(--panel);border-bottom:1px solid var(--line);
+  position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0;font-weight:600}
+header .meta{color:var(--ink2);font-size:12px;margin-left:auto}
+select,input,button{font:inherit;color:inherit;background:var(--panel);
+  border:1px solid var(--line);border-radius:6px;padding:5px 8px}
+button{cursor:pointer}button:hover{border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+#banner{display:none;margin:10px 16px 0;padding:9px 12px;border-radius:8px;
+  font-size:13px}
+#banner.warn{display:block;background:var(--warn-bg);color:var(--warn-ink)}
+#banner.err{display:block;background:var(--err-bg);color:var(--err-ink)}
+main{display:flex;gap:14px;padding:14px 16px;align-items:flex-start}
+#left{flex:1.25;min-width:0}
+#detail{flex:1;min-width:0;background:var(--panel);border:1px solid
+  var(--line);border-radius:10px;padding:12px 14px;display:none;
+  position:sticky;top:64px;max-height:calc(100vh - 80px);
+  overflow:auto}
+#filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+  margin-bottom:10px}
+#filters label{font-size:12px;color:var(--ink2)}
+table{width:100%;border-collapse:collapse;background:var(--panel);
+  border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;
+  font-size:13px}
+th{color:var(--ink2);font-weight:600;background:var(--bg)}
+tbody tr{cursor:pointer}tbody tr:hover{background:var(--bg)}
+td.t-date{white-space:nowrap;color:var(--ink2);font-size:12px}
+td.t-src,td.t-model{white-space:nowrap;font-size:12px;color:var(--ink2)}
+mark{background:var(--mark);color:inherit;border-radius:2px;padding:0 1px}
+#pager{display:flex;gap:10px;align-items:center;margin-top:10px;
+  color:var(--ink2);font-size:13px}
+.turn{border:1px solid var(--line);border-radius:8px;padding:8px 10px;
+  margin-bottom:8px;cursor:pointer}
+.turn:hover{border-color:var(--accent)}
+.turn .no{font-weight:600;margin-right:8px}
+.turn .roles{font-size:11px;color:var(--accent);margin-right:8px}
+.turn .ts{font-size:11px;color:var(--ink2);float:right}
+.turn .prev{color:var(--ink2);font-size:12px;display:block;margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msg{margin:0 0 10px;border-left:3px solid var(--line);padding:6px 10px;
+  border-radius:0 6px 6px 0}
+.msg .who{font-size:11px;font-weight:600;letter-spacing:.5px}
+.msg .body{white-space:pre-wrap;word-break:break-word;margin-top:3px}
+.m-user{border-left-color:#2563eb;background:rgba(37,99,235,.07)}
+.m-user .who{color:#2563eb}
+.m-assistant{border-left-color:#16a34a;background:rgba(22,163,74,.06)}
+.m-assistant .who{color:#16a34a}
+.m-note{border-left-color:#9aa3b2;background:rgba(154,163,178,.08)}
+.m-note .who{color:var(--ink2)}
+.m-note .body{font:12px/1.5 Consolas,monospace;color:var(--ink2)}
+.m-system{border-left-color:#d97706;background:rgba(217,119,6,.08)}
+.m-system .who{color:#d97706}
+details summary{cursor:pointer;color:var(--ink2);font-size:12px}
+#detail h2{font-size:14px;margin:0 0 4px;display:flex;align-items:center;
+  gap:10px}
+#detail .sub{color:var(--ink2);font-size:12px;margin-bottom:10px}
+.back{font-size:12px;color:var(--accent);cursor:pointer;user-select:none}
+.empty{color:var(--ink2);text-align:center;padding:18px 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>harvester-view</h1>
+  <select id="upstream" title="切换上游实例"></select>
+  <span class="meta" id="meta"></span>
+</header>
+<div id="banner"></div>
+<main>
+  <div id="left">
+    <div id="filters">
+      <label>来源 <select id="f-source"><option value="">全部</option></select></label>
+      <label>模型 <select id="f-model"><option value="">全部</option></select></label>
+      <label>Skill <select id="f-skill"><option value="">全部</option></select></label>
+      <label>起 <input type="date" id="f-since"></label>
+      <label>止 <input type="date" id="f-until"></label>
+      <label>关键字 <input type="search" id="f-q" placeholder="中文/英文词" style="width:150px"></label>
+      <button id="btn-search">查询</button>
+    </div>
+    <table>
+      <thead><tr><th style="width:150px">更新时间</th><th style="width:90px">来源</th>
+        <th style="width:130px">模型</th><th>标题</th></tr></thead>
+      <tbody id="rows"><tr><td colspan="4" class="empty">加载中…</td></tr></tbody>
+    </table>
+    <div id="pager">
+      <button id="btn-prev">上一页</button>
+      <button id="btn-next">下一页</button>
+      <span id="pageinfo"></span>
+    </div>
+  </div>
+  <div id="detail"></div>
+</main>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const state = {no:0, offset:0, limit:50, total:0, q:"", sid:null};
+const LIMIT = 50;
+
+/* ---------- 工具 ---------- */
+function esc(s){return String(s??"").replace(/[&<>"']/g,
+  c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+/* 标题命中高亮：把关键字（空格分词）包上 <mark> */
+function hl(text,q){
+  let out=esc(text);
+  const terms=String(q||"").trim().split(/\s+/).filter(Boolean).map(esc);
+  for(const t of terms){
+    const re=new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"gi");
+    out=out.replace(re,m=>"<mark>"+m+"</mark>");
+  }
+  return out;
+}
+function showBanner(kind,msg){const b=$("banner");b.className=kind;
+  b.textContent=msg;}
+function hideBanner(){const b=$("banner");b.className="";b.textContent="";}
+
+/* ---------- API 访问（经本地代理） ---------- */
+async function api(path){
+  let res;
+  try{ res=await fetch("/u/"+state.no+path); }
+  catch(e){ showBanner("warn","本地代理不可达？请确认 view.py 正在运行");
+            throw e; }
+  if(res.ok){ hideBanner(); return res.json(); }
+  let body={}; try{ body=await res.json(); }catch(e){}
+  if(body.kind==="unreachable")
+    showBanner("warn",(body.error||"上游不可达")+
+      "（提示：先在主项目运行 python -m harvester api-serve）");
+  else if(body.kind==="version_mismatch")
+    showBanner("err",body.error||"上游 API 版本不匹配，请升级对应侧");
+  else if(res.status===401)
+    showBanner("err","上游鉴权失败：请在 config.json 为该上游配置正确的 token");
+  else
+    showBanner("err",body.error||("请求失败 (HTTP "+res.status+")"));
+  throw new Error(body.error||res.status);
+}
+
+/* ---------- 上游切换 ---------- */
+async function initUpstreams(){
+  const res=await fetch("/view/upstreams");
+  const ups=await res.json();
+  const sel=$("upstream");
+  sel.innerHTML=ups.map(u=>
+    "<option value='"+u.no+"'>"+esc(u.name)+"（#"+u.no+"）</option>").join("");
+  sel.onchange=()=>{ state.no=Number(sel.value); state.offset=0;
+    state.sid=null; $("detail").style.display="none";
+    loadAll(); };
+}
+async function loadAll(){
+  $("rows").innerHTML="<tr><td colspan='4' class='empty'>加载中…</td></tr>";
+  $("meta").textContent="";
+  try{ await loadMeta(); }catch(e){}
+  try{ await loadFacets(); }catch(e){}
+  try{ await loadSessions(); }catch(e){}
+}
+async function loadMeta(){
+  const m=await api("/api/meta");
+  $("meta").textContent=m.sessions+" 会话 · "+
+    (m.time_min||"?")+" ~ "+(m.time_max||"?");
+}
+async function loadFacets(){
+  const f=await api("/api/facets");
+  fillSelect("f-source",f.sources);
+  fillSelect("f-model",f.models);
+  fillSelect("f-skill",f.skills);
+}
+function fillSelect(id,items){
+  const sel=$(id), cur=sel.value;
+  sel.innerHTML="<option value=''>全部</option>"+(items||[]).map(it=>
+    "<option value=\""+esc(it.name)+"\">"+esc(it.name)+"（"+it.count+"）</option>").join("");
+  if([...sel.options].some(o=>o.value===cur)) sel.value=cur;
+}
+
+/* ---------- 会话列表 ---------- */
+function queryStr(){
+  const p=new URLSearchParams();
+  const g=id=>$(id).value.trim();
+  if(g("f-source"))p.set("source",g("f-source"));
+  if(g("f-model"))p.set("model",g("f-model"));
+  if(g("f-skill"))p.set("skill",g("f-skill"));
+  if(g("f-since"))p.set("since",g("f-since"));
+  if(g("f-until"))p.set("until",g("f-until"));
+  if(state.q)p.set("q",state.q);
+  p.set("offset",state.offset);p.set("limit",LIMIT);
+  return p.toString();
+}
+async function loadSessions(){
+  const d=await api("/api/sessions?"+queryStr());
+  state.total=d.total;
+  const q=state.q;
+  $("rows").innerHTML=d.items.length?d.items.map(it=>
+    "<tr data-sid=\""+esc(it.sid)+"\">"+
+    "<td class='t-date'>"+esc(it.updated_at)+"</td>"+
+    "<td class='t-src'>"+esc(it.source)+"</td>"+
+    "<td class='t-model'>"+esc(it.model||"（未知）")+"</td>"+
+    "<td>"+hl(it.title,q)+"</td></tr>").join("")
+    :"<tr><td colspan='4' class='empty'>无匹配会话</td></tr>";
+  for(const tr of $("rows").querySelectorAll("tr[data-sid]"))
+    tr.onclick=()=>openSession(tr.dataset.sid);
+  const a=state.offset+1,b=Math.min(state.offset+LIMIT,state.total);
+  $("pageinfo").textContent=state.total?("第 "+a+"–"+b+" 条 / 共 "
+    +state.total+" 条"):"";
+  $("btn-prev").disabled=state.offset<=0;
+  $("btn-next").disabled=state.offset+LIMIT>=state.total;
+}
+
+/* ---------- 下钻：会话 → 回合 → 全文 ---------- */
+async function openSession(sid){
+  state.sid=sid;
+  const d=await api("/api/session/"+encodeURIComponent(sid));
+  const m=d.meta||{};
+  const box=$("detail");
+  box.style.display="block";
+  box.innerHTML="<h2>"+esc(m.title||sid)+
+    "<span class='back' id='btn-close'>[关闭]</span></h2>"+
+    "<div class='sub'>"+esc(m.source||"")+" · "+esc(m.model||"（未知）")+
+    " · "+d.n_turns+" 回合 · 更新 "+esc(m.updated_at||"")+"</div>"+
+    (d.turns||[]).map(t=>
+      "<div class='turn' data-no='"+t.no+"'>"+
+      "<span class='no'>#"+t.no+"</span>"+
+      "<span class='roles'>"+esc([...new Set(t.roles||[])].join("·"))+
+      "（"+t.n_messages+" 条）</span>"+
+      "<span class='ts'>"+esc(t.ts||"")+"</span>"+
+      "<span class='prev'>"+esc(t.preview||"")+"</span></div>").join("")+
+    "<div id='turn-body'></div>";
+  $("btn-close").onclick=()=>{box.style.display="none";state.sid=null;};
+  for(const el of box.querySelectorAll(".turn"))
+    el.onclick=()=>openTurn(sid,el.dataset.no);
+  box.scrollTop=0;
+}
+async function openTurn(sid,no){
+  const d=await api("/api/session/"+encodeURIComponent(sid)+"/turn/"+no);
+  const box=$("turn-body");
+  box.innerHTML="<hr><div class='sub'>回合 #"+d.turn+" 全文</div>"+
+    (d.messages||[]).map(renderMsg).join("");
+}
+const ROLE_LABEL={user:"用户",assistant:"助手",note:"工具/思考",system:"系统"};
+function renderMsg(m){
+  const role=m.role||"note";
+  const known=ROLE_LABEL.hasOwnProperty(role);
+  const cls=known?"m-"+role:"m-note";
+  const label=known?ROLE_LABEL[role]:role;
+  const text=m.content??"";
+  if(role==="note"&&text.length>400)
+    return "<div class='msg "+cls+"'><span class='who'>"+esc(label)+
+      "（"+text.length+" 字）</span><details><summary>展开</summary>"+
+      "<div class='body'>"+esc(text)+"</div></details></div>";
+  return "<div class='msg "+cls+"'><span class='who'>"+esc(label)+
+    "</span><div class='body'>"+esc(text)+"</div></div>";
+}
+
+/* ---------- 事件绑定 ---------- */
+$("btn-search").onclick=()=>{state.q=$("f-q").value.trim();state.offset=0;
+  loadSessions().catch(()=>{});};
+$("f-q").addEventListener("keydown",e=>{
+  if(e.key==="Enter")$("btn-search").click();});
+$("btn-prev").onclick=()=>{state.offset=Math.max(0,state.offset-LIMIT);
+  loadSessions().catch(()=>{});};
+$("btn-next").onclick=()=>{state.offset+=LIMIT;
+  loadSessions().catch(()=>{});};
+
+initUpstreams().then(()=>{
+  state.no=Number($("upstream").value||0);
+  loadAll();
+}).catch(e=>showBanner("err","初始化失败: "+e));
+</script>
+</body>
+</html>

@@ -456,17 +456,24 @@ async function gotoAnchor(sid,seq,errText){
 }
 
 /* ---------- Tab 2: 蒸馏队列 ---------- */
-async function loadTriage(){
+async function loadTriage(manual){
   const out=$("tri-out");
-  const btn=$("btn-triage");
+  /* 手动点击按钮才给 loading/✓ 反馈；切入 tab 等自动渲染静默进行 */
+  const btn=manual?$("btn-triage"):null;
   out.innerHTML="<div class='empty'>生成中…</div>";
   $("tri-meta").textContent="";
   if(btn){btn.disabled=true;btn.textContent="生成中…";}
   const t0=Date.now();
-  try{ await _renderTriage(out,t0); }
+  let ok=false;
+  try{ await _renderTriage(out,t0); ok=true; }
   catch(e){ out.innerHTML=errorBox("生成失败："+e.message+
     "（若刚升级代码：api-serve 与 view 两个窗口都要关掉重开，旧进程不加载新代码）"); }
-  finally{ if(btn){btn.disabled=false;btn.textContent="生成队列";} }
+  finally{
+    if(btn){ btn.disabled=false;
+      btn.textContent=ok?"✓ 已重新生成":"生成队列";
+      if(ok)setTimeout(()=>{btn.textContent="生成队列";},1500);
+    }
+  }
 }
 async function _renderTriage(out,t0){
   const p=new URLSearchParams();
@@ -541,17 +548,19 @@ async function _renderTriage(out,t0){
 }
 
 /* ---------- Tab 3: 报告 ---------- */
-async function loadReport(){
+async function loadReport(manual){
   const kind=$("rep-kind").value;
   state.repKind=kind;
   const out=$("rep-out");
-  const btn=$("btn-report");
+  /* 手动点击按钮才给 loading/✓ 反馈；切入 tab / 切换下拉等自动渲染静默进行 */
+  const btn=manual?$("btn-report"):null;
   out.innerHTML="<div class='empty'>生成中…</div>";
   $("rep-meta").textContent="";
   if(btn){btn.disabled=true;btn.textContent="生成中…";}
   const t0=Date.now();
   const p=new URLSearchParams();
   if(daysVal("rep-days"))p.set("days",daysVal("rep-days"));
+  let ok=false;
   try{
     const d = kind==="cards"
       ? await api("/api/cards")
@@ -566,9 +575,17 @@ async function loadReport(){
     $("rep-meta").textContent+=($("rep-meta").textContent?"｜":"")+
       "生成于 "+new Date().toLocaleTimeString("zh-CN",{hour12:false})+
       "（"+((Date.now()-t0)/1000).toFixed(1)+"s）";
+    ok=true;
   }catch(e){ out.innerHTML=errorBox("生成失败："+e.message+
     "（若刚升级代码：api-serve 与 view 两个窗口都要关掉重开，旧进程不加载新代码）"); }
-  finally{ if(btn){btn.disabled=false;btn.textContent="生成报告";} }
+  finally{
+    if(btn){ btn.disabled=false;
+      /* 参数未变时重渲染结果与之前相同，唯一可见变化是 meta 行时间戳
+         ——给按钮一个明确反馈，避免"点了没反应"的错觉 */
+      btn.textContent=ok?"✓ 已重新生成":"生成报告";
+      if(ok)setTimeout(()=>{btn.textContent="生成报告";},1500);
+    }
+  }
 }
 function renderTools(d,out){
   const tot=d.tools.reduce((a,t)=>a+t.calls,0);
@@ -958,8 +975,8 @@ $("btn-prev").onclick=()=>{state.offset=Math.max(0,state.offset-state.limit);
   loadSessions().catch(()=>{});};
 $("btn-next").onclick=()=>{state.offset+=state.limit;
   loadSessions().catch(()=>{});};
-$("btn-triage").onclick=()=>loadTriage().catch(()=>{});
-$("btn-report").onclick=()=>loadReport().catch(()=>{});
+$("btn-triage").onclick=()=>loadTriage(true).catch(()=>{});
+$("btn-report").onclick=()=>loadReport(true).catch(()=>{});
 $("rep-kind").onchange=()=>loadReport().catch(()=>{});
 $("btn-agg-search").onclick=()=>loadAggSearch().catch(()=>{});
 $("agg-q").addEventListener("keydown",e=>{

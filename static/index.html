@@ -110,6 +110,13 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 .up-card .errline{color:var(--err-ink);font-size:12px}
 .up-card .stat{font-size:12px;color:var(--ink2);margin-right:14px}
 .num{font-variant-numeric:tabular-nums}
+/* 异常徽章：会话列表 error_count>0 橙 / ≥10 红 */
+.badge{display:inline-block;margin-left:6px;border-radius:9px;padding:0 7px;
+  font-size:11px;vertical-align:1px}
+.b-org{background:var(--warn-bg);color:var(--warn-ink)}
+.b-red{background:var(--err-bg);color:var(--err-ink)}
+/* 导出/复制小按钮 */
+.xbtn{font:inherit;font-size:12px;margin-left:8px;cursor:pointer;padding:1px 8px}
 </style>
 </head>
 <body>
@@ -164,6 +171,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
     <label>会话 Top <input type="number" id="tri-top" value="10" min="1"
       style="width:60px"></label>
     <button id="btn-triage">生成队列</button>
+    <button id="btn-tri-export" class="xbtn" title="把当前队列导出为 Markdown 文件（浏览器本地生成）">导出 md</button>
     <span class="sub2" id="tri-meta"></span>
   </div>
   <div class="report-box" id="tri-out"><div class="empty">尚未生成</div></div>
@@ -182,6 +190,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
     <label>窗口（天）<input type="number" id="rep-days" value="30" min="0"
       style="width:72px">（0=全库）</label>
     <button id="btn-report">生成报告</button>
+    <button id="btn-rep-export" class="xbtn" title="把当前报告导出为 Markdown 文件（浏览器本地生成）">导出 md</button>
     <span class="sub2" id="rep-meta"></span>
   </div>
   <div class="report-box" id="rep-out"><div class="empty">尚未生成</div></div>
@@ -336,13 +345,17 @@ function queryStr(){
 async function loadSessions(){
   const d=await api("/api/sessions?"+queryStr());
   state.total=d.total;
+  state.lastItems=d.items;
   const q=state.q;
+  /* 异常徽章：error_count>0 橙、≥10 红（>0=值得点开看；≥10=明显异常） */
+  const badge=n=>!n?"":"<span class='badge "+(n>=10?"b-red":"b-org")+
+    "' title='该会话含 "+n+" 条错误步骤'>错 "+n+"</span>";
   $("rows").innerHTML=d.items.length?d.items.map(it=>
     "<tr data-sid=\""+esc(it.sid)+"\">"+
     "<td class='t-date'>"+esc(it.updated_at)+"</td>"+
     "<td class='t-src'>"+esc(it.source)+"</td>"+
     "<td class='t-model'>"+esc(it.model||"（未知）")+"</td>"+
-    "<td>"+hl(it.title,q)+"</td></tr>").join("")
+    "<td>"+hl(it.title,q)+badge(it.error_count||0)+"</td></tr>").join("")
     :"<tr><td colspan='4' class='empty'>无匹配会话</td></tr>";
   for(const tr of $("rows").querySelectorAll("tr[data-sid]"))
     tr.onclick=()=>openSession(tr.dataset.sid);
@@ -361,7 +374,9 @@ async function openSession(sid){
   const box=$("detail");
   box.style.display="block";
   box.innerHTML="<h2>"+esc(m.title||sid)+
-    "<span class='back' id='btn-close'>[关闭]</span></h2>"+
+    "<span class='back' id='btn-close'>[关闭]</span>"+
+    "<button class='xbtn' id='btn-sess-export' "+
+    "title='拉取全部回合全文并导出 Markdown（回合多时较慢，纯浏览器本地完成）'>导出 md</button></h2>"+
     "<div class='sub'>"+esc(m.source||"")+" · "+esc(m.model||"（未知）")+
     " · "+d.n_turns+" 回合 · 更新 "+esc(m.updated_at||"")+"</div>"+
     (d.turns||[]).map(t=>
@@ -373,6 +388,8 @@ async function openSession(sid){
       "<span class='prev'>"+esc(t.preview||"")+"</span></div>").join("")+
     "<div id='turn-body'></div>";
   $("btn-close").onclick=()=>{box.style.display="none";state.sid=null;};
+  $("btn-sess-export").onclick=()=>exportSessionMd(sid)
+    .catch(e=>showBanner("err","导出失败："+e.message));
   for(const el of box.querySelectorAll(".turn"))
     el.onclick=()=>openTurn(sid,el.dataset.no);
   box.scrollTop=0;
@@ -466,12 +483,17 @@ async function _renderTriage(out,t0){
   html+="<h3 class='sec'>A. 新错误 pattern（优先做 pitfall 卡）</h3>";
   html+=d.new_patterns.length?("<table><thead><tr><th>模式</th><th>类别</th>"+
     "<th>工具</th><th class='num'>窗口内次数</th><th>首现</th>"+
-    "<th>锚点样例</th></tr></thead><tbody>"+
+    "<th>锚点样例</th><th>动作</th></tr></thead><tbody>"+
     d.new_patterns.map(x=>"<tr><td>"+esc(x.pattern)+" "+known(x.known_card)+
     "</td><td>"+esc(x["class"])+"</td><td>"+esc(x.tools.join("/"))+
     "</td><td class='num'>"+x.count+"</td><td class='t-date'>"+
     esc(x.first_seen)+"</td><td>"+
     x.samples.map(s=>anchor(s.sid,s.seq,s.error)).join("<br>")+
+    "</td><td><button class='xbtn' data-cmd=\""+
+    esc("python -m harvester cards new --sid "+
+        (x.samples&&x.samples.length?x.samples[0].sid:"<sid>")+
+        " --type pitfall")+
+    "\" title='复制到剪贴板，请自行开终端粘贴执行（本视图绝不执行命令）'>复制命令</button>"+
     "</td></tr>").join("")+"</tbody></table>")
     :"<div class='empty'>窗口内无首次出现的错误 pattern</div>";
   html+="<h3 class='sec'>B. 旧坑重现（检查旧卡/建议池是否要更新）</h3>";
@@ -484,12 +506,15 @@ async function _renderTriage(out,t0){
   html+="<h3 class='sec'>C. Skill 行为链候选（workflow 卡素材）</h3>";
   html+=d.skills.length?("<table><thead><tr><th>Skill</th>"+
     "<th class='num'>调用</th><th class='num'>成功</th><th>来源</th>"+
-    "<th>行为链</th><th>成功样例</th></tr></thead><tbody>"+
+    "<th>行为链</th><th>成功样例</th><th>动作</th></tr></thead><tbody>"+
     d.skills.map(s=>"<tr><td>"+esc(s.skill)+" "+known(s.known_card)+
     "</td><td class='num'>"+s.n_calls+"</td><td class='num'>"+s.n_ok+
     "</td><td>"+esc(s.sources.join("/"))+"</td><td class='sub2'>"+
     esc(s.chain.join(" → ")||"（链为空）")+"</td><td>"+
     (s.sample?anchor(s.sample.sid,s.sample.seq,""):"—")+
+    "</td><td><button class='xbtn' data-cmd=\""+
+    esc("python -m harvester report-skill --skill "+s.skill)+
+    "\" title='复制到剪贴板，请自行开终端粘贴执行（本视图绝不执行命令）'>深挖命令</button>"+
     "</td></tr>").join("")+"</tbody></table>")
     :"<div class='empty'>窗口内无 skill 调用</div>";
   html+="<h3 class='sec'>D. 高信号会话 Top（泛读排期用）</h3>";
@@ -503,10 +528,13 @@ async function _renderTriage(out,t0){
     "</tbody></table>"):"<div class='empty'>无会话</div>";
   html+="<p class='sub2'>纪律提醒：本队列是建议池，不是成品——机器只排队，"+
     "判断与 evidence 由人补全（锚点可点击直通原会话）。</p>";
+  state.triLast=d;
   out.innerHTML=html;
   bindAnchors(out);
   for(const tr of out.querySelectorAll("tr[data-hsid]"))
     tr.onclick=()=>gotoAnchor(tr.dataset.hsid,0,"");
+  for(const b of out.querySelectorAll("button[data-cmd]"))
+    b.onclick=()=>copyText(b.dataset.cmd,b);
   $("tri-meta").textContent+="｜生成于 "+
     new Date().toLocaleTimeString("zh-CN",{hour12:false})+
     "（"+((Date.now()-t0)/1000).toFixed(1)+"s）";
@@ -528,6 +556,7 @@ async function loadReport(){
     const d = kind==="cards"
       ? await api("/api/cards")
       : await api("/api/reports/"+kind+"?"+p.toString());
+    state.repLast=d;
     if(kind==="tools")renderTools(d,out);
     else if(kind==="errors")renderErrors(d,out);
     else if(kind==="skills")renderSkills(d,out);
@@ -775,6 +804,151 @@ function gotoCross(no,sid){
   openSession(sid).catch(()=>{});
 }
 
+/* ---------- 导出与复制（全部浏览器本地完成；本视图绝不执行命令） ---------- */
+function dlText(filename,text){
+  const b=new Blob([text],{type:"text/markdown;charset=utf-8"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(b);a.download=filename;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+}
+async function copyText(text,btn){
+  try{ await navigator.clipboard.writeText(text); }
+  catch(e){ /* file:// 或旧浏览器降级 */
+    const ta=document.createElement("textarea");
+    ta.value=text;document.body.appendChild(ta);ta.select();
+    document.execCommand("copy");ta.remove();
+  }
+  if(btn){const old=btn.textContent;btn.textContent="已复制";
+    setTimeout(()=>{btn.textContent=old;},1200);}
+}
+function today(){return new Date().toISOString().slice(0,10);}
+function cell(x){return String(x??"").replace(/\|/g,"\\|").replace(/\n/g," ");}
+function mdTable(head,rows){
+  return "| "+head.join(" | ")+" |\n|"+head.map(()=>"---").join("|")+
+    "|\n"+rows.map(r=>"| "+r.map(cell).join(" | ")+" |").join("\n")+"\n";
+}
+/* 会话全文导出：回合按 5 并发分批拉取，拼为 Markdown（本地下载） */
+async function exportSessionMd(sid){
+  const btn=$("btn-sess-export");
+  const d=await api("/api/session/"+encodeURIComponent(sid));
+  const m=d.meta||{};
+  const nos=(d.turns||[]).map(t=>t.no);
+  const texts={};
+  for(let i=0;i<nos.length;i+=5){
+    await Promise.all(nos.slice(i,i+5).map(async no=>{
+      texts[no]=await api("/api/session/"+encodeURIComponent(sid)
+        +"/turn/"+no);
+    }));
+    if(btn)btn.textContent="导出中 "+Math.min(i+5,nos.length)+"/"+nos.length;
+  }
+  let md="# "+(m.title||sid)+"\n\n"+
+    "- sid: `"+sid+"`\n- 来源: "+(m.source||"?")+
+    " · 模型: "+(m.model||"（未知）")+
+    "\n- 创建 "+(m.created_at||"?")+" · 更新 "+(m.updated_at||"?")+
+    " · 共 "+nos.length+" 回合\n\n导出时间 "+new Date().toLocaleString()+
+    "（harvester-view 浏览器本地生成）\n\n---\n";
+  for(const no of nos){
+    const msgs=(texts[no]||{}).messages||[];
+    md+="\n## 回合 #"+no+(msgs.length?"（"+(msgs[0].ts||"")+"）":"")+"\n";
+    for(const msg of msgs)
+      md+="\n**["+(ROLE_LABEL[msg.role]||msg.role||"note")+"]** "+
+        (msg.ts||"")+"\n\n"+(msg.content??"")+"\n";
+  }
+  dlText("session-"+sid.replace(/[^\w.-]+/g,"_")+".md",md);
+  if(btn)btn.textContent="导出 md";
+}
+/* 报告 → Markdown（与页面渲染同口径） */
+function mdReport(kind,d){
+  let md="# harvester 报告";
+  if(kind==="tools"){
+    md+="：G1 工具统计\n\n"+mdTable(["工具","调用","成功","失败","失败率"],
+      (d.tools||[]).map(t=>[t.tool,t.calls,t.success,t.error,
+        (t.fail_rate*100).toFixed(1)+"%"]));
+    const f=d.flow;
+    if(f&&f.errors)md+="\n失败后续：重试 "+f.retried+"（"+
+      (f.retried/f.errors*100).toFixed(0)+"%）｜放弃 "+f.given_up+"（"+
+      (f.given_up/f.errors*100).toFixed(0)+"%）\n";
+    for(const s of Object.keys(d.by_source||{})){
+      const o=d.by_source[s];
+      md+="\n## 按源："+s+"（调用 "+o.calls+"｜失败 "+o.errors+"）\n\n"+
+        mdTable(["工具","调用","失败","失败率"],
+        (o.tools||[]).map(t=>[t.tool,t.calls,t.error,
+          (t.fail_rate*100).toFixed(1)+"%"]));
+    }
+  }else if(kind==="errors"){
+    const m=d.meta||{};
+    md+="：G2 错误三分类\n\n- 错误 "+(m.error_count||0)+" / 总步骤 "+
+      (m.total_steps||0)+"｜涉及 "+(m.sessions||0)+" 会话\n\n";
+    md+=mdTable(["类别","次数"],
+      Object.entries(d.by_class||{}).map(e=>[e[0],e[1]]));
+    md+="\n"+mdTable(["轨迹位置","次数"],
+      Object.entries(d.by_bucket||{}).map(e=>[e[0],e[1]]));
+    md+="\n## 错误模式明细\n\n"+mdTable(["次数","模式","类别","工具"],
+      (d.patterns||[]).map(x=>["x"+x.count,x.pattern,x["class"],
+        x.tools.join("/")]));
+  }else if(kind==="skills"){
+    md+="：G4 Skill 行为画像（调用 "+d.n_invocations+" 次）\n\n"+
+      mdTable(["Skill","调用","会话","成功","失败","无结果","来源"],
+      (d.skills||[]).map(s=>[s.skill,s.calls,s.sids,s.ok,s.err,
+        s.no_result,s.sources.join("/")]));
+  }else if(kind==="agents"){
+    md+="：G2 建议条目（AGENTS.md 候选）\n";
+    for(const e of d.entries||[])
+      md+="\n## "+e.title+"\n\n"+e.body+"\n\n（合计 x"+e.total+"）\n";
+    md+="\n## 未达标 pattern（供参考）\n\n"+
+      mdTable(["次数","模式","类别","工具"],
+      (d.leftover||[]).map(x=>["x"+x.count,x.pattern,x["class"],
+        x.tools.join("/")]));
+  }else if(kind==="cards"){
+    const s=d.summary||{};
+    md+="：G3 卡片校验（"+d.root+"）\n\n- 通过 "+(s.ok||0)+"｜警告 "+
+      (s.warn||0)+"｜错误 "+(s.error||0)+"｜锚点校验 "+
+      (s.anchor_checked||0)+"（未命中 "+(s.anchor_misses||0)+"）\n";
+    for(const c of (d.cards||[]).filter(c=>c.errors.length||c.warnings.length))
+      md+="\n## "+c.path+"\n\n"+
+        c.errors.map(e=>"- 错误："+e).concat(
+        c.warnings.map(w=>"- 警告："+w)).join("\n")+"\n";
+  }
+  return md;
+}
+/* 蒸馏队列 → Markdown（与 CLI render_triage 同构） */
+function mdTriage(d){
+  let md="# 蒸馏队列（triage）\n\n- 共 "+d.n_sessions+" 会话｜窗口错误 "+
+    d.error_count_window+"｜卡片比对 "+
+    (d.cards_scanned==null?"未配置":d.cards_scanned+" 文件")+
+    "\n- 口径：cutoff "+(d.cutoff||"全库")+"\n";
+  md+="\n## A. 新错误 pattern（优先做 pitfall 卡）\n";
+  for(const x of d.new_patterns||[]){
+    md+="\n### "+x.pattern+(x.known_card?" ⚠️疑似已有卡":"")+"\n"+
+      "- 类别 "+x["class"]+" · 工具 "+x.tools.join("/")+
+      " · 窗口内 "+x.count+" 次 · 首现 "+x.first_seen+"\n";
+    for(const s of x.samples||[])
+      md+="- 锚点 `"+s.sid+"#"+s.seq+"`: "+
+        String(s.error||"").slice(0,120)+"\n";
+    if(x.samples&&x.samples.length)
+      md+="- 动作: `python -m harvester cards new --sid "+x.samples[0].sid+
+        " --type pitfall`\n";
+  }
+  md+="\n## B. 旧坑重现（检查旧卡/建议池是否要更新）\n";
+  for(const x of d.old_patterns||[])
+    md+="- "+x.pattern+"（"+x["class"]+"，窗口内 "+x.count+" 次，首现 "+
+      x.first_seen+"）\n";
+  md+="\n## C. Skill 行为链候选（workflow 卡素材）\n";
+  for(const s of d.skills||[]){
+    md+="- "+s.skill+"（调用 "+s.n_calls+"｜成功 "+s.n_ok+"｜来源 "+
+      s.sources.join("/")+"）"+(s.known_card?" ⚠️疑似已有卡":"")+
+      "｜链: "+(s.chain.join(" → ")||"（链为空）")+"\n";
+    if(s.sample)md+="  - 样例锚点 `"+s.sample.sid+"#"+s.sample.seq+"`\n";
+    md+="  - 动作: `python -m harvester report-skill --skill "+s.skill+"`\n";
+  }
+  md+="\n## D. 高信号会话 Top（泛读排期用）\n\n"+
+    mdTable(["分","会话","标题","消息","步骤"],
+    (d.hot_sessions||[]).map(h=>[h.score,h.sid,h.title||"",h.msgs,h.steps]));
+  md+="\n纪律提醒：本队列是建议池，不是成品——判断与 evidence 由人补全。\n";
+  return md;
+}
+
 /* ---------- 事件绑定 ---------- */
 $("btn-search").onclick=()=>{state.q=$("f-q").value.trim();state.offset=0;
   loadSessions().catch(()=>{});};
@@ -791,6 +965,15 @@ $("btn-agg-search").onclick=()=>loadAggSearch().catch(()=>{});
 $("agg-q").addEventListener("keydown",e=>{
   if(e.key==="Enter")$("btn-agg-search").click();});
 $("btn-agg-facets").onclick=()=>loadAggFacets().catch(()=>{});
+$("btn-rep-export").onclick=()=>{
+  if(!state.repLast){showBanner("warn","请先点“生成报告”再导出");return;}
+  dlText("harvester-report-"+state.repKind+"-"+today()+".md",
+    mdReport(state.repKind,state.repLast));
+};
+$("btn-tri-export").onclick=()=>{
+  if(!state.triLast){showBanner("warn","请先点“生成队列”再导出");return;}
+  dlText("harvester-triage-"+today()+".md",mdTriage(state.triLast));
+};
 
 initUpstreams().then(()=>{
   state.no=Number($("upstream").value||0);

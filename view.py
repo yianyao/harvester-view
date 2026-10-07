@@ -94,6 +94,12 @@ def normalize_upstreams(cfg: dict) -> list[dict]:
 
 # ---------- 上游访问 ----------
 
+#: 上游是本机/内网服务，绝不经过系统代理转发（urllib 默认会读
+#: http_proxy/HTTP_PROXY 环境变量，机器配了全局代理时会走歪）。
+_NO_PROXY_OPENER = urllib.request.build_opener(
+    urllib.request.ProxyHandler({}))
+
+
 def fetch_upstream(up: dict, path_qs: str,
                    timeout: float) -> tuple[int, bytes]:
     """GET 转发单个请求。4xx/5xx 原样返回 (code, body)；
@@ -103,7 +109,7 @@ def fetch_upstream(up: dict, path_qs: str,
     if up["token"]:
         req.add_header("X-Token", up["token"])
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _NO_PROXY_OPENER.open(req, timeout=timeout) as resp:
             return resp.status, resp.read()
     except urllib.error.HTTPError as e:  # 注意：URLError 子类，须先接
         return e.code, e.read()

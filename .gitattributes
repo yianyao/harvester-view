@@ -1,3 +1,6 @@
-start.cmd text eol=crlf
-*.md text eol=lf
+* text=auto eol=lf
 *.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+start.cmd text eol=crlf

@@ -441,18 +441,26 @@ async function gotoAnchor(sid,seq,errText){
 /* ---------- Tab 2: 蒸馏队列 ---------- */
 async function loadTriage(){
   const out=$("tri-out");
+  const btn=$("btn-triage");
   out.innerHTML="<div class='empty'>生成中…</div>";
+  $("tri-meta").textContent="";
+  if(btn){btn.disabled=true;btn.textContent="生成中…";}
+  const t0=Date.now();
+  try{ await _renderTriage(out,t0); }
+  catch(e){ out.innerHTML=errorBox("生成失败："+e.message+
+    "（若刚升级代码：api-serve 与 view 两个窗口都要关掉重开，旧进程不加载新代码）"); }
+  finally{ if(btn){btn.disabled=false;btn.textContent="生成队列";} }
+}
+async function _renderTriage(out,t0){
   const p=new URLSearchParams();
   if(daysVal("tri-days"))p.set("days",daysVal("tri-days"));
   const mc=Number($("tri-min").value||2), tp=Number($("tri-top").value||10);
   if(mc>1)p.set("min_count",mc);
   if(tp>0)p.set("top",tp);
-  let d;
-  try{ d=await api("/api/triage?"+p.toString()); }
-  catch(e){ out.innerHTML=errorBox("生成失败：" + e.message); return; }
+  const d=await api("/api/triage?"+p.toString());
   $("tri-meta").textContent="共 "+d.n_sessions+" 会话｜窗口错误 "+
     d.error_count_window+"｜卡片比对 "+
-    (d.cards_scanned?d.cards_scanned+" 文件":"未配置");
+    (d.cards_scanned==null?"未配置":d.cards_scanned+" 文件");
   const known=p=>p?"<span class='pill known'>疑似已有卡</span>":"";
   let html="";
   html+="<h3 class='sec'>A. 新错误 pattern（优先做 pitfall 卡）</h3>";
@@ -499,6 +507,9 @@ async function loadTriage(){
   bindAnchors(out);
   for(const tr of out.querySelectorAll("tr[data-hsid]"))
     tr.onclick=()=>gotoAnchor(tr.dataset.hsid,0,"");
+  $("tri-meta").textContent+="｜生成于 "+
+    new Date().toLocaleTimeString("zh-CN",{hour12:false})+
+    "（"+((Date.now()-t0)/1000).toFixed(1)+"s）";
 }
 
 /* ---------- Tab 3: 报告 ---------- */
@@ -506,22 +517,29 @@ async function loadReport(){
   const kind=$("rep-kind").value;
   state.repKind=kind;
   const out=$("rep-out");
+  const btn=$("btn-report");
   out.innerHTML="<div class='empty'>生成中…</div>";
   $("rep-meta").textContent="";
+  if(btn){btn.disabled=true;btn.textContent="生成中…";}
+  const t0=Date.now();
   const p=new URLSearchParams();
   if(daysVal("rep-days"))p.set("days",daysVal("rep-days"));
-  let d;
   try{
-    d = kind==="cards"
+    const d = kind==="cards"
       ? await api("/api/cards")
       : await api("/api/reports/"+kind+"?"+p.toString());
-  }catch(e){ out.innerHTML=errorBox("生成失败："+e.message); return; }
-  if(kind==="tools")renderTools(d,out);
-  else if(kind==="errors")renderErrors(d,out);
-  else if(kind==="skills")renderSkills(d,out);
-  else if(kind==="agents")renderAgents(d,out);
-  else if(kind==="cards")renderCards(d,out);
-  bindAnchors(out);
+    if(kind==="tools")renderTools(d,out);
+    else if(kind==="errors")renderErrors(d,out);
+    else if(kind==="skills")renderSkills(d,out);
+    else if(kind==="agents")renderAgents(d,out);
+    else if(kind==="cards")renderCards(d,out);
+    bindAnchors(out);
+    $("rep-meta").textContent+=($("rep-meta").textContent?"｜":"")+
+      "生成于 "+new Date().toLocaleTimeString("zh-CN",{hour12:false})+
+      "（"+((Date.now()-t0)/1000).toFixed(1)+"s）";
+  }catch(e){ out.innerHTML=errorBox("生成失败："+e.message+
+    "（若刚升级代码：api-serve 与 view 两个窗口都要关掉重开，旧进程不加载新代码）"); }
+  finally{ if(btn){btn.disabled=false;btn.textContent="生成报告";} }
 }
 function renderTools(d,out){
   const tot=d.tools.reduce((a,t)=>a+t.calls,0);
@@ -685,9 +703,12 @@ function renderCards(d,out){
 async function loadAggFacets(){
   const out=$("agg-out");
   out.innerHTML="<div class='empty'>加载中…</div>";
-  let d;
-  try{ d=await apiAll("/u/all/facets"); }
-  catch(e){ out.innerHTML=errorBox("聚合失败："+e.message); return; }
+  try{ await _renderAggFacets(out); }
+  catch(e){ out.innerHTML=errorBox("聚合失败："+e.message+
+    "（若刚升级代码：api-serve 与 view 两个窗口都要关掉重开）"); }
+}
+async function _renderAggFacets(out){
+  const d=await apiAll("/u/all/facets");
   let html="<h3 class='sec'>各实例概览</h3>";
   for(const u of d.upstreams||[]){
     html+="<div class='up-card'><h4>"+esc(u.name)+"</h4>";
@@ -721,9 +742,12 @@ async function loadAggSearch(){
   const q=$("agg-q").value.trim();
   if(!q){ showBanner("warn","请输入关键字"); return; }
   out.innerHTML="<div class='empty'>搜索中…</div>";
-  let d;
-  try{ d=await apiAll("/u/all/search?q="+encodeURIComponent(q)); }
-  catch(e){ out.innerHTML=errorBox("搜索失败："+e.message); return; }
+  try{ await _renderAggSearch(out,q); }
+  catch(e){ out.innerHTML=errorBox("搜索失败："+e.message+
+    "（若刚升级代码：api-serve 与 view 两个窗口都要关掉重开）"); }
+}
+async function _renderAggSearch(out,q){
+  const d=await apiAll("/u/all/search?q="+encodeURIComponent(q));
   let html="<h3 class='sec'>跨实例搜索："+esc(q)+"</h3>";
   (d.results||[]).forEach((r,i)=>{
     html+="<div class='up-card'><h4>"+esc(r.name)+"（上游 #"+i+"）</h4>";

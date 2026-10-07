@@ -25,7 +25,11 @@ if not exist "%SRV%\harvester.db" (
   exit /b 1
 )
 
-start "harvester api-serve :8765" /D "%SRV%" "%PY%" -m harvester api-serve --db "%SRV%\harvester.db"
+rem  cards_pending: card validation endpoint requires --cards-root
+rem  (missing flag = "卡片比对 未配置" on triage/report pages).
+if not exist "%SRV%\cards_pending" mkdir "%SRV%\cards_pending"
+
+start "harvester api-serve :8765" /D "%SRV%" "%PY%" -m harvester api-serve --db "%SRV%\harvester.db" --cards-root "%SRV%\cards_pending"
 start "harvester-view :8088" /D "%~dp0" "%PY%" view.py
 timeout /t 2 /nobreak >nul
 start "" http://127.0.0.1:8088/

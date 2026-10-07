@@ -6,8 +6,9 @@
   只认识"返回 api_version=1 JSON 的 HTTP 服务"（下称上游）；
 - 职责：1) 服务 static/index.html 单页前端；2) 把 GET /u/<编号>/api/...
   转发到 config.json 里下标为 <编号> 的上游（编号从 0 起）；
-  3) GET /u/all/facets 做多上游 facets 聚合（中台形态的 v1 伏笔，
-  不可达上游跳过并在结果中标注 error）；
+  3) GET /u/all/facets 做多上游 facets 聚合；4) GET /u/all/search 做
+  跨实例搜索（v2：逐上游转发 /api/sessions?q=...，检索语义复用上游
+  定义，不可达上游跳过并在结果中标注 error）；
 - 安全：全服务只读，非 GET 一律 405；默认绑 127.0.0.1；仅转发 /api/*
   子路径；上游配置了 token 时转发自动携带 X-Token 头；
 - 版本协商：对上游 200 响应做 api_version 校验——响应带该字段且
@@ -195,6 +196,26 @@ def merge_facets(ups: list[dict], timeout: float) -> dict:
     return {"upstreams": per, "merged": merged}
 
 
+def merge_search(ups: list[dict], timeout: float, qs: str) -> dict:
+    """/u/all/search：跨实例搜索——逐上游转发 /api/sessions<qs>
+    （检索语义复用上游定义：q 走 bigram FTS；source/model/时间窗等
+    筛选参数同样透传）。不可达上游不拖垮整体，逐个标注 error。"""
+    results: list[dict] = []
+    for up in ups:
+        entry: dict = {"name": up["name"]}
+        try:
+            _, body = proxy_get(up, "/api/sessions" + qs, timeout)
+            obj = json.loads(body.decode("utf-8"))
+            entry["ok"] = True
+            entry["total"] = int(obj.get("total", 0))
+            entry["items"] = obj.get("items") or []
+        except UpstreamError as e:
+            entry["ok"] = False
+            entry["error"] = f"{e.kind}: {e.message}"
+        results.append(entry)
+    return {"api_version": API_MAJOR, "results": results}
+
+
 # ---------- HTTP 层 ----------
 
 def make_handler(cfg: dict, static_html: Path,
@@ -251,11 +272,15 @@ def make_handler(cfg: dict, static_html: Path,
             if target == "all":
                 # 设计稿 §2 的规范 URL 是 /u/all/facets（无 /api 前缀），
                 # 兼容 /u/all/api/facets 写法；此分支须在 /api/* 守卫之前。
-                if sub not in ("/facets", "/api/facets"):
-                    self._json({"error": "/u/all 仅支持 /facets 聚合"
-                                         "（跨实例搜索属 v2）"}, 404)
+                if sub in ("/facets", "/api/facets"):
+                    self._json(merge_facets(ups, timeout))
                     return
-                self._json(merge_facets(ups, timeout))
+                if sub in ("/search", "/api/search"):
+                    qs_all = f"?{u.query}" if u.query else ""
+                    self._json(merge_search(ups, timeout, qs_all))
+                    return
+                self._json({"error": "/u/all 仅支持 /facets 与 /search "
+                                     "聚合"}, 404)
                 return
             if not sub.startswith("/api/"):
                 self._json({"error": f"代理仅转发 /api/* 子路径，"

@@ -301,6 +301,41 @@ class TestMultiUpstream(ViewFixture):
         self.assertEqual(status, 404)
 
 
+class TestAllSearch(ViewFixture):
+    """v2：/u/all/search 跨实例搜索聚合（逐上游转发 /api/sessions，
+    检索语义复用上游定义；不可达上游降级标注，不拖垮整体）。"""
+
+    def test_all_search_merges_and_degrades(self):
+        good = self.add_mock("good")
+        dead = {"name": "死口", "url": f"http://127.0.0.1:{_free_port()}",
+                "token": ""}
+        port = self.start_view({"upstreams": [good, dead]})
+        status, body = _get(port, "/u/all/search?q=" + quote("饼干"))
+        self.assertEqual(status, 200)
+        self.assertEqual(body["api_version"], 1)
+        self.assertEqual(len(body["results"]), 2)
+        r0 = body["results"][0]
+        self.assertTrue(r0["ok"])
+        self.assertEqual(r0["total"], 1)
+        self.assertEqual(r0["items"][0]["sid"], "m:good")
+        r1 = body["results"][1]
+        self.assertFalse(r1["ok"])
+        self.assertIn("unreachable", r1["error"])
+
+    def test_all_search_passthrough_qs(self):
+        # 查询串原样透传上游 /api/sessions（q/limit 均到达）
+        port = self.start_view({"upstreams": [self.add_mock()]})
+        status, body = _get(port, "/u/all/search?q=abc&limit=5")
+        self.assertEqual(status, 200)
+        self.assertTrue(body["results"][0]["ok"])
+        self.assertEqual(body["results"][0]["total"], 1)
+
+    def test_all_search_rejects_unknown_sub(self):
+        port = self.start_view({"upstreams": [self.add_mock()]})
+        status, _ = _get(port, "/u/all/api/other")
+        self.assertEqual(status, 404)
+
+
 class TestConfigLoading(unittest.TestCase):
     def test_missing_config_falls_back_to_default(self):
         cfg = load_config(Path("Z:/不存在的路径/config.json"))

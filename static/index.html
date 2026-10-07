@@ -8,21 +8,27 @@
 :root{
   --bg:#f6f7f9;--panel:#fff;--ink:#1c2330;--ink2:#5b6472;--line:#dde2ea;
   --accent:#2563eb;--mark:#ffe58f;--warn-bg:#fff7d6;--warn-ink:#8a6d00;
-  --err-bg:#fde8e8;--err-ink:#a12622;--ok-bg:#e6f4ea;
+  --err-bg:#fde8e8;--err-ink:#a12622;--ok-bg:#e6f4ea;--ok-ink:#1a7a3d;
 }
 @media (prefers-color-scheme: dark){
   :root{--bg:#14171c;--panel:#1d2129;--ink:#e6e9ef;--ink2:#9aa3b2;
         --line:#313845;--accent:#5b8def;--mark:#8a6d00;--warn-bg:#3a3212;
-        --warn-ink:#ffd666;--err-bg:#3c1a1a;--err-ink:#ff9b9b;--ok-bg:#173325;}
+        --warn-ink:#ffd666;--err-bg:#3c1a1a;--err-ink:#ff9b9b;
+        --ok-bg:#173325;--ok-ink:#7ed6a2;}
 }
 *{box-sizing:border-box}
 body{margin:0;font:14px/1.55 "Segoe UI",system-ui,-apple-system,
   "Microsoft YaHei",sans-serif;background:var(--bg);color:var(--ink)}
 header{display:flex;align-items:center;gap:12px;padding:10px 16px;
   background:var(--panel);border-bottom:1px solid var(--line);
-  position:sticky;top:0;z-index:5}
+  position:sticky;top:0;z-index:5;flex-wrap:wrap}
 header h1{font-size:16px;margin:0;font-weight:600}
 header .meta{color:var(--ink2);font-size:12px;margin-left:auto}
+#tabs{display:flex;gap:2px}
+#tabs button{border:none;background:none;border-radius:6px;padding:6px 12px;
+  color:var(--ink2);cursor:pointer;font-size:13px}
+#tabs button:hover{color:var(--ink)}
+#tabs button.on{background:var(--bg);color:var(--accent);font-weight:600}
 select,input,button{font:inherit;color:inherit;background:var(--panel);
   border:1px solid var(--line);border-radius:6px;padding:5px 8px}
 button{cursor:pointer}button:hover{border-color:var(--accent)}
@@ -32,6 +38,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 #banner.warn{display:block;background:var(--warn-bg);color:var(--warn-ink)}
 #banner.err{display:block;background:var(--err-bg);color:var(--err-ink)}
 main{display:flex;gap:14px;padding:14px 16px;align-items:flex-start}
+section.tab{padding:14px 16px}
 #left{flex:1.25;min-width:0}
 #detail{flex:1;min-width:0;background:var(--panel);border:1px solid
   var(--line);border-radius:10px;padding:12px 14px;display:none;
@@ -61,6 +68,7 @@ mark{background:var(--mark);color:inherit;border-radius:2px;padding:0 1px}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .msg{margin:0 0 10px;border-left:3px solid var(--line);padding:6px 10px;
   border-radius:0 6px 6px 0}
+.msg.hit{outline:2px solid var(--accent);border-radius:6px}
 .msg .who{font-size:11px;font-weight:600;letter-spacing:.5px}
 .msg .body{white-space:pre-wrap;word-break:break-word;margin-top:3px}
 .m-user{border-left-color:#2563eb;background:rgba(37,99,235,.07)}
@@ -78,16 +86,49 @@ details summary{cursor:pointer;color:var(--ink2);font-size:12px}
 #detail .sub{color:var(--ink2);font-size:12px;margin-bottom:10px}
 .back{font-size:12px;color:var(--accent);cursor:pointer;user-select:none}
 .empty{color:var(--ink2);text-align:center;padding:18px 0}
+/* ---- v2：工具条 / 锚点 / 徽章 / 报告 ---- */
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+  margin-bottom:12px}
+.toolbar label{font-size:12px;color:var(--ink2)}
+.sub2{font-size:12px;color:var(--ink2)}
+a.anchor{color:var(--accent);cursor:pointer;text-decoration:none;
+  font-family:Consolas,monospace;font-size:12px;white-space:nowrap}
+a.anchor:hover{text-decoration:underline}
+.pill{display:inline-block;border-radius:9px;padding:0 8px;font-size:11px;
+  vertical-align:middle}
+.pill.known{background:var(--warn-bg);color:var(--warn-ink)}
+.pill.ok{background:var(--ok-bg);color:var(--ok-ink)}
+.pill.err{background:var(--err-bg);color:var(--err-ink)}
+h3.sec{font-size:14px;margin:18px 0 6px}
+.report-box{background:var(--panel);border:1px solid var(--line);
+  border-radius:10px;padding:12px 14px;max-width:1100px}
+.report-box table{border:none;background:none}
+.report-box td,.report-box th{white-space:normal}
+.up-card{background:var(--panel);border:1px solid var(--line);
+  border-radius:10px;padding:10px 14px;margin-bottom:10px;max-width:1100px}
+.up-card h4{margin:0 0 6px;font-size:13px}
+.up-card .errline{color:var(--err-ink);font-size:12px}
+.up-card .stat{font-size:12px;color:var(--ink2);margin-right:14px}
+.num{font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
 <header>
   <h1>harvester-view</h1>
+  <nav id="tabs">
+    <button data-tab="sessions" class="on">会话检索</button>
+    <button data-tab="triage">蒸馏队列</button>
+    <button data-tab="reports">报告</button>
+    <button data-tab="agg">中台</button>
+  </nav>
   <select id="upstream" title="切换上游实例"></select>
   <span class="meta" id="meta"></span>
 </header>
 <div id="banner"></div>
-<main>
+
+<!-- ============ Tab 1: 会话检索 ============ -->
+<section class="tab" id="tab-sessions">
+  <main>
   <div id="left">
     <div id="filters">
       <label>来源 <select id="f-source"><option value="">全部</option></select></label>
@@ -110,12 +151,59 @@ details summary{cursor:pointer;color:var(--ink2);font-size:12px}
     </div>
   </div>
   <div id="detail"></div>
-</main>
+  </main>
+</section>
+
+<!-- ============ Tab 2: 蒸馏队列 ============ -->
+<section class="tab" id="tab-triage" style="display:none">
+  <div class="toolbar">
+    <label>窗口（天）<input type="number" id="tri-days" value="30" min="0"
+      style="width:72px">（0=全库）</label>
+    <label>最少次数 <input type="number" id="tri-min" value="2" min="1"
+      style="width:60px"></label>
+    <label>会话 Top <input type="number" id="tri-top" value="10" min="1"
+      style="width:60px"></label>
+    <button id="btn-triage">生成队列</button>
+    <span class="sub2" id="tri-meta"></span>
+  </div>
+  <div class="report-box" id="tri-out"><div class="empty">尚未生成</div></div>
+</section>
+
+<!-- ============ Tab 3: 报告 ============ -->
+<section class="tab" id="tab-reports" style="display:none">
+  <div class="toolbar">
+    <select id="rep-kind">
+      <option value="tools">G1 工具统计</option>
+      <option value="errors">G2 错误三分类</option>
+      <option value="skills">G4 Skill 行为画像</option>
+      <option value="agents">G2 建议条目（AGENTS.md 候选）</option>
+      <option value="cards">G3 卡片校验</option>
+    </select>
+    <label>窗口（天）<input type="number" id="rep-days" value="30" min="0"
+      style="width:72px">（0=全库）</label>
+    <button id="btn-report">生成报告</button>
+    <span class="sub2" id="rep-meta"></span>
+  </div>
+  <div class="report-box" id="rep-out"><div class="empty">尚未生成</div></div>
+</section>
+
+<!-- ============ Tab 4: 中台 ============ -->
+<section class="tab" id="tab-agg" style="display:none">
+  <div class="toolbar">
+    <input type="search" id="agg-q" placeholder="跨实例搜索关键字（中文/英文词）"
+      style="width:240px">
+    <button id="btn-agg-search">搜索全部上游</button>
+    <button id="btn-agg-facets">刷新 facets 对比</button>
+  </div>
+  <div id="agg-out"><div class="empty">尚未加载</div></div>
+</section>
+
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
-const state = {no:0, offset:0, limit:50, total:0, q:"", sid:null};
-const LIMIT = 50;
+const state = {no:0, offset:0, limit:50, total:0, q:"", sid:null,
+               tab:"sessions", repKind:"tools",
+               loaded:{sessions:false, triage:false, reports:false, agg:false}};
 
 /* ---------- 工具 ---------- */
 function esc(s){return String(s??"").replace(/[&<>"']/g,
@@ -133,6 +221,19 @@ function hl(text,q){
 function showBanner(kind,msg){const b=$("banner");b.className=kind;
   b.textContent=msg;}
 function hideBanner(){const b=$("banner");b.className="";b.textContent="";}
+function daysVal(id){const v=Number($(id).value||0);return v>0?v:0;}
+/* 锚点链接（sid#seq，可点 → 会话下钻并定位错误原文） */
+function anchor(sid,seq,err){
+  return "<a class='anchor' data-sid='"+esc(sid)+"' data-seq='"+Number(seq)+
+    "' data-err='"+esc(err||"")+"' href='javascript:void(0)'>"+
+    esc(sid)+"#"+seq+"</a>";
+}
+function bindAnchors(root){
+  for(const a of root.querySelectorAll("a.anchor"))
+    a.onclick=()=>gotoAnchor(a.dataset.sid,Number(a.dataset.seq),
+                             a.dataset.err||"");
+}
+function errorBox(msg){return "<div class='empty'>"+esc(msg)+"</div>";}
 
 /* ---------- API 访问（经本地代理） ---------- */
 async function api(path){
@@ -141,6 +242,17 @@ async function api(path){
   catch(e){ showBanner("warn","本地代理不可达？请确认 view.py 正在运行");
             throw e; }
   if(res.ok){ hideBanner(); return res.json(); }
+  return failApi(res);
+}
+async function apiAll(path){ /* /u/all/* 聚合端点 */
+  let res;
+  try{ res=await fetch(path); }
+  catch(e){ showBanner("warn","本地代理不可达？请确认 view.py 正在运行");
+            throw e; }
+  if(res.ok){ hideBanner(); return res.json(); }
+  return failApi(res);
+}
+async function failApi(res){
   let body={}; try{ body=await res.json(); }catch(e){}
   if(body.kind==="unreachable")
     showBanner("warn",(body.error||"上游不可达")+
@@ -154,6 +266,24 @@ async function api(path){
   throw new Error(body.error||res.status);
 }
 
+/* ---------- Tab 切换 ---------- */
+function switchTab(name){
+  state.tab=name;
+  for(const b of document.querySelectorAll("#tabs button"))
+    b.classList.toggle("on",b.dataset.tab===name);
+  for(const sec of document.querySelectorAll("section.tab"))
+    sec.style.display=sec.id==="tab-"+name?"":"none";
+  if(!state.loaded[name]){
+    state.loaded[name]=true;
+    if(name==="sessions") loadAll().catch(()=>{});
+    if(name==="triage") loadTriage().catch(()=>{});
+    if(name==="reports") loadReport().catch(()=>{});
+    if(name==="agg") loadAggFacets().catch(()=>{});
+  }
+}
+for(const b of document.querySelectorAll("#tabs button"))
+  b.onclick=()=>switchTab(b.dataset.tab);
+
 /* ---------- 上游切换 ---------- */
 async function initUpstreams(){
   const res=await fetch("/view/upstreams");
@@ -163,7 +293,7 @@ async function initUpstreams(){
     "<option value='"+u.no+"'>"+esc(u.name)+"（#"+u.no+"）</option>").join("");
   sel.onchange=()=>{ state.no=Number(sel.value); state.offset=0;
     state.sid=null; $("detail").style.display="none";
-    loadAll(); };
+    switchTab(state.tab); };
 }
 async function loadAll(){
   $("rows").innerHTML="<tr><td colspan='4' class='empty'>加载中…</td></tr>";
@@ -200,7 +330,7 @@ function queryStr(){
   if(g("f-since"))p.set("since",g("f-since"));
   if(g("f-until"))p.set("until",g("f-until"));
   if(state.q)p.set("q",state.q);
-  p.set("offset",state.offset);p.set("limit",LIMIT);
+  p.set("offset",state.offset);p.set("limit",state.limit);
   return p.toString();
 }
 async function loadSessions(){
@@ -216,11 +346,11 @@ async function loadSessions(){
     :"<tr><td colspan='4' class='empty'>无匹配会话</td></tr>";
   for(const tr of $("rows").querySelectorAll("tr[data-sid]"))
     tr.onclick=()=>openSession(tr.dataset.sid);
-  const a=state.offset+1,b=Math.min(state.offset+LIMIT,state.total);
+  const a=state.offset+1,b=Math.min(state.offset+state.limit,state.total);
   $("pageinfo").textContent=state.total?("第 "+a+"–"+b+" 条 / 共 "
     +state.total+" 条"):"";
   $("btn-prev").disabled=state.offset<=0;
-  $("btn-next").disabled=state.offset+LIMIT>=state.total;
+  $("btn-next").disabled=state.offset+state.limit>=state.total;
 }
 
 /* ---------- 下钻：会话 → 回合 → 全文 ---------- */
@@ -246,12 +376,18 @@ async function openSession(sid){
   for(const el of box.querySelectorAll(".turn"))
     el.onclick=()=>openTurn(sid,el.dataset.no);
   box.scrollTop=0;
+  return d;
 }
-async function openTurn(sid,no){
+async function openTurn(sid,no,hitIdx){
   const d=await api("/api/session/"+encodeURIComponent(sid)+"/turn/"+no);
   const box=$("turn-body");
   box.innerHTML="<hr><div class='sub'>回合 #"+d.turn+" 全文</div>"+
     (d.messages||[]).map(renderMsg).join("");
+  if(Number.isInteger(hitIdx)){
+    const el=box.querySelectorAll(".msg")[hitIdx];
+    if(el){ el.classList.add("hit"); el.scrollIntoView({block:"center"}); }
+  }
+  return d;
 }
 const ROLE_LABEL={user:"用户",assistant:"助手",note:"工具/思考",system:"系统"};
 function renderMsg(m){
@@ -268,15 +404,369 @@ function renderMsg(m){
     "</span><div class='body'>"+esc(text)+"</div></div>";
 }
 
+/* 锚点直通：打开会话 → 分批并发逐回合定位错误原文 → 高亮命中消息 */
+async function gotoAnchor(sid,seq,errText){
+  switchTab("sessions");
+  await openSession(sid);
+  const probe=String(errText||"").replace(/\s+/g," ").trim();
+  if(!probe){ showBanner("warn","锚点无错误原文，已打开会话 "
+    +sid+"（回合列表中自行定位 step #"+seq+"）"); return; }
+  const d=await api("/api/session/"+encodeURIComponent(sid));
+  const n=Math.min(d.n_turns||0,80);
+  for(let base=1;base<=n;base+=5){
+    const batch=[...Array(5)].map((_,i)=>base+i).filter(x=>x<=n);
+    const rs=await Promise.all(batch.map(x=>
+      api("/api/session/"+encodeURIComponent(sid)+"/turn/"+x)
+        .catch(()=>null)));
+    for(const t of rs){
+      if(!t)continue;
+      let idx=(t.messages||[]).findIndex(m=>
+        String(m.content||"").replace(/\s+/g," ").includes(probe));
+      if(idx<0){ /* 降级：用更短探针再试 */
+        const p2=probe.slice(0,30);
+        if(p2) idx=(t.messages||[]).findIndex(m=>
+          String(m.content||"").replace(/\s+/g," ").includes(p2));
+      }
+      if(idx>=0){
+        await openTurn(sid,t.turn,idx);
+        return;
+      }
+    }
+  }
+  showBanner("warn","已在会话 "+sid+" 中打开全文检索定位，"
+    +"但未找到与错误原文逐字匹配的消息（表述可能经 adapter 改写）——"
+    +"可按 step #"+seq+" 在回合列表中人工定位。");
+}
+
+/* ---------- Tab 2: 蒸馏队列 ---------- */
+async function loadTriage(){
+  const out=$("tri-out");
+  out.innerHTML="<div class='empty'>生成中…</div>";
+  const p=new URLSearchParams();
+  if(daysVal("tri-days"))p.set("days",daysVal("tri-days"));
+  const mc=Number($("tri-min").value||2), tp=Number($("tri-top").value||10);
+  if(mc>1)p.set("min_count",mc);
+  if(tp>0)p.set("top",tp);
+  let d;
+  try{ d=await api("/api/triage?"+p.toString()); }
+  catch(e){ out.innerHTML=errorBox("生成失败：" + e.message); return; }
+  $("tri-meta").textContent="共 "+d.n_sessions+" 会话｜窗口错误 "+
+    d.error_count_window+"｜卡片比对 "+
+    (d.cards_scanned?d.cards_scanned+" 文件":"未配置");
+  const known=p=>p?"<span class='pill known'>疑似已有卡</span>":"";
+  let html="";
+  html+="<h3 class='sec'>A. 新错误 pattern（优先做 pitfall 卡）</h3>";
+  html+=d.new_patterns.length?("<table><thead><tr><th>模式</th><th>类别</th>"+
+    "<th>工具</th><th class='num'>窗口内次数</th><th>首现</th>"+
+    "<th>锚点样例</th></tr></thead><tbody>"+
+    d.new_patterns.map(x=>"<tr><td>"+esc(x.pattern)+" "+known(x.known_card)+
+    "</td><td>"+esc(x["class"])+"</td><td>"+esc(x.tools.join("/"))+
+    "</td><td class='num'>"+x.count+"</td><td class='t-date'>"+
+    esc(x.first_seen)+"</td><td>"+
+    x.samples.map(s=>anchor(s.sid,s.seq,s.error)).join("<br>")+
+    "</td></tr>").join("")+"</tbody></table>")
+    :"<div class='empty'>窗口内无首次出现的错误 pattern</div>";
+  html+="<h3 class='sec'>B. 旧坑重现（检查旧卡/建议池是否要更新）</h3>";
+  html+=d.old_patterns.length?("<table><thead><tr><th>模式</th><th>类别</th>"+
+    "<th class='num'>窗口内次数</th><th>首现</th></tr></thead><tbody>"+
+    d.old_patterns.map(x=>"<tr><td>"+esc(x.pattern)+" "+known(x.known_card)+
+    "</td><td>"+esc(x["class"])+"</td><td class='num'>"+x.count+
+    "</td><td class='t-date'>"+esc(x.first_seen)+"</td></tr>").join("")+
+    "</tbody></table>"):"<div class='empty'>无</div>";
+  html+="<h3 class='sec'>C. Skill 行为链候选（workflow 卡素材）</h3>";
+  html+=d.skills.length?("<table><thead><tr><th>Skill</th>"+
+    "<th class='num'>调用</th><th class='num'>成功</th><th>来源</th>"+
+    "<th>行为链</th><th>成功样例</th></tr></thead><tbody>"+
+    d.skills.map(s=>"<tr><td>"+esc(s.skill)+" "+known(s.known_card)+
+    "</td><td class='num'>"+s.n_calls+"</td><td class='num'>"+s.n_ok+
+    "</td><td>"+esc(s.sources.join("/"))+"</td><td class='sub2'>"+
+    esc(s.chain.join(" → ")||"（链为空）")+"</td><td>"+
+    (s.sample?anchor(s.sample.sid,s.sample.seq,""):"—")+
+    "</td></tr>").join("")+"</tbody></table>")
+    :"<div class='empty'>窗口内无 skill 调用</div>";
+  html+="<h3 class='sec'>D. 高信号会话 Top（泛读排期用）</h3>";
+  html+=d.hot_sessions.length?("<table><thead><tr><th class='num'>分</th>"+
+    "<th>会话</th><th>标题</th><th class='num'>消息</th>"+
+    "<th class='num'>步骤</th></tr></thead><tbody>"+
+    d.hot_sessions.map(h=>"<tr data-hsid=\""+esc(h.sid)+"\">"+
+    "<td class='num'>"+h.score+"</td><td class='t-src'>"+esc(h.sid)+
+    "</td><td>"+esc(h.title||"")+"</td><td class='num'>"+h.msgs+
+    "</td><td class='num'>"+h.steps+"</td></tr>").join("")+
+    "</tbody></table>"):"<div class='empty'>无会话</div>";
+  html+="<p class='sub2'>纪律提醒：本队列是建议池，不是成品——机器只排队，"+
+    "判断与 evidence 由人补全（锚点可点击直通原会话）。</p>";
+  out.innerHTML=html;
+  bindAnchors(out);
+  for(const tr of out.querySelectorAll("tr[data-hsid]"))
+    tr.onclick=()=>gotoAnchor(tr.dataset.hsid,0,"");
+}
+
+/* ---------- Tab 3: 报告 ---------- */
+async function loadReport(){
+  const kind=$("rep-kind").value;
+  state.repKind=kind;
+  const out=$("rep-out");
+  out.innerHTML="<div class='empty'>生成中…</div>";
+  $("rep-meta").textContent="";
+  const p=new URLSearchParams();
+  if(daysVal("rep-days"))p.set("days",daysVal("rep-days"));
+  let d;
+  try{
+    d = kind==="cards"
+      ? await api("/api/cards")
+      : await api("/api/reports/"+kind+"?"+p.toString());
+  }catch(e){ out.innerHTML=errorBox("生成失败："+e.message); return; }
+  if(kind==="tools")renderTools(d,out);
+  else if(kind==="errors")renderErrors(d,out);
+  else if(kind==="skills")renderSkills(d,out);
+  else if(kind==="agents")renderAgents(d,out);
+  else if(kind==="cards")renderCards(d,out);
+  bindAnchors(out);
+}
+function renderTools(d,out){
+  const tot=d.tools.reduce((a,t)=>a+t.calls,0);
+  const err=d.tools.reduce((a,t)=>a+t.error,0);
+  $("rep-meta").textContent="工具 "+d.tools.length+"｜调用 "+tot+
+    "｜失败 "+err+"（"+(tot?(err/tot*100).toFixed(1):0)+"%）";
+  let html="<h3 class='sec'>工具失败率排行</h3><table><thead><tr>"+
+    "<th>工具</th><th class='num'>调用</th><th class='num'>成功</th>"+
+    "<th class='num'>失败</th><th class='num'>失败率</th></tr></thead><tbody>"+
+    (d.tools.length?d.tools.map(t=>"<tr><td>"+esc(t.tool)+
+    "</td><td class='num'>"+t.calls+"</td><td class='num'>"+t.success+
+    "</td><td class='num'>"+t.error+"</td><td class='num'>"+
+    (t.fail_rate*100).toFixed(1)+"%</td></tr>").join("")
+    :"<tr><td colspan='5' class='empty'>无工具调用数据</td></tr>")+
+    "</tbody></table>";
+  if(d.flow&&d.flow.errors){
+    const f=d.flow;
+    html+="<h3 class='sec'>失败后续行为（重试/放弃）</h3><p class='sub2'>"+
+      "失败 "+f.errors+" 次：重试 "+f.retried+"（"+
+      (f.errors?f.retried/f.errors*100:0).toFixed(0)+"%）｜ 放弃 "+
+      f.given_up+"（"+(f.errors?f.given_up/f.errors*100:0).toFixed(0)+
+      "%）——高放弃率+高失败率=用户路径被硬性挡断，优先修。</p>";
+  }
+  const srcs=Object.keys(d.by_source||{});
+  if(srcs.length){
+    html+="<h3 class='sec'>按 Agent（数据源）分布</h3>";
+    for(const s of srcs){
+      const o=d.by_source[s];
+      html+="<details><summary>"+esc(s)+"（调用 "+o.calls+"｜失败 "+
+        o.errors+"）</summary><table><thead><tr><th>工具</th>"+
+        "<th class='num'>调用</th><th class='num'>失败</th>"+
+        "<th class='num'>失败率</th></tr></thead><tbody>"+
+        o.tools.map(t=>"<tr><td>"+esc(t.tool)+"</td><td class='num'>"+
+        t.calls+"</td><td class='num'>"+t.error+"</td><td class='num'>"+
+        (t.fail_rate*100).toFixed(1)+"%</td></tr>").join("")+
+        "</tbody></table></details>";
+    }
+  }
+  out.innerHTML=html;
+}
+function renderErrors(d,out){
+  const m=d.meta||{};
+  $("rep-meta").textContent="错误 "+(m.error_count||0)+" / 总步骤 "+
+    (m.total_steps||0)+"｜涉及 "+(m.sessions||0)+" 会话"+
+    (m.since?("｜窗口 ≥ "+m.since):"");
+  const cls=d.by_class||{};
+  const n=m.error_count||0;
+  const CLS=[["env","环境：沙箱/权限/OS/网络/宿主限制，agent 无法自愈"],
+    ["tool_interface","用法：参数错/先改后读/盲猜行号，改用法即消"],
+    ["context","目标状态：文件已删/资产失效，需重新侦察"],
+    ["unclassified","未命中规则，需人工归因后补规则"]];
+  let html="<h3 class='sec'>三分类分布</h3><table><thead><tr><th>类别</th>"+
+    "<th class='num'>次数</th><th class='num'>占比</th><th>语义</th>"+
+    "</tr></thead><tbody>"+CLS.map(c=>"<tr><td>"+c[0]+"</td><td class='num'>"+
+    (cls[c[0]]||0)+"</td><td class='num'>"+
+    (n?((cls[c[0]]||0)/n*100).toFixed(0):0)+"%</td><td class='sub2'>"+
+    c[1]+"</td></tr>").join("")+"</tbody></table>";
+  const bk=d.by_bucket||{};
+  html+="<h3 class='sec'>轨迹位置分桶</h3><p class='sub2'>开场（前1/3）"+
+    (bk["开场"]||0)+"｜中途（中1/3）"+(bk["中途"]||0)+"｜收尾（后1/3）"+
+    (bk["收尾"]||0)+"——开场高发=环境/权限未就绪；收尾高发=收尾动作踩坑。</p>";
+  const srcs=d.by_source||{};
+  if(Object.keys(srcs).length>1){
+    html+="<h3 class='sec'>按 Agent（数据源）分布</h3><table><thead><tr>"+
+      "<th>数据源</th><th class='num'>env</th><th class='num'>tool_interface</th>"+
+      "<th class='num'>context</th><th class='num'>unclassified</th></tr></thead><tbody>"+
+      Object.entries(srcs).map(e=>"<tr><td>"+esc(e[0])+"</td><td class='num'>"+
+      (e[1].env||0)+"</td><td class='num'>"+(e[1].tool_interface||0)+
+      "</td><td class='num'>"+(e[1].context||0)+"</td><td class='num'>"+
+      (e[1].unclassified||0)+"</td></tr>").join("")+"</tbody></table>";
+  }
+  html+="<h3 class='sec'>错误模式明细（归一聚类，锚点可点击）</h3>";
+  html+=(d.patterns||[]).length?("<table><thead><tr><th class='num'>次数</th>"+
+    "<th>模式</th><th>类别</th><th>工具</th><th>样例锚点</th></tr></thead><tbody>"+
+    d.patterns.slice(0,60).map(x=>"<tr><td class='num'>x"+x.count+
+    "</td><td>"+esc(x.pattern)+"</td><td>"+esc(x["class"])+"</td><td>"+
+    esc(x.tools.join("/"))+"</td><td>"+
+    x.samples.map(s=>anchor(s.sid,s.seq,s.error)).join("<br>")+
+    "</td></tr>").join("")+"</tbody></table>")
+    :"<div class='empty'>steps 表无错误记录</div>";
+  out.innerHTML=html;
+}
+function renderSkills(d,out){
+  $("rep-meta").textContent="调用 "+d.n_invocations+" 次｜skill "+
+    d.skills.length+" 个";
+  let html="";
+  html+=(d.skills||[]).length?("<table><thead><tr><th>Skill</th>"+
+    "<th class='num'>调用</th><th class='num'>会话</th><th class='num'>成功</th>"+
+    "<th class='num'>失败</th><th class='num'>无结果</th><th>来源</th></tr>"+
+    "</thead><tbody>"+d.skills.map(s=>"<tr><td>"+esc(s.skill)+
+    "</td><td class='num'>"+s.calls+"</td><td class='num'>"+s.sids+
+    "</td><td class='num'>"+s.ok+"</td><td class='num'>"+s.err+
+    "</td><td class='num'>"+s.no_result+"</td><td class='sub2'>"+
+    esc(s.sources.join("/"))+"</td></tr>").join("")+"</tbody></table>")
+    :"<div class='empty'>无 skill 调用（Chat 平台会话无工具遥测）</div>";
+  for(const s of d.skills||[]){
+    html+="<details><summary>"+esc(s.skill)+"——画像明细</summary>";
+    if(s.args_samples&&s.args_samples.length)
+      html+="<p class='sub2'>触发任务抽样："+s.args_samples.map(a=>
+        "「"+esc(a)+"」").join("、")+"</p>";
+    if(s.chains&&Object.keys(s.chains).length)
+      html+="<p class='sub2'>调用后行为链（高频）："+Object.entries(s.chains)
+        .map(e=>"x"+e[1]+" <code>"+esc(e[0])+"</code>").join("｜")+"</p>";
+    if(s.anchors&&s.anchors.length){
+      html+="<p>"+s.anchors.map(a=>{
+        const i=a.lastIndexOf("#");
+        return anchor(a.slice(0,i),a.slice(i+1),"");
+      }).join(" ")+"</p>";
+    }
+    html+="</details>";
+  }
+  out.innerHTML=html;
+}
+function renderAgents(d,out){
+  const m=d.meta||{};
+  $("rep-meta").textContent="错误样本 "+(m.error_count||0)+"｜min_count "+
+    d.min_count+"｜达标条目 "+d.entries.length;
+  let html="<p class='sub2'>纪律：以下为 AGENTS.md 候选条目（机器产出），"+
+    "人工审阅后自行并入——本视图绝不写入任何配置文件。</p>";
+  html+=d.entries.length?("<table><thead><tr><th class='num'>实测</th>"+
+    "<th>规则句</th><th>做法说明</th><th>证据锚点</th></tr></thead><tbody>"+
+    d.entries.map(e=>"<tr><td class='num'>x"+e.total+"</td><td><b>"+
+    esc(e.title)+"</b></td><td class='sub2'>"+esc(e.body)+"</td><td>"+
+    e.samples.slice(0,2).map(s=>anchor(s.sid,s.seq,s.error)).join("<br>")+
+    "</td></tr>").join("")+"</tbody></table>")
+    :"<div class='empty'>无达标模式（模板聚合次数均未达 min_count）</div>";
+  html+="<h3 class='sec'>待人工归因（未命中模板，给证据不给结论）</h3>";
+  html+=d.leftover.length?("<table><thead><tr><th class='num'>次数</th>"+
+    "<th>模式</th><th>类别</th><th>样例锚点</th></tr></thead><tbody>"+
+    d.leftover.map(x=>"<tr><td class='num'>x"+x.count+"</td><td>"+
+    esc(x.pattern)+"</td><td>"+esc(x["class"])+"</td><td>"+
+    x.samples.map(s=>anchor(s.sid,s.seq,s.error)).join("<br>")+
+    "</td></tr>").join("")+"</tbody></table>")
+    :"<div class='empty'>无</div>";
+  out.innerHTML=html;
+}
+function renderCards(d,out){
+  const s=d.summary||{};
+  const stat=s.error?("<span class='pill err'>错误 "+s.error+"</span>")
+    :s.warn?("<span class='pill known'>警告 "+s.warn+"</span>")
+    :"<span class='pill ok'>全部通过</span>";
+  $("rep-meta").textContent=d.root+"｜卡片 "+s.cards+"｜锚点校验 "+
+    s.anchor_checked+"（未命中 "+s.anchor_misses+"）";
+  let html="<p>"+stat+"　<span class='sub2'>通过 "+s.ok+"｜警告 "+
+    s.warn+"｜错误 "+s.error+"</span></p>";
+  const bad=(d.cards||[]).filter(c=>c.errors.length||c.warnings.length);
+  html+=bad.length?("<table><thead><tr><th>卡片</th><th>问题</th></tr>"+
+    "</thead><tbody>"+bad.map(c=>"<tr><td>"+esc(c.path)+"</td><td>"+
+    c.errors.map(e=>"<span class='pill err'>错误</span> "+esc(e)).join("<br>")+
+    (c.errors.length&&c.warnings.length?"<br>":"")+
+    c.warnings.map(w=>"<span class='pill known'>警告</span> "+esc(w))
+      .join("<br>")+"</td></tr>").join("")+"</tbody></table>")
+    :"<div class='empty'>"+(s.cards?"无问题卡片":"目录下没有卡片")+"</div>";
+  html+="<p class='sub2'>结论："+(s.error?"存在错误卡片，修复前不得并入主库。"
+    :s.warn?"无错误但有警告——复核警告项后再并入主库。"
+    :"全部卡片满足 §8 规范，可并入主库。")+"</p>";
+  out.innerHTML=html;
+}
+
+/* ---------- Tab 4: 中台 ---------- */
+async function loadAggFacets(){
+  const out=$("agg-out");
+  out.innerHTML="<div class='empty'>加载中…</div>";
+  let d;
+  try{ d=await apiAll("/u/all/facets"); }
+  catch(e){ out.innerHTML=errorBox("聚合失败："+e.message); return; }
+  let html="<h3 class='sec'>各实例概览</h3>";
+  for(const u of d.upstreams||[]){
+    html+="<div class='up-card'><h4>"+esc(u.name)+"</h4>";
+    if(u.error){ html+="<div class='errline'>"+esc(u.error)+"</div>"; }
+    else{
+      const f=u.facets||{};
+      html+="<span class='stat'>会话时间 "+
+        esc(f.time_min||"?")+" ~ "+esc(f.time_max||"?")+"</span>"+
+        "<span class='stat'>来源："+
+        (f.sources||[]).map(s=>esc(s.name)+" "+s.count).join("、")+
+        "</span><br><span class='stat'>模型："+
+        (f.models||[]).slice(0,6).map(s=>esc(s.name)+" "+s.count).join("、")+
+        "</span><br><span class='stat'>Skill："+
+        (f.skills||[]).slice(0,8).map(s=>esc(s.name)+" "+s.count).join("、")+
+        "</span>";
+    }
+    html+="</div>";
+  }
+  const mg=d.merged||{};
+  html+="<h3 class='sec'>多实例汇总（同名求和）</h3><table><thead><tr>"+
+    "<th>来源</th><th class='num'>会话</th></tr></thead><tbody>"+
+    (mg.sources||[]).map(s=>"<tr><td>"+esc(s.name)+"</td><td class='num'>"+
+    s.count+"</td></tr>").join("")+"</tbody></table>"+
+    "<p class='sub2'>模型合计："+
+    (mg.models||[]).slice(0,8).map(s=>esc(s.name)+" "+s.count).join("、")+
+    "｜时间范围 "+esc(mg.time_min||"?")+" ~ "+esc(mg.time_max||"?")+"</p>";
+  out.innerHTML=html;
+}
+async function loadAggSearch(){
+  const out=$("agg-out");
+  const q=$("agg-q").value.trim();
+  if(!q){ showBanner("warn","请输入关键字"); return; }
+  out.innerHTML="<div class='empty'>搜索中…</div>";
+  let d;
+  try{ d=await apiAll("/u/all/search?q="+encodeURIComponent(q)); }
+  catch(e){ out.innerHTML=errorBox("搜索失败："+e.message); return; }
+  let html="<h3 class='sec'>跨实例搜索："+esc(q)+"</h3>";
+  (d.results||[]).forEach((r,i)=>{
+    html+="<div class='up-card'><h4>"+esc(r.name)+"（上游 #"+i+"）</h4>";
+    if(!r.ok){ html+="<div class='errline'>"+esc(r.error)+"</div>"; }
+    else if(!r.items.length){ html+="<div class='empty'>无匹配会话</div>"; }
+    else{
+      html+="<div class='sub2'>命中 "+r.total+" 条</div>"+
+        "<table><tbody>"+r.items.map(it=>
+        "<tr data-no='"+i+"' data-sid=\""+esc(it.sid)+"\">"+
+        "<td class='t-date'>"+esc(it.updated_at)+"</td>"+
+        "<td class='t-src'>"+esc(it.source)+"</td><td>"+
+        hl(it.title,q)+"</td></tr>").join("")+"</tbody></table>";
+    }
+    html+="</div>";
+  });
+  out.innerHTML=html;
+  for(const tr of out.querySelectorAll("tr[data-sid]"))
+    tr.onclick=()=>gotoCross(Number(tr.dataset.no),tr.dataset.sid);
+}
+function gotoCross(no,sid){
+  $("upstream").value=String(no);
+  state.no=no;
+  state.loaded.sessions=false; /* 切上游后检索视图需重置 */
+  switchTab("sessions");
+  openSession(sid).catch(()=>{});
+}
+
 /* ---------- 事件绑定 ---------- */
 $("btn-search").onclick=()=>{state.q=$("f-q").value.trim();state.offset=0;
   loadSessions().catch(()=>{});};
 $("f-q").addEventListener("keydown",e=>{
   if(e.key==="Enter")$("btn-search").click();});
-$("btn-prev").onclick=()=>{state.offset=Math.max(0,state.offset-LIMIT);
+$("btn-prev").onclick=()=>{state.offset=Math.max(0,state.offset-state.limit);
   loadSessions().catch(()=>{});};
-$("btn-next").onclick=()=>{state.offset+=LIMIT;
+$("btn-next").onclick=()=>{state.offset+=state.limit;
   loadSessions().catch(()=>{});};
+$("btn-triage").onclick=()=>loadTriage().catch(()=>{});
+$("btn-report").onclick=()=>loadReport().catch(()=>{});
+$("rep-kind").onchange=()=>loadReport().catch(()=>{});
+$("btn-agg-search").onclick=()=>loadAggSearch().catch(()=>{});
+$("agg-q").addEventListener("keydown",e=>{
+  if(e.key==="Enter")$("btn-agg-search").click();});
+$("btn-agg-facets").onclick=()=>loadAggFacets().catch(()=>{});
 
 initUpstreams().then(()=>{
   state.no=Number($("upstream").value||0);

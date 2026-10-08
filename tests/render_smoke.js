@@ -132,5 +132,82 @@ renderCards(CD, cdOut);
 check("G3 rep-erronly 后 meta 含'已过滤'", store["rep-meta"].textContent.includes("已过滤"));
 check("G3 过滤态空态带计数", cdOut.innerHTML.includes("已过滤：0/4 张卡"));
 
+/* --- v0.22 T3-5 主题 tab（H22：动态性 + 接线断言） ---
+ * 主题必须数据驱动：渲染 /api/topics 返回什么就显示什么，绝无写死主题名。
+ * 锚点节点必须带 data-sid/data-turn 并真正接线到会话下钻。 */
+function extractFn(name, sig) {
+  const re = new RegExp("^(?:async )?function " + name + "\\(" + sig +
+    "\\)\\{[\\s\\S]*?^\\}", "m");
+  const m = html.match(re);
+  if (!m) throw new Error("extract fail: " + name + "(" + sig + ")");
+  return m[0];
+}
+eval(extract("renderTopics"));
+eval(extract("renderChain"));
+eval(extractFn("topicPackCmd", "id,level,sid"));
+const gSrc = extractFn("gotoTopicAnchor", "sid,turn");
+
+/* renderTopics：任意主题名都渲染（多主题，非写死清单） */
+const TOPICS = { topics: [
+  { id: "tp-x", name: "主题甲", keywords: "k1, k2", members_count: 7,
+    first_activity: "2025-01-01T00:00:00", last_activity: "2025-06-01" },
+  { id: "tp-y", name: "主题乙", keywords: "", members_count: 2,
+    first_activity: null, last_activity: null }] };
+const tOut = { innerHTML: "" };
+renderTopics(TOPICS, tOut);
+check("主题列表渲染主题甲（数据驱动）", tOut.innerHTML.includes("主题甲"));
+check("主题列表渲染主题乙——不假定单一主题", tOut.innerHTML.includes("主题乙"));
+check("关键词/成员数随数据渲染", tOut.innerHTML.includes("k1, k2") &&
+  tOut.innerHTML.includes("7"));
+check("行带 data-tid（点击接线载体，2 行）",
+  (tOut.innerHTML.match(/data-tid=/g) || []).length === 2);
+
+const tEmpty = { innerHTML: "" };
+renderTopics({ topics: [] }, tEmpty);
+check("空注册表空态", tEmpty.innerHTML.includes("尚无注册主题"));
+
+const tHint = { innerHTML: "" };
+renderTopics({ topics: [], hint: "topics_meta 未配置" }, tHint);
+check("未配置上游显示 hint 且声明动态发现",
+  tHint.innerHTML.includes("topics_meta 未配置") &&
+  tHint.innerHTML.includes("发现"));
+
+/* renderChain：时间线（阶段/节点/锚点）+ 右栏文档 */
+store = freshStore("", false);
+store["topic-doc"] = { innerHTML: "" };
+const CH = { topic_id: "tp-x", chain_path: "topics/chain-主题甲.md",
+  body: "## 阶段一\n正文内容示例",
+  fm: { topic: "主题甲", members: ["s1", "s2"],
+    db_fingerprint: { sessions: 296 },
+    anchors: [
+      { stage: "阶段一·诊断", span: "2025-01 ~ 2025-02", nodes: [
+        { sid: "deepseek-export:a", turn: 1, note: "设定提交" },
+        { sid: "yuanbao-raw:b", turn: 4, note: "跨模型交叉验证" }] },
+      { stage: "阶段二·迭代", span: "2025-06", nodes: [
+        { sid: "deepseek-export:a", turn: 9, note: "数十轮打磨" }] }] } };
+const chOut = { innerHTML: "" };
+renderChain(CH, chOut);
+check("阶段标题渲染", chOut.innerHTML.includes("阶段一·诊断") &&
+  chOut.innerHTML.includes("阶段二·迭代"));
+check("节点 note 渲染", chOut.innerHTML.includes("设定提交") &&
+  chOut.innerHTML.includes("数十轮打磨"));
+check("节点锚点带 data-sid+data-turn（3 个，含 turn=4）",
+  (chOut.innerHTML.match(/data-sid=/g) || []).length === 3 &&
+  chOut.innerHTML.includes('data-turn="4"'));
+check("右栏文档收到 body 与成员数",
+  store["topic-doc"].innerHTML.includes("正文内容示例") &&
+  store["topic-doc"].innerHTML.includes("2"));
+
+/* topicPackCmd：纯文本复制命令，绝无执行语义（红线 3） */
+check("命令含 topic pack 与 --id/--level",
+  topicPackCmd("tp-x", "coarse").includes("topic pack --id tp-x --level coarse"));
+check("fine/artifact 附 --sid 占位", topicPackCmd("tp-x", "artifact").includes("--sid"));
+check("命令串不含执行语义", !/\b(fetch|exec|spawn|eval)\(/.test(topicPackCmd("tp-x", "mid")));
+
+/* gotoTopicAnchor 接线：必须真正 openSession+openTurn（H22 接线断言） */
+check("锚点跳转接线 openSession+openTurn",
+  gSrc.includes("openSession(") && gSrc.includes("openTurn("));
+check("跳转先切回会话 tab", gSrc.includes('switchTab("sessions")'));
+
 if (failed) { console.error(failed + " check(s) failed"); process.exit(1); }
 console.log("ALL RENDER CHECKS PASSED");

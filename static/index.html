@@ -117,6 +117,20 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 .b-red{background:var(--err-bg);color:var(--err-ink)}
 /* 导出/复制小按钮 */
 .xbtn{font:inherit;font-size:12px;margin-left:8px;cursor:pointer;padding:1px 8px}
+/* ---- v0.22 T3-5：主题 tab ---- */
+#topics-left{flex:1;min-width:250px;max-width:430px}
+#topics-mid{flex:1.15;min-width:280px}
+#topics-right{flex:1.4;min-width:0;background:var(--panel);
+  border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+  display:none;position:sticky;top:64px;max-height:calc(100vh - 80px);
+  overflow:auto}
+.tl-stage{margin-bottom:10px}
+.tl-stage h4{margin:8px 0 4px;font-size:13px}
+.tl-node{border:1px solid var(--line);border-radius:8px;padding:6px 10px;
+  margin-bottom:6px;cursor:pointer;font-size:13px}
+.tl-node:hover{border-color:var(--accent)}
+.tl-node .anchor{font-family:Consolas,monospace;font-size:12px;
+  color:var(--accent);margin-right:8px}
 </style>
 </head>
 <body>
@@ -127,6 +141,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
     <button data-tab="triage">蒸馏队列</button>
     <button data-tab="reports">报告</button>
     <button data-tab="agg">中台</button>
+    <button data-tab="topics">主题</button>
   </nav>
   <select id="upstream" title="切换上游实例"></select>
   <span class="meta" id="meta"></span>
@@ -222,12 +237,45 @@ h3.sec{font-size:14px;margin:18px 0 6px}
   <div id="agg-out"><div class="empty">尚未加载</div></div>
 </section>
 
+<!-- ============ Tab 5: 主题（T3-5） ============
+  主题清单完全来自 /api/topics（聚合发现后注册，数据驱动，无写死清单）；
+  中栏时间线来自 chain 文档 frontmatter 锚点；深挖分层=复制 CLI 命令，
+  本视图绝不执行（红线 3）。 -->
+<section class="tab" id="tab-topics" style="display:none">
+  <main>
+  <div id="topics-left">
+    <div class="toolbar">
+      <button id="btn-topics-refresh">刷新</button>
+      <span class="sub2" id="topics-meta"></span>
+    </div>
+    <div id="topics-list"><div class="empty">加载中…</div></div>
+  </div>
+  <div id="topics-mid">
+    <div class="toolbar" id="topics-toolbar" style="display:none">
+      <label>分层 <select id="topic-level">
+        <option value="chain">chain 演进链（已生成）</option>
+        <option value="title">title 极粗（~2K）</option>
+        <option value="coarse">coarse 粗（~10K）</option>
+        <option value="mid">mid 中（~30K）</option>
+        <option value="fine">fine 细</option>
+        <option value="artifact">artifact 产物</option>
+      </select></label>
+      <button id="btn-topic-cmd" class="xbtn" disabled
+        title="复制到剪贴板，请自行开终端粘贴执行（本视图绝不执行命令）">复制命令</button>
+    </div>
+    <div id="topics-timeline"><div class="empty">← 选择左侧主题</div></div>
+  </div>
+  <div id="topics-right"><div id="topic-doc"></div></div>
+  </main>
+</section>
+
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
 const state = {no:0, offset:0, limit:50, total:0, q:"", sid:null,
                tab:"sessions", repKind:"tools", sel:new Set(),
-               loaded:{sessions:false, triage:false, reports:false, agg:false}};
+               loaded:{sessions:false, triage:false, reports:false,
+                       agg:false, topics:false}};
 
 /* ---------- 工具 ---------- */
 function esc(s){return String(s??"").replace(/[&<>"']/g,
@@ -303,6 +351,7 @@ function switchTab(name){
     if(name==="triage") loadTriage().catch(()=>{});
     if(name==="reports") loadReport().catch(()=>{});
     if(name==="agg") loadAggFacets().catch(()=>{});
+    if(name==="topics") loadTopics().catch(()=>{});
   }
 }
 for(const b of document.querySelectorAll("#tabs button"))
@@ -1020,6 +1069,117 @@ function renderCards(d,out){
   out.innerHTML=html;
 }
 
+/* ---------- Tab 5: 主题（T3-5，数据驱动） ---------- */
+/* 主题列表：/api/topics 返回什么就渲染什么——主题由聚合数据发现后
+   注册进 topics_meta.db，可随时新增；视图不写死任何主题名/数量。 */
+function renderTopics(d,out){
+  let h="";
+  if(d.hint)
+    h+="<div class='up-card'><span class='errline'>"+esc(d.hint)+
+      "</span><div class='sub2'>主题不是固定清单：在聚合数据中发现簇后由 "+
+      "<code>topic register</code> 注册，注册即可在页面上出现。</div></div>";
+  h+=d.topics&&d.topics.length
+    ?("<table><thead><tr><th>主题</th><th class='num'>成员</th>"+
+      "<th>活跃区间</th></tr></thead><tbody>"+
+      d.topics.map(t=>"<tr data-tid=\""+esc(t.id)+"\">"+
+      "<td>"+esc(t.name)+
+      (t.keywords?"<div class='sub2'>"+esc(t.keywords)+"</div>":"")+
+      "</td><td class='num'>"+t.members_count+"</td><td class='t-date'>"+
+      esc((t.first_activity||"?").slice(0,10))+" ~ "+
+      esc((t.last_activity||"?").slice(0,10))+"</td></tr>").join("")+
+      "</tbody></table>")
+    :"<div class='empty'>尚无注册主题</div>";
+  out.innerHTML=h;
+}
+async function loadTopics(){
+  $("topics-list").innerHTML="<div class='empty'>加载中…</div>";
+  const d=await api("/api/topics");
+  state.topicsLast=d;
+  renderTopics(d,$("topics-list"));
+  for(const tr of $("topics-list").querySelectorAll("tr[data-tid]"))
+    tr.onclick=()=>openTopic(tr.dataset.tid);
+  $("topics-meta").textContent=(d.topics||[]).length
+    ?("主题 "+d.topics.length+" 个｜点击查看演进链"):"";
+}
+/* chain 长文 → 中栏时间线 + 右栏文档。404（尚无长文）降级为空态+复制命令。 */
+async function openTopic(id){
+  $("topics-toolbar").style.display="";
+  $("topics-timeline").innerHTML="<div class='empty'>加载中…</div>";
+  const res=await fetch("/u/"+state.no+"/api/topic/"
+    +encodeURIComponent(id)+"/chain");
+  if(res.status===404){
+    state.topicCur={id:id};
+    updateTopicCmd();
+    $("topics-right").style.display="none";
+    $("topics-timeline").innerHTML=errorBox(
+      "该主题尚无 chain 长文——用上方「复制命令」取蒸馏包（pack），"+
+      "由 Agent 消费创作 chain-*.md 放入 knowledge/topics/ 后刷新即见。");
+    return;
+  }
+  if(!res.ok){ await failApi(res); return; }
+  const d=await res.json();
+  state.topicCur={id:id};
+  updateTopicCmd();
+  $("topics-right").style.display="block";
+  renderChain(d,$("topics-timeline"));
+  bindTopicNodes($("topics-timeline"));
+}
+function renderChain(d,out){
+  const fm=d.fm||{};
+  const stages=fm.anchors||[];
+  const nNodes=stages.reduce((a,s)=>a+((s.nodes||[]).length),0);
+  $("topic-doc").innerHTML=
+    "<h2>"+esc(fm.topic||d.topic_id||"主题")+" · chain 长文</h2>"+
+    "<div class='sub'>成员 "+((fm.members||[]).length)+"｜锚点 "+nNodes+
+    (d.chain_path?"｜产物 "+esc(d.chain_path):"")+"</div>"+
+    (fm.db_fingerprint?"<div class='sub2'>快照指纹 "+
+      esc(JSON.stringify(fm.db_fingerprint)).slice(0,140)+"</div>":"")+
+    "<div style='white-space:pre-wrap;word-break:break-word;margin-top:10px'>"+
+    esc(d.body||"")+"</div>";
+  let h="<h3 class='sec'>演进时间线（"+stages.length+" 阶段 / "+
+    nNodes+" 锚点）</h3>"+
+    "<p class='sub2'>点节点跳回原会话对应回合（任一节点一键回原文）；"+
+    "深挖分层用上方「复制命令」，由 CLI 生成蒸馏包——本视图绝不执行。</p>";
+  for(const st of stages){
+    h+="<div class='tl-stage'><h4>"+esc(st.stage||"")+
+      (st.span?" <span class='sub2'>"+esc(st.span)+"</span>":"")+"</h4>";
+    for(const nd of st.nodes||[])
+      h+="<div class='tl-node' data-sid=\""+esc(nd.sid)+"\" data-turn=\""+
+        Number(nd.turn||0)+"\"><span class='anchor'>"+esc(nd.sid)+"#"+
+        Number(nd.turn||0)+"</span>"+esc(nd.note||"")+"</div>";
+    h+="</div>";
+  }
+  if(!stages.length)h+="<div class='empty'>该 chain 无锚点数据</div>";
+  out.innerHTML=h;
+}
+function bindTopicNodes(root){
+  for(const el of root.querySelectorAll(".tl-node"))
+    el.onclick=()=>gotoTopicAnchor(el.dataset.sid,Number(el.dataset.turn));
+}
+/* 主题锚点直通：turn=会话回合号（与链锚点同口径），直达回合全文 */
+async function gotoTopicAnchor(sid,turn){
+  switchTab("sessions");
+  try{
+    await openSession(sid);
+    await openTurn(sid,turn);
+  }catch(e){ showBanner("err","锚点跳转失败："+e.message); }
+}
+/* 复制命令（红线 3：视图绝不执行，只给文本） */
+function topicPackCmd(id,level,sid){
+  let cmd="python -m harvester topic pack --id "+id+" --level "+level+
+    " --meta topics_meta.db --db harvester.db";
+  if(level==="fine"||level==="artifact")
+    cmd+=" --sid <成员sid> --artifacts-meta artifacts_meta.db";
+  return cmd;
+}
+function updateTopicCmd(){
+  const cur=state.topicCur;
+  if(!cur){ $("btn-topic-cmd").disabled=true; return; }
+  $("btn-topic-cmd").disabled=false;
+  $("btn-topic-cmd").dataset.cmd=
+    topicPackCmd(cur.id,$("topic-level").value);
+}
+
 /* ---------- Tab 4: 中台 ---------- */
 async function loadAggFacets(){
   const out=$("agg-out");
@@ -1318,6 +1478,11 @@ $("btn-agg-search").onclick=()=>loadAggSearch().catch(()=>{});
 $("agg-q").addEventListener("keydown",e=>{
   if(e.key==="Enter")$("btn-agg-search").click();});
 $("btn-agg-facets").onclick=()=>loadAggFacets().catch(()=>{});
+$("btn-topics-refresh").onclick=()=>loadTopics().catch(()=>{});
+$("topic-level").onchange=()=>updateTopicCmd();
+$("btn-topic-cmd").onclick=e=>{
+  const b=e.currentTarget;
+  if(b.dataset.cmd)copyText(b.dataset.cmd,b);};
 $("btn-rep-export").onclick=()=>{
   if(!state.repLast){showBanner("warn","请先点“生成报告”再导出");return;}
   dlText("harvester-report-"+state.repKind+"-"+today()+".md",

@@ -313,8 +313,16 @@ async function loadAll(){
 }
 async function loadMeta(){
   const m=await api("/api/meta");
-  $("meta").textContent=m.sessions+" 会话 · "+
+  let s=m.sessions+" 会话 · "+
     (m.time_min||"?")+" ~ "+(m.time_max||"?");
+  /* v0.19：库快照指纹（上游 /api/meta additive 字段；旧上游无此字段时静默降级） */
+  const f=m.db_fingerprint;
+  if(f){
+    const mt=String(f.db_mtime||"");
+    s="库: "+f.sessions+" 会话/"+f.errors+" 错误 @ "+
+      (mt.slice(5,16)||f.db_mtime)+" ｜ "+s;
+  }
+  $("meta").textContent=s;
 }
 async function loadFacets(){
   const f=await api("/api/facets");
@@ -590,16 +598,30 @@ async function loadReport(manual){
 function renderTools(d,out){
   const tot=d.tools.reduce((a,t)=>a+t.calls,0);
   const err=d.tools.reduce((a,t)=>a+t.error,0);
+  const given=d.tools.reduce((a,t)=>a+(t.given_up||0),0);
   $("rep-meta").textContent="工具 "+d.tools.length+"｜调用 "+tot+
-    "｜失败 "+err+"（"+(tot?(err/tot*100).toFixed(1):0)+"%）";
+    "｜失败 "+err+"（"+(tot?(err/tot*100).toFixed(1):0)+"%）｜放弃 "+given;
+  /* 归一后行结构：raw_tools 附原始写法；given_up>0 徽章；low-sample 徽章 */
+  const rawTip=t=>(t.raw_tools||[]).filter(x=>x!==t.tool);
+  const lowBadge=t=>t.low_sample?"<span class='badge b-org' "+
+    "title='样本量低于阈值，结论仅供观察'>low-sample</span>":"";
   let html="<h3 class='sec'>工具失败率排行</h3><table><thead><tr>"+
     "<th>工具</th><th class='num'>调用</th><th class='num'>成功</th>"+
-    "<th class='num'>失败</th><th class='num'>失败率</th></tr></thead><tbody>"+
-    (d.tools.length?d.tools.map(t=>"<tr><td>"+esc(t.tool)+
-    "</td><td class='num'>"+t.calls+"</td><td class='num'>"+t.success+
-    "</td><td class='num'>"+t.error+"</td><td class='num'>"+
-    (t.fail_rate*100).toFixed(1)+"%</td></tr>").join("")
-    :"<tr><td colspan='5' class='empty'>无工具调用数据</td></tr>")+
+    "<th class='num'>失败</th><th class='num'>失败率</th>"+
+    "<th class='num'>放弃</th></tr></thead><tbody>"+
+    (d.tools.length?d.tools.map(t=>{
+      const rt=rawTip(t);
+      const gnum=t.given_up?"<span class='badge b-red' "+
+        "title='错误后同会话同工具无再次调用（未解决）'>"+t.given_up+"</span>"
+        :"0";
+      return "<tr><td>"+esc(t.tool)+
+      (rt.length?"<span class='sub2'>（"+esc(rt.join("/"))+"）</span>":"")+
+      lowBadge(t)+
+      "</td><td class='num'>"+t.calls+"</td><td class='num'>"+t.success+
+      "</td><td class='num'>"+t.error+"</td><td class='num'>"+
+      (t.fail_rate*100).toFixed(1)+"%</td><td class='num'>"+gnum+
+      "</td></tr>";}).join("")
+    :"<tr><td colspan='6' class='empty'>无工具调用数据</td></tr>")+
     "</tbody></table>";
   if(d.flow&&d.flow.errors){
     const f=d.flow;
@@ -701,22 +723,48 @@ function renderSkills(d,out){
 }
 function renderAgents(d,out){
   const m=d.meta||{};
+  /* v0.19：未解决维度——unresolved_count>=1 待修清单优先，=0（自愈）降观察区；
+     owner pill（harness/tool/workflow）；status 来自建议状态 meta 库 */
+  const entries=d.entries||[];
+  const todo=entries.filter(e=>(e.unresolved_count||0)>=1);
+  const watch=entries.filter(e=>!(e.unresolved_count>=1));
+  const unresolved=entries.reduce((a,e)=>a+(e.unresolved_count||0),0);
   $("rep-meta").textContent="错误样本 "+(m.error_count||0)+"｜min_count "+
-    d.min_count+"｜达标条目 "+d.entries.length;
+    d.min_count+"｜达标条目 "+entries.length+"｜未解决 "+unresolved;
+  const ownerPill=o=>o?"<span class='pill "+
+    (o==="harness"?"err":o==="tool"?"known":"ok")+
+    "' title='修复责任方'>"+esc(o)+"</span>":"";
+  const statusPill=s=>s&&s!=="pending"?"<span class='pill "+
+    (s==="adopted"?"ok":"err")+"'>"+esc(s)+"</span>":"";
   let html="<p class='sub2'>纪律：以下为 AGENTS.md 候选条目（机器产出），"+
     "人工审阅后自行并入——本视图绝不写入任何配置文件。</p>";
-  html+=d.entries.length?("<table><thead><tr><th class='num'>实测</th>"+
-    "<th>规则句</th><th>做法说明</th><th>证据锚点</th></tr></thead><tbody>"+
-    d.entries.map(e=>"<tr><td class='num'>x"+e.total+"</td><td><b>"+
-    esc(e.title)+"</b></td><td class='sub2'>"+esc(e.body)+"</td><td>"+
+  html+="<h3 class='sec'>待修清单（未解决 ≥ 1，优先处理）</h3>";
+  html+=todo.length?("<table><thead><tr><th class='num'>实测</th>"+
+    "<th class='num'>未解决</th><th>规则句</th><th>owner</th><th>做法说明</th>"+
+    "<th>证据锚点</th></tr></thead><tbody>"+
+    todo.map(e=>"<tr><td class='num'>x"+e.total+"</td><td class='num'>"+
+    "<span class='badge b-red'>"+e.unresolved_count+"</span></td><td><b>"+
+    esc(e.title)+"</b> "+statusPill(e.status)+"</td><td>"+
+    ownerPill(e.owner)+"</td><td class='sub2'>"+esc(e.body)+"</td><td>"+
     e.samples.slice(0,2).map(s=>anchor(s.sid,s.seq,s.error)).join("<br>")+
     "</td></tr>").join("")+"</tbody></table>")
-    :"<div class='empty'>无达标模式（模板聚合次数均未达 min_count）</div>";
+    :"<div class='empty'>无（所有达标条目均已自愈）</div>";
+  html+="<h3 class='sec'>观察区（未解决 = 0，已自愈，暂不动 AGENTS.md）</h3>";
+  html+=watch.length?("<table><thead><tr><th class='num'>实测</th>"+
+    "<th>规则句</th><th>owner</th><th>证据锚点</th></tr></thead><tbody>"+
+    watch.map(e=>"<tr><td class='num'>x"+e.total+"</td><td><b>"+
+    esc(e.title)+"</b> "+statusPill(e.status)+"</td><td>"+
+    ownerPill(e.owner)+"</td><td>"+
+    e.samples.slice(0,2).map(s=>anchor(s.sid,s.seq,s.error)).join("<br>")+
+    "</td></tr>").join("")+"</tbody></table>")
+    :"<div class='empty'>无</div>";
   html+="<h3 class='sec'>待人工归因（未命中模板，给证据不给结论）</h3>";
   html+=d.leftover.length?("<table><thead><tr><th class='num'>次数</th>"+
-    "<th>模式</th><th>类别</th><th>样例锚点</th></tr></thead><tbody>"+
+    "<th>模式</th><th>类别</th><th>未解决</th><th>样例锚点</th></tr></thead><tbody>"+
     d.leftover.map(x=>"<tr><td class='num'>x"+x.count+"</td><td>"+
-    esc(x.pattern)+"</td><td>"+esc(x["class"])+"</td><td>"+
+    esc(x.pattern)+"</td><td>"+esc(x["class"])+"</td><td class='num'>"+
+    (x.given_up?"<span class='badge b-red'>"+x.given_up+"</span>":"0")+
+    "</td><td>"+
     x.samples.map(s=>anchor(s.sid,s.seq,s.error)).join("<br>")+
     "</td></tr>").join("")+"</tbody></table>")
     :"<div class='empty'>无</div>";
@@ -879,9 +927,13 @@ async function exportSessionMd(sid){
 function mdReport(kind,d){
   let md="# harvester 报告";
   if(kind==="tools"){
-    md+="：G1 工具统计\n\n"+mdTable(["工具","调用","成功","失败","失败率"],
-      (d.tools||[]).map(t=>[t.tool,t.calls,t.success,t.error,
-        (t.fail_rate*100).toFixed(1)+"%"]));
+    md+="：G1 工具统计\n\n"+mdTable(["工具","调用","成功","失败","失败率","放弃"],
+      (d.tools||[]).map(t=>[t.tool+
+        ((t.raw_tools||[]).filter(x=>x!==t.tool).length?
+          "（"+t.raw_tools.filter(x=>x!==t.tool).join("/")+"）":"")+
+        (t.low_sample?" [low-sample]":""),
+        t.calls,t.success,t.error,
+        (t.fail_rate*100).toFixed(1)+"%",t.given_up||0]));
     const f=d.flow;
     if(f&&f.errors)md+="\n失败后续：重试 "+f.retried+"（"+
       (f.retried/f.errors*100).toFixed(0)+"%）｜放弃 "+f.given_up+"（"+
@@ -911,12 +963,25 @@ function mdReport(kind,d){
         s.no_result,s.sources.join("/")]));
   }else if(kind==="agents"){
     md+="：G2 建议条目（AGENTS.md 候选）\n";
-    for(const e of d.entries||[])
-      md+="\n## "+e.title+"\n\n"+e.body+"\n\n（合计 x"+e.total+"）\n";
+    const todo=(d.entries||[]).filter(e=>(e.unresolved_count||0)>=1);
+    const watch=(d.entries||[]).filter(e=>!(e.unresolved_count>=1));
+    if(todo.length){
+      md+="\n## 待修清单（未解决 >= 1）\n";
+      for(const e of todo)
+        md+="\n### "+e.title+"（owner: "+(e.owner||"?")+
+          "｜status: "+(e.status||"pending")+"）\n\n"+e.body+
+          "\n\n（实测 x"+e.total+"｜未解决 "+e.unresolved_count+"）\n";
+    }
+    if(watch.length){
+      md+="\n## 观察区（未解决 = 0，已自愈）\n";
+      for(const e of watch)
+        md+="\n### "+e.title+"（owner: "+(e.owner||"?")+
+          "｜status: "+(e.status||"pending")+"）\n\n（实测 x"+e.total+"）\n";
+    }
     md+="\n## 未达标 pattern（供参考）\n\n"+
-      mdTable(["次数","模式","类别","工具"],
+      mdTable(["次数","模式","类别","未解决"],
       (d.leftover||[]).map(x=>["x"+x.count,x.pattern,x["class"],
-        x.tools.join("/")]));
+        x.given_up||0]));
   }else if(kind==="cards"){
     const s=d.summary||{};
     md+="：G3 卡片校验（"+d.root+"）\n\n- 通过 "+(s.ok||0)+"｜警告 "+

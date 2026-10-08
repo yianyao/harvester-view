@@ -144,17 +144,25 @@ h3.sec{font-size:14px;margin:18px 0 6px}
       <label>起 <input type="date" id="f-since"></label>
       <label>止 <input type="date" id="f-until"></label>
       <label>关键字 <input type="search" id="f-q" placeholder="中文/英文词" style="width:150px"></label>
+      <label class="sub2"><input type="checkbox" id="f-erronly">只看异常</label>
       <button id="btn-search">查询</button>
     </div>
     <table>
-      <thead><tr><th style="width:150px">更新时间</th><th style="width:90px">来源</th>
+      <thead><tr><th style="width:26px"><input type="checkbox" id="sel-all"
+        title="全选/全不选本页（仅勾选含异常的会话）"></th>
+        <th style="width:150px">更新时间</th><th style="width:90px">来源</th>
         <th style="width:130px">模型</th><th>标题</th></tr></thead>
-      <tbody id="rows"><tr><td colspan="4" class="empty">加载中…</td></tr></tbody>
+      <tbody id="rows"><tr><td colspan="5" class="empty">加载中…</td></tr></tbody>
     </table>
     <div id="pager">
       <button id="btn-prev">上一页</button>
       <button id="btn-next">下一页</button>
       <span id="pageinfo"></span>
+      <button id="btn-batch-md" class="xbtn" disabled
+        title="勾选多个会话后，批量拉取全文并合并导出 Markdown（每会话一节，标注会话ID+异常类型；浏览器本地完成）">导出所选异常会话 md</button>
+      <button id="btn-batch-json" class="xbtn" disabled
+        title="勾选多个会话后，导出机器可读 JSON：错误按归一模式跨会话去重聚合，可直接交给 Agent 分析">导出所选机器可读 JSON</button>
+      <span class="sub2" id="selinfo"></span>
     </div>
   </div>
   <div id="detail"></div>
@@ -171,7 +179,10 @@ h3.sec{font-size:14px;margin:18px 0 6px}
     <label>会话 Top <input type="number" id="tri-top" value="10" min="1"
       style="width:60px"></label>
     <button id="btn-triage">生成队列</button>
+    <input type="search" id="tri-q" placeholder="异常关键字过滤（本地过滤）"
+      style="width:170px">
     <button id="btn-tri-export" class="xbtn" title="把当前队列导出为 Markdown 文件（浏览器本地生成）">导出 md</button>
+    <button id="btn-tri-json" class="xbtn" title="导出机器可读 JSON（含归一模式去重说明），可直接交给 Agent 分析">导出 JSON</button>
     <span class="sub2" id="tri-meta"></span>
   </div>
   <div class="report-box" id="tri-out"><div class="empty">尚未生成</div></div>
@@ -190,7 +201,11 @@ h3.sec{font-size:14px;margin:18px 0 6px}
     <label>窗口（天）<input type="number" id="rep-days" value="30" min="0"
       style="width:72px">（0=全库）</label>
     <button id="btn-report">生成报告</button>
+    <input type="search" id="rep-q" placeholder="异常关键字过滤（本地过滤）"
+      style="width:170px">
+    <label class="sub2"><input type="checkbox" id="rep-erronly">只看异常</label>
     <button id="btn-rep-export" class="xbtn" title="把当前报告导出为 Markdown 文件（浏览器本地生成）">导出 md</button>
+    <button id="btn-rep-json" class="xbtn" title="导出机器可读 JSON（上游原始结构 + 归一模式去重说明），可直接交给 Agent 分析">导出 JSON</button>
     <span class="sub2" id="rep-meta"></span>
   </div>
   <div class="report-box" id="rep-out"><div class="empty">尚未生成</div></div>
@@ -211,7 +226,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 "use strict";
 const $ = id => document.getElementById(id);
 const state = {no:0, offset:0, limit:50, total:0, q:"", sid:null,
-               tab:"sessions", repKind:"tools",
+               tab:"sessions", repKind:"tools", sel:new Set(),
                loaded:{sessions:false, triage:false, reports:false, agg:false}};
 
 /* ---------- 工具 ---------- */
@@ -301,7 +316,8 @@ async function initUpstreams(){
   sel.innerHTML=ups.map(u=>
     "<option value='"+u.no+"'>"+esc(u.name)+"（#"+u.no+"）</option>").join("");
   sel.onchange=()=>{ state.no=Number(sel.value); state.offset=0;
-    state.sid=null; $("detail").style.display="none";
+    state.sid=null; state.sel.clear(); updateSelInfo();
+    $("detail").style.display="none";
     switchTab(state.tab); };
 }
 async function loadAll(){
@@ -347,6 +363,7 @@ function queryStr(){
   if(g("f-since"))p.set("since",g("f-since"));
   if(g("f-until"))p.set("until",g("f-until"));
   if(state.q)p.set("q",state.q);
+  if($("f-erronly").checked)p.set("errors_only","1");
   p.set("offset",state.offset);p.set("limit",state.limit);
   return p.toString();
 }
@@ -360,18 +377,141 @@ async function loadSessions(){
     "' title='该会话含 "+n+" 条错误步骤'>错 "+n+"</span>";
   $("rows").innerHTML=d.items.length?d.items.map(it=>
     "<tr data-sid=\""+esc(it.sid)+"\">"+
+    "<td><input type='checkbox' class='selbox' data-sid=\""+esc(it.sid)+"\""+
+    (state.sel.has(it.sid)?" checked":"")+
+    (it.error_count?"":" disabled title='该会话无错误步骤'")+"></td>"+
     "<td class='t-date'>"+esc(it.updated_at)+"</td>"+
     "<td class='t-src'>"+esc(it.source)+"</td>"+
     "<td class='t-model'>"+esc(it.model||"（未知）")+"</td>"+
     "<td>"+hl(it.title,q)+badge(it.error_count||0)+"</td></tr>").join("")
-    :"<tr><td colspan='4' class='empty'>无匹配会话</td></tr>";
+    :"<tr><td colspan='5' class='empty'>无匹配会话</td></tr>";
   for(const tr of $("rows").querySelectorAll("tr[data-sid]"))
     tr.onclick=()=>openSession(tr.dataset.sid);
+  for(const cb of $("rows").querySelectorAll("input.selbox"))
+    cb.onclick=e=>e.stopPropagation();
+  updateSelInfo();
   const a=state.offset+1,b=Math.min(state.offset+state.limit,state.total);
   $("pageinfo").textContent=state.total?("第 "+a+"–"+b+" 条 / 共 "
     +state.total+" 条"):"";
   $("btn-prev").disabled=state.offset<=0;
   $("btn-next").disabled=state.offset+state.limit>=state.total;
+}
+/* ---- 勾选与批量导出（v2.3） ---- */
+function updateSelInfo(){
+  const n=state.sel.size;
+  $("selinfo").textContent=n?("已勾选 "+n+" 个会话（跨页累计）"):"";
+  $("btn-batch-md").disabled=!n;
+  $("btn-batch-json").disabled=!n;
+}
+function toggleSel(sid,on){
+  if(on)state.sel.add(sid);else state.sel.delete(sid);
+  updateSelInfo();
+}
+/* 上游 >= v0.20 才有 error_steps；旧上游降级为仅有列表元信息 */
+async function fetchSessionPack(sid){
+  const d=await api("/api/session/"+encodeURIComponent(sid));
+  return d;
+}
+/* 批量导出：所选异常会话的下钻全文合并为一份 Markdown（每会话一节） */
+async function exportAbnormalMd(){
+  const sids=[...state.sel];
+  if(!sids.length)return;
+  if(sids.length>5&&!confirm("将拉取 "+sids.length+
+      " 个会话的全部回合全文，可能耗时较长，继续？"))return;
+  const btn=$("btn-batch-md");
+  btn.disabled=true;btn.textContent="导出中 0/"+sids.length;
+  try{
+    let done=0;
+    const packs=[];
+    for(const sid of sids){
+      packs.push(await fetchSessionPack(sid).catch(e=>{
+        showBanner("warn","会话 "+sid+" 拉取失败："+e.message);return null;}));
+      btn.textContent="导出中 "+(++done)+"/"+sids.length;
+    }
+    let md="# 异常会话批量导出\n\n- 会话数 "+packs.filter(Boolean).length+
+      "｜导出时间 "+new Date().toLocaleString()+
+      "（harvester-view 浏览器本地生成）\n\n";
+    for(const d of packs){
+      if(!d)continue;
+      const m=d.meta||{}, sid=m.sid;
+      const steps=d.error_steps||[];
+      const pats=[...(steps.reduce((a,s)=>a.set(s.pattern,
+        (a.get(s.pattern)||0)+1),new Map()))].map(e=>e[0]+" x"+e[1]);
+      md+="\n\n---\n\n# "+(m.title||sid)+"\n\n"+
+        "- 会话ID: `"+sid+"`\n- 异常类型: "+
+        (pats.length?pats.map(p=>"`"+p+"`").join("、"):"（上游较旧，无错误步骤清单）")+
+        "\n- 来源 "+(m.source||"?")+" · 模型 "+(m.model||"（未知）")+
+        " · 更新 "+(m.updated_at||"?")+"\n";
+      if(steps.length){
+        md+="\n## 错误步骤清单\n\n"+
+          steps.map(s=>"- `#"+s.seq+"` "+(s.ts||"")+" ["+s.tool+
+            "]（"+s["class"]+"）"+String(s.error||"").replace(/\s+/g," ")
+            .slice(0,160)).join("\n")+"\n";
+      }
+      /* 下钻全文（同单会话导出口径） */
+      const nos=(d.turns||[]).map(t=>t.no);
+      const texts={};
+      for(let i=0;i<nos.length;i+=5){
+        await Promise.all(nos.slice(i,i+5).map(async no=>{
+          texts[no]=await api("/api/session/"+encodeURIComponent(sid)
+            +"/turn/"+no);}));
+      }
+      for(const no of nos){
+        const msgs=(texts[no]||{}).messages||[];
+        md+="\n## 回合 #"+no+(msgs.length?"（"+(msgs[0].ts||"")+"）":"")+"\n";
+        for(const msg of msgs)
+          md+="\n**["+(ROLE_LABEL[msg.role]||msg.role||"note")+"]** "+
+            (msg.ts||"")+"\n\n"+(msg.content??"")+"\n";
+      }
+    }
+    dlText("abnormal-sessions-"+today()+".md",md);
+    showBanner("warn","已导出 "+packs.filter(Boolean).length+" 个会话（浏览器下载）");
+  }finally{
+    btn.disabled=!state.sel.size;btn.textContent="导出所选异常会话 md";
+  }
+}
+/* 批量导出机器可读 JSON：错误按归一 pattern 跨会话去重聚合 */
+async function exportAbnormalJson(){
+  const sids=[...state.sel];
+  if(!sids.length)return;
+  const btn=$("btn-batch-json");
+  btn.disabled=true;btn.textContent="导出中…";
+  try{
+    const packs=[];
+    for(const sid of sids)
+      packs.push(await fetchSessionPack(sid).catch(()=>null));
+    const ok=packs.filter(p=>p&&p.meta);
+    const sessions=ok.map(d=>({
+      sid:d.meta.sid, title:d.meta.title||"", source:d.meta.source||"",
+      model:d.meta.model||"", updated_at:d.meta.updated_at||"",
+      error_count:(d.error_steps||[]).length,
+      error_steps:(d.error_steps||[]).map(s=>({seq:s.seq,ts:s.ts,
+        tool:s.tool,"class":s["class"],pattern:s.pattern,
+        error:s.error}))}));
+    /* 跨会话按归一 pattern 去重聚合：同一根因只占一条，occurrences 留锚点 */
+    const byPat=new Map();
+    for(const s of sessions)for(const e of s.error_steps){
+      const k=e.pattern||String(e.error||"").slice(0,80);
+      let g=byPat.get(k);
+      if(!g){g={pattern:k,"class":e["class"],count:0,
+        sample_error:e.error,tools:new Set(),occurrences:[]};byPat.set(k,g);}
+      g.count++;g.tools.add(e.tool);
+      g.occurrences.push({sid:s.sid,seq:e.seq,ts:e.ts,tool:e.tool});
+    }
+    const patterns_dedup=[...byPat.values()]
+      .sort((a,b)=>b.count-a.count)
+      .map(g=>({...g,tools:[...g.tools]}));
+    const out={
+      kind:"abnormal-sessions", generated_at:new Date().toISOString(),
+      hint:"harvester-view 导出的机器可读快照：errors 已按归一模式去重聚合"+
+        "（patterns_dedup，sample_error 为该模式原文样例），occurrences 的 "+
+        "(sid,seq) 可定位原会话错误步骤；sessions.error_steps 为逐会话明细。",
+      n_sessions:sessions.length, sessions:sessions,
+      patterns_dedup:patterns_dedup};
+    dlJson("abnormal-sessions-"+today()+".json",out);
+  }finally{
+    btn.disabled=!state.sel.size;btn.textContent="导出所选机器可读 JSON";
+  }
 }
 
 /* ---------- 下钻：会话 → 回合 → 全文 ---------- */
@@ -489,7 +629,18 @@ async function _renderTriage(out,t0){
   const mc=Number($("tri-min").value||2), tp=Number($("tri-top").value||10);
   if(mc>1)p.set("min_count",mc);
   if(tp>0)p.set("top",tp);
-  const d=await api("/api/triage?"+p.toString());
+  let d=await api("/api/triage?"+p.toString());
+  /* 本地关键字过滤（v2.3）：命中模式/工具/技能名，按次数倒序 */
+  const q=$("tri-q").value.trim().toLowerCase();
+  if(q){
+    const hitP=x=>hitQ(x.pattern+" "+x.tools.join("/"),q);
+    d={...d,
+       new_patterns:(d.new_patterns||[]).filter(hitP)
+         .sort((a,b)=>b.count-a.count),
+       old_patterns:(d.old_patterns||[]).filter(hitP)
+         .sort((a,b)=>b.count-a.count),
+       skills:(d.skills||[]).filter(s=>hitQ(s.skill,q))};
+  }
   $("tri-meta").textContent="共 "+d.n_sessions+" 会话｜窗口错误 "+
     d.error_count_window+"｜卡片比对 "+
     (d.cards_scanned==null?"未配置":d.cards_scanned+" 文件");
@@ -595,7 +746,40 @@ async function loadReport(manual){
     }
   }
 }
+/* ---- 报告/队列的本地异常过滤（v2.3）：不重新请求，仅重渲染 ---- */
+function repFilter(){
+  return {q:$("rep-q").value.trim().toLowerCase(),
+          only:$("rep-erronly").checked};
+}
+function hitQ(text,q){return !q||String(text||"").toLowerCase().includes(q);}
 function renderTools(d,out){
+  const f=repFilter();
+  /* 异常明细扁平化（跨工具按错误文本去重聚合）——过滤输入的关键数据面 */
+  let allErrs=[];
+  for(const t of d.tools||[])for(const e of t.errors||[])
+    allErrs.push({tool:t.tool,detail:e.detail,count:e.count});
+  if(f.q)allErrs=allErrs.filter(x=>hitQ(x.tool+" "+x.detail,f.q));
+  const byDetail=new Map();
+  for(const x of allErrs){
+    let g=byDetail.get(x.detail);
+    if(!g){g={detail:x.detail,count:0,tools:new Set()};byDetail.set(x.detail,g);}
+    g.count++;g.tools.add(x.tool);
+  }
+  const errs=[...byDetail.values()].map(g=>({...g,tools:[...g.tools]}))
+    .sort((a,b)=>b.count-a.count);
+  if(f.only||f.q){
+    $("rep-meta").textContent+="｜过滤后异常明细 "+errs.length+" 条";
+    let eh="<h3 class='sec'>异常明细（关键字"+(f.q?"“"+esc(f.q)+"”":"")+
+      "命中，按次数倒序；同文本跨工具去重）</h3>";
+    eh+=errs.length?("<table><thead><tr><th class='num'>次数</th><th>错误文本</th>"+
+      "<th>工具</th></tr></thead><tbody>"+
+      errs.slice(0,80).map(e=>"<tr><td class='num'>"+e.count+"</td><td class='sub2'>"+
+      esc(e.detail.slice(0,200))+"</td><td>"+esc(e.tools.join("/"))+
+      "</td></tr>").join("")+"</tbody></table>")
+      :"<div class='empty'>无命中</div>";
+    out.innerHTML=eh;
+    return;
+  }
   const tot=d.tools.reduce((a,t)=>a+t.calls,0);
   const err=d.tools.reduce((a,t)=>a+t.error,0);
   const given=d.tools.reduce((a,t)=>a+(t.given_up||0),0);
@@ -680,9 +864,13 @@ function renderErrors(d,out){
       (e[1].unclassified||0)+"</td></tr>").join("")+"</tbody></table>";
   }
   html+="<h3 class='sec'>错误模式明细（归一聚类，锚点可点击）</h3>";
-  html+=(d.patterns||[]).length?("<table><thead><tr><th class='num'>次数</th>"+
+  const f=repFilter();
+  let pats=d.patterns||[];
+  if(f.q)pats=pats.filter(x=>hitQ(x.pattern+" "+x.tools.join("/"),f.q));
+  pats=[...pats].sort((a,b)=>b.count-a.count);
+  html+=pats.length?("<table><thead><tr><th class='num'>次数</th>"+
     "<th>模式</th><th>类别</th><th>工具</th><th>样例锚点</th></tr></thead><tbody>"+
-    d.patterns.slice(0,60).map(x=>"<tr><td class='num'>x"+x.count+
+    pats.slice(0,60).map(x=>"<tr><td class='num'>x"+x.count+
     "</td><td>"+esc(x.pattern)+"</td><td>"+esc(x["class"])+"</td><td>"+
     esc(x.tools.join("/"))+"</td><td>"+
     x.samples.map(s=>anchor(s.sid,s.seq,s.error)).join("<br>")+
@@ -691,19 +879,24 @@ function renderErrors(d,out){
   out.innerHTML=html;
 }
 function renderSkills(d,out){
+  const f=repFilter();
+  let skills=d.skills||[];
+  if(f.only)skills=skills.filter(s=>s.err>0);
+  if(f.q)skills=skills.filter(s=>hitQ(s.skill,s.q));
   $("rep-meta").textContent="调用 "+d.n_invocations+" 次｜skill "+
-    d.skills.length+" 个";
+    d.skills.length+" 个"+(skills.length!==d.skills.length?
+    "｜过滤后 "+skills.length+" 个":"");
   let html="";
-  html+=(d.skills||[]).length?("<table><thead><tr><th>Skill</th>"+
+  html+=skills.length?("<table><thead><tr><th>Skill</th>"+
     "<th class='num'>调用</th><th class='num'>会话</th><th class='num'>成功</th>"+
     "<th class='num'>失败</th><th class='num'>无结果</th><th>来源</th></tr>"+
-    "</thead><tbody>"+d.skills.map(s=>"<tr><td>"+esc(s.skill)+
+    "</thead><tbody>"+skills.map(s=>"<tr><td>"+esc(s.skill)+
     "</td><td class='num'>"+s.calls+"</td><td class='num'>"+s.sids+
     "</td><td class='num'>"+s.ok+"</td><td class='num'>"+s.err+
     "</td><td class='num'>"+s.no_result+"</td><td class='sub2'>"+
     esc(s.sources.join("/"))+"</td></tr>").join("")+"</tbody></table>")
     :"<div class='empty'>无 skill 调用（Chat 平台会话无工具遥测）</div>";
-  for(const s of d.skills||[]){
+  for(const s of skills){
     html+="<details><summary>"+esc(s.skill)+"——画像明细</summary>";
     if(s.args_samples&&s.args_samples.length)
       html+="<p class='sub2'>触发任务抽样："+s.args_samples.map(a=>
@@ -726,8 +919,12 @@ function renderAgents(d,out){
   /* v0.19：未解决维度——unresolved_count>=1 待修清单优先，=0（自愈）降观察区；
      owner pill（harness/tool/workflow）；status 来自建议状态 meta 库 */
   const entries=d.entries||[];
-  const todo=entries.filter(e=>(e.unresolved_count||0)>=1);
-  const watch=entries.filter(e=>!(e.unresolved_count>=1));
+  const f=repFilter();
+  const hitE=e=>hitQ(e.title+" "+e.body,f.q);
+  const todo=entries.filter(e=>(e.unresolved_count||0)>=1).filter(hitE);
+  const watch=entries.filter(e=>!(e.unresolved_count>=1)).filter(hitE);
+  const leftover=(d.leftover||[]).filter(x=>hitQ(x.pattern,x.q||f.q))
+    .filter(x=>!f.only||x.given_up>0);
   const unresolved=entries.reduce((a,e)=>a+(e.unresolved_count||0),0);
   $("rep-meta").textContent="错误样本 "+(m.error_count||0)+"｜min_count "+
     d.min_count+"｜达标条目 "+entries.length+"｜未解决 "+unresolved;
@@ -759,9 +956,9 @@ function renderAgents(d,out){
     "</td></tr>").join("")+"</tbody></table>")
     :"<div class='empty'>无</div>";
   html+="<h3 class='sec'>待人工归因（未命中模板，给证据不给结论）</h3>";
-  html+=d.leftover.length?("<table><thead><tr><th class='num'>次数</th>"+
+  html+=leftover.length?("<table><thead><tr><th class='num'>次数</th>"+
     "<th>模式</th><th>类别</th><th>未解决</th><th>样例锚点</th></tr></thead><tbody>"+
-    d.leftover.map(x=>"<tr><td class='num'>x"+x.count+"</td><td>"+
+    leftover.map(x=>"<tr><td class='num'>x"+x.count+"</td><td>"+
     esc(x.pattern)+"</td><td>"+esc(x["class"])+"</td><td class='num'>"+
     (x.given_up?"<span class='badge b-red'>"+x.given_up+"</span>":"0")+
     "</td><td>"+
@@ -772,6 +969,7 @@ function renderAgents(d,out){
 }
 function renderCards(d,out){
   const s=d.summary||{};
+  const f=repFilter();
   const stat=s.error?("<span class='pill err'>错误 "+s.error+"</span>")
     :s.warn?("<span class='pill known'>警告 "+s.warn+"</span>")
     :"<span class='pill ok'>全部通过</span>";
@@ -779,7 +977,9 @@ function renderCards(d,out){
     s.anchor_checked+"（未命中 "+s.anchor_misses+"）";
   let html="<p>"+stat+"　<span class='sub2'>通过 "+s.ok+"｜警告 "+
     s.warn+"｜错误 "+s.error+"</span></p>";
-  const bad=(d.cards||[]).filter(c=>c.errors.length||c.warnings.length);
+  let bad=(d.cards||[]).filter(c=>c.errors.length||c.warnings.length);
+  if(f.q)bad=bad.filter(c=>hitQ(c.path+" "+
+    c.errors.concat(c.warnings).join(" "),f.q));
   html+=bad.length?("<table><thead><tr><th>卡片</th><th>问题</th></tr>"+
     "</thead><tbody>"+bad.map(c=>"<tr><td>"+esc(c.path)+"</td><td>"+
     c.errors.map(e=>"<span class='pill err'>错误</span> "+esc(e)).join("<br>")+
@@ -872,6 +1072,15 @@ function gotoCross(no,sid){
 /* ---------- 导出与复制（全部浏览器本地完成；本视图绝不执行命令） ---------- */
 function dlText(filename,text){
   const b=new Blob([text],{type:"text/markdown;charset=utf-8"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(b);a.download=filename;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+}
+/* 机器可读导出：JSON 下载（浏览器本地完成） */
+function dlJson(filename,obj){
+  const b=new Blob([JSON.stringify(obj,null,1)],
+    {type:"application/json;charset=utf-8"});
   const a=document.createElement("a");
   a.href=URL.createObjectURL(b);a.download=filename;
   document.body.appendChild(a);a.click();a.remove();
@@ -1036,6 +1245,41 @@ $("btn-search").onclick=()=>{state.q=$("f-q").value.trim();state.offset=0;
   loadSessions().catch(()=>{});};
 $("f-q").addEventListener("keydown",e=>{
   if(e.key==="Enter")$("btn-search").click();});
+$("f-erronly").onchange=()=>{state.offset=0;loadSessions().catch(()=>{});};
+$("sel-all").onchange=()=>{
+  const on=$("sel-all").checked;
+  for(const cb of document.querySelectorAll("input.selbox")){
+    if(cb.disabled)continue;
+    cb.checked=on;toggleSel(cb.dataset.sid,on);
+  }
+};
+$("btn-batch-md").onclick=()=>exportAbnormalMd()
+  .catch(e=>showBanner("err","批量导出失败："+e.message));
+$("btn-batch-json").onclick=()=>exportAbnormalJson()
+  .catch(e=>showBanner("err","批量导出失败："+e.message));
+/* 报告/队列的本地过滤：不重新请求上游，直接重渲染（triage 需重取后本地过滤） */
+function rerenderReport(){
+  if(!state.repLast)return;
+  const out=$("rep-out"), kind=state.repKind;
+  if(kind==="tools")renderTools(state.repLast,out);
+  else if(kind==="errors")renderErrors(state.repLast,out);
+  else if(kind==="skills")renderSkills(state.repLast,out);
+  else if(kind==="agents")renderAgents(state.repLast,out);
+  else if(kind==="cards")renderCards(state.repLast,out);
+  bindAnchors(out);
+}
+$("rep-q").addEventListener("input",rerenderReport);
+$("rep-erronly").onchange=rerenderReport;
+$("tri-q").addEventListener("input",()=>{
+  if(state.loaded.triage)loadTriage(false).catch(()=>{});});
+/* 机器可读导出（报告/队列）：上游 JSON 原始结构 + 去重说明头 */
+function machineWrap(kind,d){
+  return {kind:kind, generated_at:new Date().toISOString(),
+    hint:"harvester-view 导出的机器可读快照（上游 API 原始结构）。"+
+      "errors/patterns 已在上游按归一模式去重聚类（pattern 为归一键；"+
+      "samples 含 (sid,seq) 锚点，可回溯原会话原文），可直接交给 Agent 分析。",
+    data:d};
+}
 $("btn-prev").onclick=()=>{state.offset=Math.max(0,state.offset-state.limit);
   loadSessions().catch(()=>{});};
 $("btn-next").onclick=()=>{state.offset+=state.limit;
@@ -1052,9 +1296,19 @@ $("btn-rep-export").onclick=()=>{
   dlText("harvester-report-"+state.repKind+"-"+today()+".md",
     mdReport(state.repKind,state.repLast));
 };
+$("btn-rep-json").onclick=()=>{
+  if(!state.repLast){showBanner("warn","请先点“生成报告”再导出");return;}
+  dlJson("harvester-report-"+state.repKind+"-"+today()+".json",
+    machineWrap("report-"+state.repKind,state.repLast));
+};
 $("btn-tri-export").onclick=()=>{
   if(!state.triLast){showBanner("warn","请先点“生成队列”再导出");return;}
   dlText("harvester-triage-"+today()+".md",mdTriage(state.triLast));
+};
+$("btn-tri-json").onclick=()=>{
+  if(!state.triLast){showBanner("warn","请先点“生成队列”再导出");return;}
+  dlJson("harvester-triage-"+today()+".json",
+    machineWrap("triage",state.triLast));
 };
 
 initUpstreams().then(()=>{

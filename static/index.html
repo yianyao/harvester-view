@@ -754,30 +754,45 @@ function repFilter(){
 function hitQ(text,q){return !q||String(text||"").toLowerCase().includes(q);}
 function renderTools(d,out){
   const f=repFilter();
-  /* 异常明细扁平化（跨工具按错误文本去重聚合）——过滤输入的关键数据面 */
+  /* 异常明细数据面：优先 roots（后端 aggregate_error_roots 已归一聚合，
+     v0.21 P0-2 additive）；旧上游无 roots 字段时降级 errors 扁平化。
+     计数用真实错误次数累加（旧实现 g.count++ 丢失了明细次数）。 */
   let allErrs=[];
-  for(const t of d.tools||[])for(const e of t.errors||[])
-    allErrs.push({tool:t.tool,detail:e.detail,count:e.count});
+  for(const t of d.tools||[]){
+    if(t.roots&&t.roots.length){
+      for(const g of t.roots)
+        allErrs.push({tool:t.tool,detail:g.pattern,cls:g["class"]||"",
+                      count:g.count,sample:g.sample||""});
+    }else for(const e of t.errors||[])
+      allErrs.push({tool:t.tool,detail:e.detail,cls:"",count:e.count||1,
+                    sample:e.detail||""});
+  }
   if(f.q)allErrs=allErrs.filter(x=>hitQ(x.tool+" "+x.detail,f.q));
   const byDetail=new Map();
   for(const x of allErrs){
     let g=byDetail.get(x.detail);
-    if(!g){g={detail:x.detail,count:0,tools:new Set()};byDetail.set(x.detail,g);}
-    g.count++;g.tools.add(x.tool);
+    if(!g){g={detail:x.detail,count:0,cls:x.cls,sample:x.sample,
+              tools:new Set()};byDetail.set(x.detail,g);}
+    g.count+=x.count;g.tools.add(x.tool);
+    if(!g.sample&&x.sample)g.sample=x.sample;
   }
   const errs=[...byDetail.values()].map(g=>({...g,tools:[...g.tools]}))
     .sort((a,b)=>b.count-a.count);
-  if(f.only||f.q){
-    $("rep-meta").textContent+="｜过滤后异常明细 "+errs.length+" 条";
-    let eh="<h3 class='sec'>异常明细（关键字"+(f.q?"“"+esc(f.q)+"”":"")+
-      "命中，按次数倒序；同文本跨工具去重）</h3>";
-    eh+=errs.length?("<table><thead><tr><th class='num'>次数</th><th>错误文本</th>"+
-      "<th>工具</th></tr></thead><tbody>"+
+  const errTable=()=>{
+    let h="<h3 class='sec'>异常根因明细"+(f.q?"（关键字“"+esc(f.q)+"”命中）":"")+
+      "（按次数倒序；同根因已归并——模式已去路径/引号/数字差异）</h3>";
+    h+=errs.length?("<table><thead><tr><th class='num'>次数</th>"+
+      "<th>根因模式</th><th>类别</th><th>工具</th><th>样例</th></tr></thead><tbody>"+
       errs.slice(0,80).map(e=>"<tr><td class='num'>"+e.count+"</td><td class='sub2'>"+
-      esc(e.detail.slice(0,200))+"</td><td>"+esc(e.tools.join("/"))+
-      "</td></tr>").join("")+"</tbody></table>")
+      esc(e.detail)+"</td><td>"+esc(e.cls)+"</td><td>"+
+      esc(e.tools.join("/"))+"</td><td class='sub2'>"+
+      esc(e.sample.slice(0,160))+"</td></tr>").join("")+"</tbody></table>")
       :"<div class='empty'>无命中</div>";
-    out.innerHTML=eh;
+    return h;
+  };
+  if(f.only||f.q){
+    $("rep-meta").textContent+="｜过滤后异常根因 "+errs.length+" 条";
+    out.innerHTML=errTable();
     return;
   }
   const tot=d.tools.reduce((a,t)=>a+t.calls,0);
@@ -830,6 +845,8 @@ function renderTools(d,out){
         "</tbody></table></details>";
     }
   }
+  /* v0.21 P0-2：默认视图也渲染聚合根因（不再只藏在过滤态） */
+  if(errs.length)html+=errTable();
   out.innerHTML=html;
 }
 function renderErrors(d,out){
@@ -883,9 +900,10 @@ function renderSkills(d,out){
   let skills=d.skills||[];
   if(f.only)skills=skills.filter(s=>s.err>0||s.no_result>0);
   if(f.q)skills=skills.filter(s=>hitQ(s.skill+" "+s.sources.join("/"),f.q));
+  const filtered=f.only||f.q;
   $("rep-meta").textContent="调用 "+d.n_invocations+" 次｜skill "+
-    d.skills.length+" 个"+(skills.length!==d.skills.length?
-    "｜过滤后 "+skills.length+" 个":"");
+    d.skills.length+" 个"+(filtered?
+    "｜已过滤 "+skills.length+"/"+d.skills.length+" 个":"");
   let html="";
   html+=skills.length?("<table><thead><tr><th>Skill</th>"+
     "<th class='num'>调用</th><th class='num'>会话</th><th class='num'>成功</th>"+
@@ -895,7 +913,10 @@ function renderSkills(d,out){
     "</td><td class='num'>"+s.ok+"</td><td class='num'>"+s.err+
     "</td><td class='num'>"+s.no_result+"</td><td class='sub2'>"+
     esc(s.sources.join("/"))+"</td></tr>").join("")+"</tbody></table>")
-    :"<div class='empty'>无 skill 调用（Chat 平台会话无工具遥测）</div>";
+    :"<div class='empty'>"+(filtered&&d.skills.length?
+      "已过滤：0/"+d.skills.length+" 个 skill（过滤前 "+
+      d.skills.length+"，当前库无匹配异常）"
+      :"无 skill 调用（Chat 平台会话无工具遥测）")+"</div>";
   for(const s of skills){
     html+="<details><summary>"+esc(s.skill)+"——画像明细</summary>";
     if(s.args_samples&&s.args_samples.length)
@@ -973,8 +994,6 @@ function renderCards(d,out){
   const stat=s.error?("<span class='pill err'>错误 "+s.error+"</span>")
     :s.warn?("<span class='pill known'>警告 "+s.warn+"</span>")
     :"<span class='pill ok'>全部通过</span>";
-  $("rep-meta").textContent=d.root+"｜卡片 "+s.cards+"｜锚点校验 "+
-    s.anchor_checked+"（未命中 "+s.anchor_misses+"）";
   let html="<p>"+stat+"　<span class='sub2'>通过 "+s.ok+"｜警告 "+
     s.warn+"｜错误 "+s.error+"</span></p>";
   let bad=(d.cards||[]).filter(c=>c.errors.length||c.warnings.length);
@@ -982,13 +1001,19 @@ function renderCards(d,out){
   if(f.only)bad=bad.filter(c=>c.errors.length);
   if(f.q)bad=bad.filter(c=>hitQ(c.path+" "+
     c.errors.concat(c.warnings).join(" "),f.q));
+  const filtered=f.only||f.q;
+  $("rep-meta").textContent=d.root+"｜卡片 "+s.cards+"｜锚点校验 "+
+    s.anchor_checked+"（未命中 "+s.anchor_misses+"）"+
+    (filtered?"｜已过滤 "+bad.length+"/"+s.cards+" 张":"");
   html+=bad.length?("<table><thead><tr><th>卡片</th><th>问题</th></tr>"+
     "</thead><tbody>"+bad.map(c=>"<tr><td>"+esc(c.path)+"</td><td>"+
     c.errors.map(e=>"<span class='pill err'>错误</span> "+esc(e)).join("<br>")+
     (c.errors.length&&c.warnings.length?"<br>":"")+
     c.warnings.map(w=>"<span class='pill known'>警告</span> "+esc(w))
       .join("<br>")+"</td></tr>").join("")+"</tbody></table>")
-    :"<div class='empty'>"+(s.cards?"无问题卡片":"目录下没有卡片")+"</div>";
+    :"<div class='empty'>"+(filtered&&s.cards?
+      "已过滤：0/"+s.cards+" 张卡（过滤前 "+s.cards+"，当前库无匹配异常）"
+      :(s.cards?"无问题卡片":"目录下没有卡片"))+"</div>";
   html+="<p class='sub2'>结论："+(s.error?"存在错误卡片，修复前不得并入主库。"
     :s.warn?"无错误但有警告——复核警告项后再并入主库。"
     :"全部卡片满足 §8 规范，可并入主库。")+"</p>";

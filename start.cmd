@@ -1,38 +1,51 @@
 @echo off
 rem ============================================================
-rem  harvester-view one-click starter
-rem  Starts BOTH: api-serve (upstream, port 8765) + view (8088),
-rem  then opens the browser. Close the two console windows to stop.
-rem
-rem  NOTE 1: keep this file PURE ASCII. cmd.exe parses batch files
-rem  with the ANSI/OEM codepage, NOT UTF-8 -- non-ASCII comments
-rem  in a UTF-8 file break parsing and the script silently dies.
-rem
-rem  NOTE 2: the python path below is the WorkBuddy bundled
-rem  interpreter. This machine has NO standalone Python on the
-rem  persistent PATH (verified 2026-10-07). If that ever changes,
-rem  update PY here.
+rem  harvester-view starter (local machine default launcher)
+rem  Detection order: 'py -3' -> 'python' -> 'uv python find' ->
+rem  fallback: WorkBuddy bundled interpreter (this machine only).
+rem  Keep this file PURE ASCII + CRLF. Echo lines: no double quotes.
 rem ============================================================
-set "PY=C:\Users\yianyao\.workbuddy\binaries\python\versions\3.13.12\python.exe"
+setlocal
 set "SRV=%~dp0..\session-harvester"
+set "BUNDLED=C:\Users\yianyao\.workbuddy\binaries\python\versions\3.13.12\python.exe"
 
-if not exist "%PY%" (
-  echo [start] python not found: %PY%
+rem --- find a python >= 3.10: py launcher, then python, then uv-managed ---
+set "PY="
+py -3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+if not errorlevel 1 set "PY=py -3"
+if not defined PY (
+  python -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+  if not errorlevel 1 set "PY=python"
+)
+if not defined PY (
+  for /f "usebackq delims=" %%i in (`uv python find 2^>nul`) do set "PY=%%i"
+)
+rem version re-check (uv path may point to a managed interpreter)
+if defined PY (
+  "%PY%" -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+  if errorlevel 1 set "PY="
+)
+
+if not defined PY (
+  if exist "%BUNDLED%" set "PY=%BUNDLED%"
+)
+if not defined PY (
+  echo [start] no Python ^>= 3.10 found. Tried 'py -3', 'python', 'uv',
+  echo         and the bundled interpreter is missing too.
   pause
   exit /b 1
 )
+
 if not exist "%SRV%\harvester.db" (
   echo [start] database not found: %SRV%\harvester.db
   pause
   exit /b 1
 )
-
-rem cards_pending: the card validation endpoint needs --cards-root
-rem (missing flag shows "not configured" on triage/report pages).
 if not exist "%SRV%\cards_pending" mkdir "%SRV%\cards_pending"
 
-start "harvester api-serve :8765" /D "%SRV%" "%PY%" -m harvester api-serve --db "%SRV%\harvester.db" --cards-root "%SRV%\cards_pending"
-start "harvester-view :8088" /D "%~dp0" "%PY%" view.py
+start "harvester api-serve :8765" /D "%SRV%" %PY% -m harvester api-serve --db "%SRV%\harvester.db" --cards-root "%SRV%\cards_pending"
+start "harvester-view :8088" /D "%~dp0" %PY% view.py
 timeout /t 3 /nobreak >nul
 start "" http://127.0.0.1:8088/
-echo [start] api-serve + view launched. Close both windows to stop.
+echo [start] api-serve + view launched with: %PY%
+echo [start] Close both console windows to stop.

@@ -881,8 +881,8 @@ function renderErrors(d,out){
 function renderSkills(d,out){
   const f=repFilter();
   let skills=d.skills||[];
-  if(f.only)skills=skills.filter(s=>s.err>0);
-  if(f.q)skills=skills.filter(s=>hitQ(s.skill,s.q));
+  if(f.only)skills=skills.filter(s=>s.err>0||s.no_result>0);
+  if(f.q)skills=skills.filter(s=>hitQ(s.skill+" "+s.sources.join("/"),f.q));
   $("rep-meta").textContent="调用 "+d.n_invocations+" 次｜skill "+
     d.skills.length+" 个"+(skills.length!==d.skills.length?
     "｜过滤后 "+skills.length+" 个":"");
@@ -978,6 +978,8 @@ function renderCards(d,out){
   let html="<p>"+stat+"　<span class='sub2'>通过 "+s.ok+"｜警告 "+
     s.warn+"｜错误 "+s.error+"</span></p>";
   let bad=(d.cards||[]).filter(c=>c.errors.length||c.warnings.length);
+  /* "只看异常"在 G3 的语义=只看错误级（警告级也不看）；关键字命中路径或问题文本 */
+  if(f.only)bad=bad.filter(c=>c.errors.length);
   if(f.q)bad=bad.filter(c=>hitQ(c.path+" "+
     c.errors.concat(c.warnings).join(" "),f.q));
   html+=bad.length?("<table><thead><tr><th>卡片</th><th>问题</th></tr>"+

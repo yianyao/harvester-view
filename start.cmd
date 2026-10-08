@@ -41,9 +41,13 @@ if not exist "%SRV%\harvester.db" (
   pause
   exit /b 1
 )
-if not exist "%SRV%\cards_pending" mkdir "%SRV%\cards_pending"
+rem v0.22 P0-4: cards-root aligned to the REAL card library (knowledge\cards).
+rem The old cards_pending stub directory is deprecated (0 files, G3 showed
+rem an empty cabinet); the main library is now the validation target.
+set "CARDS_ROOT=%USERPROFILE%\.workbuddy\knowledge\cards"
+if not exist "%CARDS_ROOT%" mkdir "%CARDS_ROOT%"
 
-start "harvester api-serve :8765" /D "%SRV%" %PY% -m harvester api-serve --db "%SRV%\harvester.db" --cards-root "%SRV%\cards_pending"
+start "harvester api-serve :8765" /D "%SRV%" %PY% -m harvester api-serve --db "%SRV%\harvester.db" --cards-root "%CARDS_ROOT%"
 start "harvester-view :8088" /D "%~dp0" %PY% view.py
 timeout /t 3 /nobreak >nul
 start "" http://127.0.0.1:8088/

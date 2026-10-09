@@ -24,8 +24,12 @@ class RenderSmoke(unittest.TestCase):
         node = shutil.which("node")
         if node is None:
             self.skipTest("node 不在 PATH，渲染冒烟请手动跑 tests/render_smoke.js")
+        # encoding 必须显式指定 utf-8：node 输出为 UTF-8，而 Windows 上
+        # text=True 默认走 locale（GBK）→ UnicodeDecodeError，stdout 变
+        # None 后 assertIn 抛 TypeError（表现为"测试莫名失败"）。
         r = subprocess.run([node, str(SMOKE)], capture_output=True,
-                           text=True, timeout=30, cwd=str(ROOT))
+                           text=True, encoding="utf-8", errors="replace",
+                           timeout=30, cwd=str(ROOT))
         self.assertEqual(
             r.returncode, 0,
             f"render_smoke.js 失败：\n{r.stdout}\n{r.stderr}")

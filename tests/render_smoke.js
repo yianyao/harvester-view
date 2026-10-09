@@ -37,6 +37,7 @@ const repFilter = () => ({
   only: store["rep-erronly"].checked,
 });
 const hitQ = (t, q) => !q || String(t || "").toLowerCase().includes(q);
+const anchor = (sid, seq, text) => "<a>" + sid + "#" + seq + "</a>";
 
 /* 数据夹具：Edit 带 roots（2 根因，count 5+2=7），Bash 无 roots（降级
    errors，count 3，pattern 与 Edit 的 P1 同文本 → 跨工具合并 5+3=8） */
@@ -222,6 +223,38 @@ check("旧本地拼装已移除（exportAbnormal*/mdTriage）",
   !html.includes("function mdTriage"));
 check("agents/cards 报告仍可本地导出（端点未覆盖，mdReport 保留）",
   html.includes("mdReport("));
+
+/* --- v0.22 P1-3 交叉表（G2 renderErrors 消费 additive cross 字段） ---
+ * H22：渲染断言必须演示会红；旧上游无 cross 字段时降级不渲染不崩。 */
+eval(extract("renderErrors"));
+const DE = {
+  meta: { error_count: 3, total_steps: 100, sessions: 2 },
+  by_class: { env: 1, tool_interface: 2 },
+  by_bucket: { "开场": 3 },
+  by_source: { dsh: { tool_interface: 2 }, wc: { env: 1 } },
+  patterns: [],
+  cross: [
+    { source: "dsh", model: "deepseek-flash", env: 0, tool_interface: 2,
+      context: 0, unclassified: 0, total: 2 },
+    { source: "wc", model: "（未知）", env: 1, tool_interface: 0,
+      context: 0, unclassified: 0, total: 1 },
+  ],
+};
+const deOut = { innerHTML: "" };
+renderErrors(DE, deOut);
+const deH = deOut.innerHTML;
+check("交叉表节渲染", deH.includes("数据源 × model × 错误类别交叉表"));
+check("首行=最多坑组合（API 序，dsh×deepseek-flash 在前）",
+  deH.indexOf("deepseek-flash") >= 0 &&
+  deH.indexOf("deepseek-flash") < deH.indexOf("（未知）"));
+check("model（未知）直出与合计列",
+  deH.includes("（未知）") && deH.includes("<td class='num'>2</td>"));
+const DE_OLD = Object.assign({}, DE); delete DE_OLD.cross;
+const deOldOut = { innerHTML: "" };
+renderErrors(DE_OLD, deOldOut);
+check("旧上游无 cross 降级：不渲染交叉表且不崩（三分类仍在）",
+  !deOldOut.innerHTML.includes("交叉表") &&
+  deOldOut.innerHTML.includes("三分类分布"));
 
 if (failed) { console.error(failed + " check(s) failed"); process.exit(1); }
 console.log("ALL RENDER CHECKS PASSED");

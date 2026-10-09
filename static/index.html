@@ -849,6 +849,21 @@ function renderErrors(d,out){
       "</td><td class='num'>"+(e[1].context||0)+"</td><td class='num'>"+
       (e[1].unclassified||0)+"</td></tr>").join("")+"</tbody></table>";
   }
+  // P1-3 additive：交叉表 class × harness × model（旧上游无 cross 字段时降级不渲染）
+  const cross=d.cross||[];
+  if(cross.length){
+    html+="<h3 class='sec'>数据源 × model × 错误类别交叉表</h3><table><thead><tr>"+
+      "<th>数据源</th><th>model</th><th class='num'>env</th>"+
+      "<th class='num'>tool_interface</th><th class='num'>context</th>"+
+      "<th class='num'>unclassified</th><th class='num'>合计</th>"+
+      "</tr></thead><tbody>"+cross.map(r=>"<tr><td>"+esc(r.source)+
+      "</td><td>"+esc(r.model||"（未知）")+"</td><td class='num'>"+(r.env||0)+
+      "</td><td class='num'>"+(r.tool_interface||0)+"</td><td class='num'>"+
+      (r.context||0)+"</td><td class='num'>"+(r.unclassified||0)+
+      "</td><td class='num'>"+(r.total||0)+"</td></tr>").join("")+
+      "</tbody></table><p class='sub2'>首行=最多坑组合（API 序，合计降序）；"
+      +"model「（未知）」=会话未携带模型信息（导出型源无 model 字段）。</p>";
+  }
   html+="<h3 class='sec'>错误模式明细（归一聚类，锚点可点击）</h3>";
   const f=repFilter();
   let pats=d.patterns||[];

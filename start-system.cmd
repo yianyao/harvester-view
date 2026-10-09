@@ -41,11 +41,16 @@ if not exist "%SRV%\harvester.db" (
   pause
   exit /b 1
 )
-if not exist "%SRV%\cards_pending" mkdir "%SRV%\cards_pending"
-
-rem %PY% may contain a space ('py -3'), so it stays UNQUOTED below.
-start "harvester api-serve :8765" /D "%SRV%" %PY% -m harvester api-serve --db "%SRV%\harvester.db" --cards-root "%SRV%\cards_pending"
-start "harvester-view :8088" /D "%~dp0" %PY% view.py
+rem v0.22 P0-4: cards-root aligned to the REAL card library (knowledge\cards).
+rem The old cards_pending stub directory is deprecated (0 files, G3 showed
+rem an empty cabinet); the main library is now the validation target.
+set "CARDS_ROOT=%USERPROFILE%\.workbuddy\knowledge\cards"
+if not exist "%CARDS_ROOT%" mkdir "%CARDS_ROOT%"
+rem v0.22 topics/keywords/suggestions: meta libs live next to harvester.db.
+rem api-serve degrades gracefully if one is missing (hint, no crash).
+start "harvester api-serve :8765" /D "%SRV%" %PY% -m harvester api-serve --db "%SRV%\harvester.db" --cards-root "%CARDS_ROOT%" --topics-meta "%SRV%\topics_meta.db" --keywords-meta "%SRV%\keywords_meta.db" --suggestions-meta "%SRV%\suggestions_meta.db"
+rem --no-open: view.py must NOT open its own tab; the line below opens exactly one.
+start "harvester-view :8088" /D "%~dp0" %PY% view.py --no-open
 timeout /t 3 /nobreak >nul
 start "" http://127.0.0.1:8088/
 echo [start] api-serve + view launched with: %PY%

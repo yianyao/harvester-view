@@ -102,8 +102,8 @@ _NO_PROXY_OPENER = urllib.request.build_opener(
 
 
 def fetch_upstream(up: dict, path_qs: str,
-                   timeout: float) -> tuple[int, bytes]:
-    """GET 转发单个请求。4xx/5xx 原样返回 (code, body)；
+                   timeout: float) -> tuple[int, bytes, str]:
+    """GET 转发单个请求。4xx/5xx 原样返回 (code, body, content-type)；
     连不上/超时 → UpstreamError("unreachable")。"""
     url = up["url"] + path_qs
     req = urllib.request.Request(url, method="GET")
@@ -111,9 +111,10 @@ def fetch_upstream(up: dict, path_qs: str,
         req.add_header("X-Token", up["token"])
     try:
         with _NO_PROXY_OPENER.open(req, timeout=timeout) as resp:
-            return resp.status, resp.read()
+            return resp.status, resp.read(), \
+                resp.headers.get("Content-Type", "")
     except urllib.error.HTTPError as e:  # 注意：URLError 子类，须先接
-        return e.code, e.read()
+        return e.code, e.read(), e.headers.get("Content-Type", "")
     except (urllib.error.URLError, socket.timeout, TimeoutError,
             ConnectionError, OSError) as e:
         raise UpstreamError(
@@ -136,12 +137,16 @@ def _check_api_version(obj: dict) -> str | None:
     return None
 
 
-def proxy_get(up: dict, path_qs: str, timeout: float) -> tuple[int, bytes]:
-    """带版本协商的转发：200 响应必须是 JSON 对象且 api_version 兼容；
-    非 200 原样透传（401/404/5xx 的错误 JSON 由页面按状态处理）。"""
-    status, body = fetch_upstream(up, path_qs, timeout)
+def proxy_get(up: dict, path_qs: str, timeout: float) -> tuple[int, bytes, str]:
+    """带版本协商的转发：200 响应必须是 JSON 对象且 api_version 兼容
+    （text/markdown 出口除外——P1-4 export-analysis format=md，原样透传）；
+    非 200 原样透传（401/404/5xx 的错误 JSON 由页面按状态处理）。
+    返回 (status, body, content-type)。"""
+    status, body, ctype = fetch_upstream(up, path_qs, timeout)
     if status != 200:
-        return status, body
+        return status, body, ctype
+    if ctype.startswith("text/markdown"):
+        return status, body, ctype
     try:
         obj = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
@@ -155,7 +160,7 @@ def proxy_get(up: dict, path_qs: str, timeout: float) -> tuple[int, bytes]:
     err = _check_api_version(obj)
     if err:
         raise UpstreamError("version_mismatch", err)
-    return status, body
+    return status, body, ctype
 
 
 def merge_facets(ups: list[dict], timeout: float) -> dict:
@@ -169,7 +174,7 @@ def merge_facets(ups: list[dict], timeout: float) -> dict:
     for up in ups:
         entry: dict = {"name": up["name"]}
         try:
-            _, body = proxy_get(up, "/api/facets", timeout)
+            _, body, _ct = proxy_get(up, "/api/facets", timeout)
             obj = json.loads(body.decode("utf-8"))
             entry["facets"] = obj
             for key in agg:
@@ -204,7 +209,7 @@ def merge_search(ups: list[dict], timeout: float, qs: str) -> dict:
     for up in ups:
         entry: dict = {"name": up["name"]}
         try:
-            _, body = proxy_get(up, "/api/sessions" + qs, timeout)
+            _, body, _ct = proxy_get(up, "/api/sessions" + qs, timeout)
             obj = json.loads(body.decode("utf-8"))
             entry["ok"] = True
             entry["total"] = int(obj.get("total", 0))
@@ -292,11 +297,11 @@ def make_handler(cfg: dict, static_html: Path,
                                      f"（共 {len(ups)} 个，从 0 起）"}, 404)
                 return
             try:
-                status, body = proxy_get(ups[idx], sub + qs, timeout)
+                status, body, ctype = proxy_get(ups[idx], sub + qs, timeout)
             except UpstreamError as e:
                 self._json({"error": e.message, "kind": e.kind}, 502)
                 return
-            self._send(status, body, "application/json; charset=utf-8")
+            self._send(status, body, ctype or "application/json; charset=utf-8")
 
         def do_POST(self) -> None:  # noqa: N802
             self._json({"error": "view 只读，代理仅转发 GET"}, 405)

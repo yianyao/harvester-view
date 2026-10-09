@@ -209,5 +209,19 @@ check("锚点跳转接线 openSession+openTurn",
   gSrc.includes("openSession(") && gSrc.includes("openTurn("));
 check("跳转先切回会话 tab", gSrc.includes('switchTab("sessions")'));
 
+/* --- v0.22 P1-4 统一分析导出（view 端只做下载，SOP-P1-4） --- */
+check("exportAnalysis 走 /api/export-analysis 端点",
+  html.includes("/api/export-analysis"));
+check("apiText 消费 text/markdown 出口",
+  html.includes("async function apiText"));
+check("六按钮全部接线 exportAnalysis（定义+sessions/triage/报告 md|json）",
+  (html.match(/exportAnalysis\(/g) || []).length >= 7);
+check("旧本地拼装已移除（exportAbnormal*/mdTriage）",
+  !html.includes("exportAbnormalMd") &&
+  !html.includes("exportAbnormalJson") &&
+  !html.includes("function mdTriage"));
+check("agents/cards 报告仍可本地导出（端点未覆盖，mdReport 保留）",
+  html.includes("mdReport("));
+
 if (failed) { console.error(failed + " check(s) failed"); process.exit(1); }
 console.log("ALL RENDER CHECKS PASSED");

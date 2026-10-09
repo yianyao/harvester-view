@@ -324,6 +324,33 @@ async function apiAll(path){ /* /u/all/* 聚合端点 */
   if(res.ok){ hideBanner(); return res.json(); }
   return failApi(res);
 }
+/* 文本响应（P1-4：export-analysis format=md 的 text/markdown 出口） */
+async function apiText(path){
+  let res;
+  try{ res=await fetch("/u/"+state.no+path); }
+  catch(e){ showBanner("warn","本地代理不可达？请确认 view.py 正在运行");
+            throw e; }
+  if(res.ok){ hideBanner(); return res.text(); }
+  return failApi(res);
+}
+/* P1-4 统一分析导出：view 端只做下载，md/JSON 拼装与去重全在端点侧
+   （/api/export-analysis，SOP-P1-4） */
+async function exportAnalysis(kind,fmt){
+  const q=new URLSearchParams({kind:kind,format:fmt});
+  if(kind==="sessions"){
+    const sids=[...state.sel];
+    if(!sids.length){showBanner("warn","请先勾选要导出的异常会话");return;}
+    q.set("sids",sids.join(","));
+  }
+  const base="harvester-"+kind+"-"+today();
+  if(fmt==="json"){
+    dlJson(base+".json",await api("/api/export-analysis?"+q.toString()));
+  }else{
+    dlText(base+".md",
+      await apiText("/api/export-analysis?"+q.toString()));
+  }
+  showBanner("warn","已导出 "+kind+"（"+fmt+"，浏览器下载）");
+}
 async function failApi(res){
   let body={}; try{ body=await res.json(); }catch(e){}
   if(body.kind==="unreachable")
@@ -456,113 +483,6 @@ function toggleSel(sid,on){
   if(on)state.sel.add(sid);else state.sel.delete(sid);
   updateSelInfo();
 }
-/* 上游 >= v0.20 才有 error_steps；旧上游降级为仅有列表元信息 */
-async function fetchSessionPack(sid){
-  const d=await api("/api/session/"+encodeURIComponent(sid));
-  return d;
-}
-/* 批量导出：所选异常会话的下钻全文合并为一份 Markdown（每会话一节） */
-async function exportAbnormalMd(){
-  const sids=[...state.sel];
-  if(!sids.length)return;
-  if(sids.length>5&&!confirm("将拉取 "+sids.length+
-      " 个会话的全部回合全文，可能耗时较长，继续？"))return;
-  const btn=$("btn-batch-md");
-  btn.disabled=true;btn.textContent="导出中 0/"+sids.length;
-  try{
-    let done=0;
-    const packs=[];
-    for(const sid of sids){
-      packs.push(await fetchSessionPack(sid).catch(e=>{
-        showBanner("warn","会话 "+sid+" 拉取失败："+e.message);return null;}));
-      btn.textContent="导出中 "+(++done)+"/"+sids.length;
-    }
-    let md="# 异常会话批量导出\n\n- 会话数 "+packs.filter(Boolean).length+
-      "｜导出时间 "+new Date().toLocaleString()+
-      "（harvester-view 浏览器本地生成）\n\n";
-    for(const d of packs){
-      if(!d)continue;
-      const m=d.meta||{}, sid=m.sid;
-      const steps=d.error_steps||[];
-      const pats=[...(steps.reduce((a,s)=>a.set(s.pattern,
-        (a.get(s.pattern)||0)+1),new Map()))].map(e=>e[0]+" x"+e[1]);
-      md+="\n\n---\n\n# "+(m.title||sid)+"\n\n"+
-        "- 会话ID: `"+sid+"`\n- 异常类型: "+
-        (pats.length?pats.map(p=>"`"+p+"`").join("、"):"（上游较旧，无错误步骤清单）")+
-        "\n- 来源 "+(m.source||"?")+" · 模型 "+(m.model||"（未知）")+
-        " · 更新 "+(m.updated_at||"?")+"\n";
-      if(steps.length){
-        md+="\n## 错误步骤清单\n\n"+
-          steps.map(s=>"- `#"+s.seq+"` "+(s.ts||"")+" ["+s.tool+
-            "]（"+s["class"]+"）"+String(s.error||"").replace(/\s+/g," ")
-            .slice(0,160)).join("\n")+"\n";
-      }
-      /* 下钻全文（同单会话导出口径） */
-      const nos=(d.turns||[]).map(t=>t.no);
-      const texts={};
-      for(let i=0;i<nos.length;i+=5){
-        await Promise.all(nos.slice(i,i+5).map(async no=>{
-          texts[no]=await api("/api/session/"+encodeURIComponent(sid)
-            +"/turn/"+no);}));
-      }
-      for(const no of nos){
-        const msgs=(texts[no]||{}).messages||[];
-        md+="\n## 回合 #"+no+(msgs.length?"（"+(msgs[0].ts||"")+"）":"")+"\n";
-        for(const msg of msgs)
-          md+="\n**["+(ROLE_LABEL[msg.role]||msg.role||"note")+"]** "+
-            (msg.ts||"")+"\n\n"+(msg.content??"")+"\n";
-      }
-    }
-    dlText("abnormal-sessions-"+today()+".md",md);
-    showBanner("warn","已导出 "+packs.filter(Boolean).length+" 个会话（浏览器下载）");
-  }finally{
-    btn.disabled=!state.sel.size;btn.textContent="导出所选异常会话 md";
-  }
-}
-/* 批量导出机器可读 JSON：错误按归一 pattern 跨会话去重聚合 */
-async function exportAbnormalJson(){
-  const sids=[...state.sel];
-  if(!sids.length)return;
-  const btn=$("btn-batch-json");
-  btn.disabled=true;btn.textContent="导出中…";
-  try{
-    const packs=[];
-    for(const sid of sids)
-      packs.push(await fetchSessionPack(sid).catch(()=>null));
-    const ok=packs.filter(p=>p&&p.meta);
-    const sessions=ok.map(d=>({
-      sid:d.meta.sid, title:d.meta.title||"", source:d.meta.source||"",
-      model:d.meta.model||"", updated_at:d.meta.updated_at||"",
-      error_count:(d.error_steps||[]).length,
-      error_steps:(d.error_steps||[]).map(s=>({seq:s.seq,ts:s.ts,
-        tool:s.tool,"class":s["class"],pattern:s.pattern,
-        error:s.error}))}));
-    /* 跨会话按归一 pattern 去重聚合：同一根因只占一条，occurrences 留锚点 */
-    const byPat=new Map();
-    for(const s of sessions)for(const e of s.error_steps){
-      const k=e.pattern||String(e.error||"").slice(0,80);
-      let g=byPat.get(k);
-      if(!g){g={pattern:k,"class":e["class"],count:0,
-        sample_error:e.error,tools:new Set(),occurrences:[]};byPat.set(k,g);}
-      g.count++;g.tools.add(e.tool);
-      g.occurrences.push({sid:s.sid,seq:e.seq,ts:e.ts,tool:e.tool});
-    }
-    const patterns_dedup=[...byPat.values()]
-      .sort((a,b)=>b.count-a.count)
-      .map(g=>({...g,tools:[...g.tools]}));
-    const out={
-      kind:"abnormal-sessions", generated_at:new Date().toISOString(),
-      hint:"harvester-view 导出的机器可读快照：errors 已按归一模式去重聚合"+
-        "（patterns_dedup，sample_error 为该模式原文样例），occurrences 的 "+
-        "(sid,seq) 可定位原会话错误步骤；sessions.error_steps 为逐会话明细。",
-      n_sessions:sessions.length, sessions:sessions,
-      patterns_dedup:patterns_dedup};
-    dlJson("abnormal-sessions-"+today()+".json",out);
-  }finally{
-    btn.disabled=!state.sel.size;btn.textContent="导出所选机器可读 JSON";
-  }
-}
-
 /* ---------- 下钻：会话 → 回合 → 全文 ---------- */
 async function openSession(sid){
   state.sid=sid;
@@ -1390,43 +1310,6 @@ function mdReport(kind,d){
   }
   return md;
 }
-/* 蒸馏队列 → Markdown（与 CLI render_triage 同构） */
-function mdTriage(d){
-  let md="# 蒸馏队列（triage）\n\n- 共 "+d.n_sessions+" 会话｜窗口错误 "+
-    d.error_count_window+"｜卡片比对 "+
-    (d.cards_scanned==null?"未配置":d.cards_scanned+" 文件")+
-    "\n- 口径：cutoff "+(d.cutoff||"全库")+"\n";
-  md+="\n## A. 新错误 pattern（优先做 pitfall 卡）\n";
-  for(const x of d.new_patterns||[]){
-    md+="\n### "+x.pattern+(x.known_card?" ⚠️疑似已有卡":"")+"\n"+
-      "- 类别 "+x["class"]+" · 工具 "+x.tools.join("/")+
-      " · 窗口内 "+x.count+" 次 · 首现 "+x.first_seen+"\n";
-    for(const s of x.samples||[])
-      md+="- 锚点 `"+s.sid+"#"+s.seq+"`: "+
-        String(s.error||"").slice(0,120)+"\n";
-    if(x.samples&&x.samples.length)
-      md+="- 动作: `python -m harvester cards new --sid "+x.samples[0].sid+
-        " --type pitfall`\n";
-  }
-  md+="\n## B. 旧坑重现（检查旧卡/建议池是否要更新）\n";
-  for(const x of d.old_patterns||[])
-    md+="- "+x.pattern+"（"+x["class"]+"，窗口内 "+x.count+" 次，首现 "+
-      x.first_seen+"）\n";
-  md+="\n## C. Skill 行为链候选（workflow 卡素材）\n";
-  for(const s of d.skills||[]){
-    md+="- "+s.skill+"（调用 "+s.n_calls+"｜成功 "+s.n_ok+"｜来源 "+
-      s.sources.join("/")+"）"+(s.known_card?" ⚠️疑似已有卡":"")+
-      "｜链: "+(s.chain.join(" → ")||"（链为空）")+"\n";
-    if(s.sample)md+="  - 样例锚点 `"+s.sample.sid+"#"+s.sample.seq+"`\n";
-    md+="  - 动作: `python -m harvester report-skill --skill "+s.skill+"`\n";
-  }
-  md+="\n## D. 高信号会话 Top（泛读排期用）\n\n"+
-    mdTable(["分","会话","标题","消息","步骤"],
-    (d.hot_sessions||[]).map(h=>[h.score,h.sid,h.title||"",h.msgs,h.steps]));
-  md+="\n纪律提醒：本队列是建议池，不是成品——判断与 evidence 由人补全。\n";
-  return md;
-}
-
 /* ---------- 事件绑定 ---------- */
 $("btn-search").onclick=()=>{state.q=$("f-q").value.trim();state.offset=0;
   loadSessions().catch(()=>{});};
@@ -1440,9 +1323,9 @@ $("sel-all").onchange=()=>{
     cb.checked=on;toggleSel(cb.dataset.sid,on);
   }
 };
-$("btn-batch-md").onclick=()=>exportAbnormalMd()
+$("btn-batch-md").onclick=()=>exportAnalysis("sessions","md")
   .catch(e=>showBanner("err","批量导出失败："+e.message));
-$("btn-batch-json").onclick=()=>exportAbnormalJson()
+$("btn-batch-json").onclick=()=>exportAnalysis("sessions","json")
   .catch(e=>showBanner("err","批量导出失败："+e.message));
 /* 报告/队列的本地过滤：不重新请求上游，直接重渲染（triage 需重取后本地过滤） */
 function rerenderReport(){
@@ -1485,22 +1368,35 @@ $("btn-topic-cmd").onclick=e=>{
   if(b.dataset.cmd)copyText(b.dataset.cmd,b);};
 $("btn-rep-export").onclick=()=>{
   if(!state.repLast){showBanner("warn","请先点“生成报告”再导出");return;}
+  /* P1-4：tools/errors/skills 改调统一导出端点（md/JSON 同源）；
+     agents/cards 端点未覆盖，保留本地拼装 */
+  if(["tools","errors","skills"].includes(state.repKind)){
+    exportAnalysis(state.repKind,"md")
+      .catch(e=>showBanner("err","导出失败："+e.message));
+    return;
+  }
   dlText("harvester-report-"+state.repKind+"-"+today()+".md",
     mdReport(state.repKind,state.repLast));
 };
 $("btn-rep-json").onclick=()=>{
   if(!state.repLast){showBanner("warn","请先点“生成报告”再导出");return;}
+  if(["tools","errors","skills"].includes(state.repKind)){
+    exportAnalysis(state.repKind,"json")
+      .catch(e=>showBanner("err","导出失败："+e.message));
+    return;
+  }
   dlJson("harvester-report-"+state.repKind+"-"+today()+".json",
     machineWrap("report-"+state.repKind,state.repLast));
 };
 $("btn-tri-export").onclick=()=>{
   if(!state.triLast){showBanner("warn","请先点“生成队列”再导出");return;}
-  dlText("harvester-triage-"+today()+".md",mdTriage(state.triLast));
+  exportAnalysis("triage","md")
+    .catch(e=>showBanner("err","导出失败："+e.message));
 };
 $("btn-tri-json").onclick=()=>{
   if(!state.triLast){showBanner("warn","请先点“生成队列”再导出");return;}
-  dlJson("harvester-triage-"+today()+".json",
-    machineWrap("triage",state.triLast));
+  exportAnalysis("triage","json")
+    .catch(e=>showBanner("err","导出失败："+e.message));
 };
 
 initUpstreams().then(()=>{

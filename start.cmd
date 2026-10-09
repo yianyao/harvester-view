@@ -47,7 +47,9 @@ rem an empty cabinet); the main library is now the validation target.
 set "CARDS_ROOT=%USERPROFILE%\.workbuddy\knowledge\cards"
 if not exist "%CARDS_ROOT%" mkdir "%CARDS_ROOT%"
 
-start "harvester api-serve :8765" /D "%SRV%" %PY% -m harvester api-serve --db "%SRV%\harvester.db" --cards-root "%CARDS_ROOT%"
+rem v0.22 topics/keywords/suggestions: meta libs live next to harvester.db.
+rem api-serve degrades gracefully if one is missing (hint, no crash).
+start "harvester api-serve :8765" /D "%SRV%" %PY% -m harvester api-serve --db "%SRV%\harvester.db" --cards-root "%CARDS_ROOT%" --topics-meta "%SRV%\topics_meta.db" --keywords-meta "%SRV%\keywords_meta.db" --suggestions-meta "%SRV%\suggestions_meta.db"
 start "harvester-view :8088" /D "%~dp0" %PY% view.py
 timeout /t 3 /nobreak >nul
 start "" http://127.0.0.1:8088/

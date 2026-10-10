@@ -1007,6 +1007,13 @@ function renderCards(d,out){
 /* ---------- Tab 5: 主题（T3-5，数据驱动） ---------- */
 /* 主题列表：/api/topics 返回什么就渲染什么——主题由聚合数据发现后
    注册进 topics_meta.db，可随时新增；视图不写死任何主题名/数量。 */
+/* 关键词列在 API 里是 JSON 字符串（给机器用）；给人看要拆成「、」列表。
+   解析失败就原样显示，绝不吞掉内容。 */
+function kwText(k){
+  if(!k)return "";
+  try{const a=JSON.parse(k);return Array.isArray(a)?a.join("、"):String(k);}
+  catch(e){return String(k);}
+}
 function renderTopics(d,out){
   let h="";
   if(d.hint)
@@ -1015,13 +1022,22 @@ function renderTopics(d,out){
       "<code>topic register</code> 注册，注册即可在页面上出现。</div></div>";
   h+=d.topics&&d.topics.length
     ?("<table><thead><tr><th>主题</th><th class='num'>成员</th>"+
-      "<th>活跃区间</th></tr></thead><tbody>"+
-      d.topics.map(t=>"<tr data-tid=\""+esc(t.id)+"\">"+
+      "<th class='num'>链</th><th>活跃区间</th></tr></thead><tbody>"+
+      d.topics.map(t=>{
+      const nc=Number(t.chains_count||0);
+      const names=(t.chain_names||[]).join(" ／ ");
+      // 0 成员的类目：保留但灰显（用户自己的种子类目，还没挂成员）
+      const dim=(Number(t.members_count||0)===0)?" style='opacity:.55'":"";
+      return "<tr data-tid=\""+esc(t.id)+"\""+dim+">"+
       "<td>"+esc(t.name)+
-      (t.keywords?"<div class='sub2'>"+esc(t.keywords)+"</div>":"")+
-      "</td><td class='num'>"+t.members_count+"</td><td class='t-date'>"+
+      (t.keywords?"<div class='sub2'>"+esc(kwText(t.keywords))+"</div>":"")+
+      "</td><td class='num'>"+t.members_count+"</td>"+
+      "<td class='num'"+(names?" title=\""+esc(names)+"\"":"")+">"+
+      (nc?(nc+(names?" <span class='sub2'>"+esc(names.slice(0,18))+
+        (names.length>18?"…":"")+"</span>":"")):"<span class='sub2'>—</span>")+
+      "</td><td class='t-date'>"+
       esc((t.first_activity||"?").slice(0,10))+" ~ "+
-      esc((t.last_activity||"?").slice(0,10))+"</td></tr>").join("")+
+      esc((t.last_activity||"?").slice(0,10))+"</td></tr>";}).join("")+
       "</tbody></table>")
     :"<div class='empty'>尚无注册主题</div>";
   out.innerHTML=h;
@@ -1058,20 +1074,35 @@ async function openTopic(id){
   $("topics-right").style.display="block";
   renderChain(d,$("topics-timeline"));
   bindTopicNodes($("topics-timeline"));
+  bindChainSwitch($("topics-timeline"),d);
 }
-function renderChain(d,out){
-  const fm=d.fm||{};
+/* 一个主题可以有多条 chain（后端 v0.25 起返回 chains[]；旧上游只有单链 → 兼容）。
+   idx 选择渲染第几条；多链时顶部给切换按钮（本视图只渲染，不执行任何命令）。 */
+function renderChain(d,out,idx){
+  const list=(d.chains&&d.chains.length)?d.chains:[d];
+  const i=Math.max(0,Math.min(Number(idx||0),list.length-1));
+  const cur=list[i]||{},fm=cur.fm||{};
   const stages=fm.anchors||[];
   const nNodes=stages.reduce((a,s)=>a+((s.nodes||[]).length),0);
+  const cnt=c=>Number(c.stages!==undefined?c.stages:((c.fm&&c.fm.anchors)||[]).length);
+  const nn=c=>Number(c.nodes!==undefined?c.nodes:0);
+  const sw=list.length>1
+    ?("<div class='toolbar' id='chain-switch'><span class='sub2'>本主题 "+
+       list.length+" 条链：</span>"+list.map((c,k)=>
+       "<button class='xbtn' data-chain-idx=\""+k+"\""+(k===i?" disabled":"")+
+       ">"+esc(c.name||("chain-"+(k+1)))+"（"+cnt(c)+"阶段/"+nn(c)+
+       "节点）</button>").join(" ")+"</div>")
+    :"";
   $("topic-doc").innerHTML=
     "<h2>"+esc(fm.topic||d.topic_id||"主题")+" · chain 长文</h2>"+
+    (list.length>1?"<div class='sub2'>本条链："+esc(cur.name||"")+"</div>":"")+
     "<div class='sub'>成员 "+((fm.members||[]).length)+"｜锚点 "+nNodes+
-    (d.chain_path?"｜产物 "+esc(d.chain_path):"")+"</div>"+
+    (cur.chain_path?"｜产物 "+esc(cur.chain_path):"")+"</div>"+
     (fm.db_fingerprint?"<div class='sub2'>快照指纹 "+
       esc(JSON.stringify(fm.db_fingerprint)).slice(0,140)+"</div>":"")+
     "<div style='white-space:pre-wrap;word-break:break-word;margin-top:10px'>"+
-    esc(d.body||"")+"</div>";
-  let h="<h3 class='sec'>演进时间线（"+stages.length+" 阶段 / "+
+    esc(cur.body||d.body||"")+"</div>";
+  let h=sw+"<h3 class='sec'>演进时间线（"+stages.length+" 阶段 / "+
     nNodes+" 锚点）</h3>"+
     "<p class='sub2'>点节点跳回原会话对应回合（任一节点一键回原文）；"+
     "深挖分层用上方「复制命令」，由 CLI 生成蒸馏包——本视图绝不执行。</p>";
@@ -1086,6 +1117,15 @@ function renderChain(d,out){
   }
   if(!stages.length)h+="<div class='empty'>该 chain 无锚点数据</div>";
   out.innerHTML=h;
+}
+/* 多链切换接线：点按钮换渲染哪条链（纯前端，不发写请求） */
+function bindChainSwitch(root,d){
+  for(const b of root.querySelectorAll("[data-chain-idx]"))
+    b.onclick=()=>{
+      renderChain(d,root,Number(b.dataset.chainIdx));
+      bindTopicNodes(root);
+      bindChainSwitch(root,d);
+    };
 }
 function bindTopicNodes(root){
   for(const el of root.querySelectorAll(".tl-node"))

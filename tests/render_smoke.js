@@ -14,9 +14,10 @@ const path = require("path");
 const htmlPath = path.join(__dirname, "..", "static", "index.html");
 const html = fs.readFileSync(htmlPath, "utf8");
 
-function extract(name) {
+function extract(name, sig) {
   // 顶格 "function name(...)" 到下一个顶格 "}"（函数体内部闭括号均有缩进）
-  const re = new RegExp("^function " + name + "\\(d,out\\)\\{[\\s\\S]*?^\\}", "m");
+  const s = sig || "d,out";
+  const re = new RegExp("^function " + name + "\\(" + s + "\\)\\{[\\s\\S]*?^\\}", "m");
   const m = html.match(re);
   if (!m) throw new Error("extract fail: " + name);
   return m[0];
@@ -143,25 +144,43 @@ function extractFn(name, sig) {
   if (!m) throw new Error("extract fail: " + name + "(" + sig + ")");
   return m[0];
 }
+eval(extractFn("kwText", "k"));
 eval(extract("renderTopics"));
-eval(extract("renderChain"));
+eval(extract("renderChain", "d,out,idx"));
 eval(extractFn("topicPackCmd", "id,level,sid"));
+eval(extractFn("bindChainSwitch", "root,d"));
+eval(extractFn("bindTopicNodes", "root"));   // 切换后会重绑节点，需一并提取
 const gSrc = extractFn("gotoTopicAnchor", "sid,turn");
 
 /* renderTopics：任意主题名都渲染（多主题，非写死清单） */
 const TOPICS = { topics: [
-  { id: "tp-x", name: "主题甲", keywords: "k1, k2", members_count: 7,
-    first_activity: "2025-01-01T00:00:00", last_activity: "2025-06-01" },
+  { id: "tp-x", name: "主题甲", keywords: "[\"k1\",\"k2\"]", members_count: 7,
+    first_activity: "2025-01-01T00:00:00", last_activity: "2025-06-01",
+    chains_count: 2, chain_names: ["思维链：叙事节奏", "思维链：吾好梦中救人"] },
   { id: "tp-y", name: "主题乙", keywords: "", members_count: 2,
-    first_activity: null, last_activity: null }] };
+    first_activity: null, last_activity: null, chains_count: 0,
+    chain_names: [] },
+  { id: "tp-z", name: "空类目", keywords: "不是JSON", members_count: 0,
+    first_activity: null, last_activity: null, chains_count: 0,
+    chain_names: [] }] };
 const tOut = { innerHTML: "" };
 renderTopics(TOPICS, tOut);
 check("主题列表渲染主题甲（数据驱动）", tOut.innerHTML.includes("主题甲"));
 check("主题列表渲染主题乙——不假定单一主题", tOut.innerHTML.includes("主题乙"));
-check("关键词/成员数随数据渲染", tOut.innerHTML.includes("k1, k2") &&
-  tOut.innerHTML.includes("7"));
-check("行带 data-tid（点击接线载体，2 行）",
-  (tOut.innerHTML.match(/data-tid=/g) || []).length === 2);
+check("关键词按人读形态渲染（JSON → 顿号，不留引号/方括号）",
+  tOut.innerHTML.includes("k1、k2") && !tOut.innerHTML.includes("[&quot;k1&quot;"));
+check("关键词解析失败时原样显示，不吞内容",
+  tOut.innerHTML.includes("不是JSON"));
+check("成员数随数据渲染", tOut.innerHTML.includes("7"));
+check("行带 data-tid（点击接线载体，3 行）",
+  (tOut.innerHTML.match(/data-tid=/g) || []).length === 3);
+/* v0.25：一个主题可以有多条 chain，列表要看得见"有几条链" */
+check("链列显示条数与链名", tOut.innerHTML.includes(">链<") &&
+  tOut.innerHTML.includes("2 <span class='sub2'>思维链：叙事节奏") &&
+  tOut.innerHTML.includes("思维链：吾好梦中救人"));
+check("无链主题显示占位符而非空白", tOut.innerHTML.includes("—"));
+check("0 成员类目灰显（自己类目还没挂成员）",
+  tOut.innerHTML.includes("opacity:.55"));
 
 const tEmpty = { innerHTML: "" };
 renderTopics({ topics: [] }, tEmpty);
@@ -198,6 +217,47 @@ check("节点锚点带 data-sid+data-turn（3 个，含 turn=4）",
 check("右栏文档收到 body 与成员数",
   store["topic-doc"].innerHTML.includes("正文内容示例") &&
   store["topic-doc"].innerHTML.includes("2"));
+check("单链（旧上游）不渲染切换条",
+  !chOut.innerHTML.includes("data-chain-idx"));
+
+/* v0.25 多链：一个主题两条 chain —— 切换条 + 按 idx 渲染对应那条 + 接线 */
+const CH2 = { topic_id: "tp-x", chain_count: 2,
+  chains: [
+    { name: "思维链：叙事节奏（技法主线）", chain_path: "topics/chain-叙事节奏.md",
+      body: "叙事节奏正文", stages: 2, nodes: 3,
+      fm: { topic: "主题甲", members: ["s1"], anchors: [
+        { stage: "技法一", span: "2025-01", nodes: [
+          { sid: "deepseek-export:a", turn: 2, note: "节奏对比" }] }] } },
+    { name: "思维链：吾好梦中救人（作品本体主线）",
+      chain_path: "topics/chain-吾好梦中救人.md", body: "作品本体正文",
+      stages: 1, nodes: 1,
+      fm: { topic: "主题甲", members: ["s1", "s2"], anchors: [
+        { stage: "本体一", span: "2025-02", nodes: [
+          { sid: "yuanbao-raw:b", turn: 7, note: "设定补全" }] }] } } ] };
+store["topic-doc"] = { innerHTML: "" };
+const ch2Out = { innerHTML: "" };
+renderChain(CH2, ch2Out, 0);
+check("多链第一条：切换条两个按钮 + 标注 1/2",
+  (ch2Out.innerHTML.match(/data-chain-idx=/g) || []).length === 2 &&
+  ch2Out.innerHTML.includes("技法一") && !ch2Out.innerHTML.includes("本体一"));
+store["topic-doc"] = { innerHTML: "" };
+renderChain(CH2, ch2Out, 1);
+check("按 idx 渲染第二条（阶段与正文都换）",
+  ch2Out.innerHTML.includes("本体一") &&
+  store["topic-doc"].innerHTML.includes("作品本体正文") &&
+  !store["topic-doc"].innerHTML.includes("叙事节奏正文"));
+check("右栏标出当前是第几条链",
+  store["topic-doc"].innerHTML.includes("作品本体主线"));
+const cBtn = { dataset: { chainIdx: "0" }, onclick: null };
+const fakeRoot = { querySelectorAll: s =>
+  s === "[data-chain-idx]" ? [cBtn] : [], innerHTML: "" };
+store["topic-doc"] = { innerHTML: "" };
+bindChainSwitch(fakeRoot, CH2);
+check("链切换按钮已接线（onclick 是函数）", typeof cBtn.onclick === "function");
+cBtn.onclick();
+check("点按钮真的换链（切回第一条）",
+  fakeRoot.innerHTML.includes("技法一") &&
+  store["topic-doc"].innerHTML.includes("叙事节奏正文"));
 
 /* topicPackCmd：纯文本复制命令，绝无执行语义（红线 3） */
 check("命令含 topic pack 与 --id/--level",

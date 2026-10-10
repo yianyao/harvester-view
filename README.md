@@ -210,9 +210,28 @@ A：导出走浏览器下载（看下载栏）；复制依赖剪贴板权限，�
 ## 测试
 
 ```bash
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -v     # 25 例
 ```
 
 覆盖：静态页服务、转发保真（query/token）、版本不匹配拒绝、
 不可达与超时降级、非 GET 405、多上游切换、`/u/all/facets` 聚合降级、
 `/u/all/search` 跨实例搜索与降级、config 加载 fail loud。
+
+### 跨仓库集成门：真实载荷渲染（`tests/render_real.js`）
+
+`render_smoke.js` 用的是**构造夹具**，证明不了"后端真的会发这个字段名"。这道门
+用**真库现算的载荷**（兄弟仓库 `session-harvester` 的 `harvester.db` +
+`topics_meta.db`）喂给从真实 `index.html` 提取的 `renderTopics` / `renderChain`：
+
+```bash
+python tests/check_real_payload.py            # 取数 → node 断言（退出码 0/1/3）
+# 退出码 3 = **未执行**（后端仓库或库不在；测试里会 skip 并写明理由，
+#            不当成通过——"未执行/不适用/失败"必须能分开看）
+```
+
+断言**全部从载荷推导**（主题数、链数、首阶段文本、锚点节点数、首个关键词），
+不写死真实数字——写死的话数据一变这道门就假红。真正"不适用"的项（例如载荷里
+没有多链主题）单独计 `n/a` 并打印理由，不混进 ok。
+
+原为后端仓库 `docs/reports/` 下的一次性脚本（`check-view-real.py` +
+`view-real-render-check.js`），v0.33 移进本仓库并接入上面的套件。

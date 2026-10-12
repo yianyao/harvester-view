@@ -441,8 +441,10 @@ def main(argv=None) -> int:
         print("[commandgen] OK：%s 与真实解析器一致" % path.name)
         return 0
     obj = extract()
-    path.write_text(json.dumps(obj, ensure_ascii=False, indent=1) + "\n",
-                    encoding="utf-8")
+    # newline="\n"：.gitattributes 钉了 *.json eol=lf，Windows 下按默认写法
+    # 会产出 CRLF → 每次生成都报"CRLF will be replaced by LF"并让 diff 抖动
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(obj, ensure_ascii=False, indent=1) + "\n")
     n_args = sum(len(c["args"]) for c in obj["commands"])
     n_src = sum(1 for c in obj["commands"] for a in c["args"]
                 if a["src"] != "none")

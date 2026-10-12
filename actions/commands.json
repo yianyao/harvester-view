@@ -1,0 +1,3468 @@
+{
+ "schema": 1,
+ "adapter_version": "0.46.0",
+ "kind": "harvester-view 命令注册表（静态；由真实 argparse 生成）",
+ "generated_by": "actions/commandgen.py（python -m actions.commandgen）",
+ "hint": "命令名/参数/默认值是事实（走 harvester.cli.build_parser 生成）；src=参数数据源、tier=三档权限是人写的产品判断。页面凡 src 指向端点者一律渲染成选择器，不给人输框。",
+ "cards": [
+  {
+   "card_id": "collect",
+   "label": "采集更新",
+   "tier": "B",
+   "order": 1,
+   "desc": "把新会话收进库：日常用 update（增量），sync 是全量对账（重活）。",
+   "writes": "harvester.db（采集库，钦定写入路径）"
+  },
+  {
+   "card_id": "browse",
+   "label": "浏览检索",
+   "tier": "A",
+   "order": 2,
+   "desc": "看数据源状态、扫纲要、全文检索、按序号读会话。",
+   "writes": ""
+  },
+  {
+   "card_id": "export",
+   "label": "导出交接",
+   "tier": "A",
+   "order": 3,
+   "desc": "导出/聚合/打包/起草蒸馏包——产物落 exports/，供 Agent 消费。",
+   "writes": ""
+  },
+  {
+   "card_id": "tools",
+   "label": "工具体检",
+   "tier": "A",
+   "order": 4,
+   "desc": "G1 工具调用与失败率；trace 口径另有一份。",
+   "writes": ""
+  },
+  {
+   "card_id": "errors",
+   "label": "错误验尸",
+   "tier": "A",
+   "order": 5,
+   "desc": "G2 错误三分类与失败翼报告。",
+   "writes": ""
+  },
+  {
+   "card_id": "skill",
+   "label": "skill 鉴定",
+   "tier": "A",
+   "order": 6,
+   "desc": "G4 Skill 行为画像；join 把 chain 锚点与 skill 调用点交叉。",
+   "writes": ""
+  },
+  {
+   "card_id": "triage",
+   "label": "分诊蒸馏",
+   "tier": "A",
+   "order": 7,
+   "desc": "蒸馏队列与主题梳理流水线（含深度分诊；实测约 9 分钟，标重活）。",
+   "writes": ""
+  },
+  {
+   "card_id": "ledger",
+   "label": "班规裁决",
+   "tier": "A",
+   "order": 8,
+   "desc": "建议池生成与状态落库、人账同步、A/B 效果评估。",
+   "writes": "suggestions_meta.db（B 档动作）"
+  },
+  {
+   "card_id": "topic",
+   "label": "主题档案",
+   "tier": "A",
+   "order": 9,
+   "desc": "主题注册表全家族 + 五档时间线 + chain 导出与校验审计。",
+   "writes": "topics_meta.db（register/add/merge 属 B 档）"
+  },
+  {
+   "card_id": "artifacts",
+   "label": "产物回收",
+   "tier": "A",
+   "order": 10,
+   "desc": "从 Write/Edit 参数回源提取产物版本；查看用 show。",
+   "writes": "artifacts_meta.db（extract 属 B 档）"
+  },
+  {
+   "card_id": "kb",
+   "label": "知识库",
+   "tier": "A",
+   "order": 11,
+   "desc": "卡片校验/脚手架、知识库骨架与盘点。",
+   "writes": "卡片目录 / 知识库骨架（kb-init、cards new 属 B 档）"
+  },
+  {
+   "card_id": "keywords",
+   "label": "词频账本",
+   "tier": "A",
+   "order": 12,
+   "desc": "n-gram 关键词统计与 keywords_meta.db 回收。",
+   "writes": "keywords_meta.db（gc 属 B 档）"
+  },
+  {
+   "card_id": "service",
+   "label": "长驻服务",
+   "tier": "C",
+   "order": 13,
+   "desc": "要占端口常驻或要人亲手登录的动作——**只生成命令**，页面永不执行。",
+   "writes": "占用端口 / 浏览器登录态"
+  }
+ ],
+ "commands": [
+  {
+   "cmd": "adapters",
+   "card_id": "browse",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--sources",
+     "dest": "sources",
+     "kind": "str",
+     "default": "sources.json",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": null,
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "aggregate",
+   "card_id": "export",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--from",
+     "dest": "from_dir",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "exports_dir",
+     "negates": null,
+     "help": "export 产物目录（读 *.json）",
+     "note": null
+    },
+    {
+     "name": "--all",
+     "dest": "all",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "直接从全部数据源实时聚合",
+     "note": null
+    },
+    {
+     "name": "--sources",
+     "dest": "sources",
+     "kind": "str",
+     "default": "sources.json",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": null,
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": "corpus.md",
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": null,
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--with-notes",
+     "dest": "with_notes",
+     "kind": "bool",
+     "default": true,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": "--no-with-notes",
+     "help": "包含工具调用/思考等非对话条目（默认开；--no-with-notes 关闭）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "api-serve",
+   "card_id": "service",
+   "tier": "C",
+   "args": [
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    },
+    {
+     "name": "--port",
+     "dest": "port",
+     "kind": "int",
+     "default": 8765,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": null,
+     "note": null
+    },
+    {
+     "name": "--host",
+     "dest": "host",
+     "kind": "str",
+     "default": "127.0.0.1",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "默认 127.0.0.1；跨机器暴露须配 --token",
+     "note": null
+    },
+    {
+     "name": "--token",
+     "dest": "token",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "启用 X-Token 头鉴权（非回环 host 必配）",
+     "note": null
+    },
+    {
+     "name": "--cards-root",
+     "dest": "cards_root",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "知识卡片目录（可选；启用 /api/cards 校验端点，访问面启动时钉死，不接受 URL 指定目录）",
+     "note": null
+    },
+    {
+     "name": "--suggestions-meta",
+     "dest": "suggestions_meta",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "建议状态 meta 库路径（可选；启用 /api/reports/agents 的 status 字段）",
+     "note": null
+    },
+    {
+     "name": "--topics-meta",
+     "dest": "topics_meta",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "主题注册 meta 库路径（可选；启用 /api/topics 与 /api/topic/<id>/chain 端点）",
+     "note": null
+    },
+    {
+     "name": "--chain-root",
+     "dest": "chain_root",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "topic-chain 长文目录（可选；默认 ~/.workbuddy/knowledge/topics）",
+     "note": null
+    },
+    {
+     "name": "--keywords-meta",
+     "dest": "keywords_meta",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "关键词 meta 库路径（可选；启用 /api/keywords）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "artifacts",
+   "card_id": "artifacts",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--sid",
+     "dest": "sid",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "sessions_api",
+     "negates": null,
+     "help": "会话 sid（source:session_id）",
+     "note": null
+    },
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "artifacts_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "产物 meta 库路径（默认 artifacts_meta.db）",
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "extract：索引库路径（只读，校验 sid 存在）",
+     "note": null
+    },
+    {
+     "name": "--limit",
+     "dest": "limit",
+     "kind": "int",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "show：最多展示条数",
+     "note": null
+    }
+   ],
+   "subactions": [
+    {
+     "name": "extract",
+     "tier": "B"
+    },
+    {
+     "name": "show",
+     "tier": "B"
+    }
+   ],
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "cards new",
+   "card_id": "kb",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--sid",
+     "dest": "sid",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "sessions_api",
+     "negates": null,
+     "help": "会话的 sid 或 session_id（search 输出的 [sid]）",
+     "note": null
+    },
+    {
+     "name": "--root",
+     "dest": "root",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "卡片输出目录",
+     "note": null
+    },
+    {
+     "name": "--type",
+     "dest": "type",
+     "kind": "enum",
+     "default": "pitfall",
+     "required": false,
+     "choices": [
+      "pitfall",
+      "workflow",
+      "insight"
+     ],
+     "src": "none",
+     "negates": null,
+     "help": "卡片类型（默认 pitfall）",
+     "note": null
+    },
+    {
+     "name": "--title",
+     "dest": "title",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "覆盖标题（默认用会话标题）",
+     "note": null
+    },
+    {
+     "name": "--turn",
+     "dest": "turn",
+     "kind": "int",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "锚点回合号（可选）",
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "cards validate",
+   "card_id": "kb",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--root",
+     "dest": "root",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "卡片库根目录",
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径（给定时校验锚点 session_id）",
+     "note": null
+    },
+    {
+     "name": "--topics-meta",
+     "dest": "topics_meta",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "主题注册表 topics_meta.db（可选；给定时追加「卡片声明主题 ↔ 注册表成员资格」一致性核对，缺省不做该检查，行为与旧版一致）",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "报告输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "chain-audit",
+   "card_id": "topic",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径（只读；取成员原文与回合原文）",
+     "note": null
+    },
+    {
+     "name": "--no-quotes",
+     "dest": "no_quotes",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": "--no-quotes",
+     "help": "跳过引文逐字门",
+     "note": null
+    },
+    {
+     "name": "--no-anchors",
+     "dest": "no_anchors",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": "--no-anchors",
+     "help": "跳过锚点语义门",
+     "note": null
+    },
+    {
+     "name": "--no-coverage",
+     "dest": "no_coverage",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": "--no-coverage",
+     "help": "跳过证据覆盖区块（不查成员的锚点覆盖/去重）",
+     "note": null
+    },
+    {
+     "name": "--quotes-ascii",
+     "dest": "quotes_ascii",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "连 ASCII 双引号 \"…\" 引用一起逐字核（本仓库首条 chain 只有 ASCII 引用，「」门对它空转；开了即计入硬门）",
+     "note": null
+    },
+    {
+     "name": "--strict",
+     "dest": "strict",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "锚点告警也让退出码非零（默认只在引文门失败时非零）",
+     "note": null
+    },
+    {
+     "name": "--list-limit",
+     "dest": "list_limit",
+     "kind": "int",
+     "default": 20,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "各区块明细最多列几条；0 = 不限（默认 20，超出会显式印「另有 N 条」）",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "报告输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "chain-validate",
+   "card_id": "topic",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "主题 meta 库路径（默认 topics_meta.db）",
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径（只读，锚点回溯核对）",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "报告输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "deadcode-scan",
+   "card_id": "service",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--root",
+     "dest": "roots",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "参与名字统计的根目录（可多次；缺省 harvester,tests,harvester-view 中存在者）",
+     "note": null
+    },
+    {
+     "name": "--report-root",
+     "dest": "report_root",
+     "kind": "str",
+     "default": "harvester",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "只对该根下的文件报 AST 发现（默认 harvester）",
+     "note": null
+    },
+    {
+     "name": "--fail-on-found",
+     "dest": "fail_on_found",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "发现任何一条即退出码 1（缺省只提示，因为检查是启发式）",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "报告输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "draft",
+   "card_id": "export",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--sid",
+     "dest": "sid",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "sessions_api",
+     "negates": null,
+     "help": "会话（sid 或 session_id，队列锚点里拿）",
+     "note": null
+    },
+    {
+     "name": "--type",
+     "dest": "type",
+     "kind": "enum",
+     "default": "pitfall",
+     "required": false,
+     "choices": [
+      "pitfall",
+      "workflow",
+      "insight"
+     ],
+     "src": "none",
+     "negates": null,
+     "help": "目标卡片类型（默认 pitfall）",
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    },
+    {
+     "name": "--max-chars",
+     "dest": "max_chars",
+     "kind": "int",
+     "default": 24000,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "会话原文预算字符数（默认 24000）",
+     "note": "覆盖该档默认字符预算（不填=用档位预算）"
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "包输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "export",
+   "card_id": "export",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--select",
+     "dest": "select",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "序号表达式，如 \"3,5-9\"",
+     "note": null
+    },
+    {
+     "name": "--all",
+     "dest": "all",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "导出全部可选会话",
+     "note": null
+    },
+    {
+     "name": "--sources",
+     "dest": "sources",
+     "kind": "str",
+     "default": "sources.json",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "probe 产出的路径配置",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": "exports",
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "导出根目录",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--with-notes",
+     "dest": "with_notes",
+     "kind": "bool",
+     "default": true,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": "--no-with-notes",
+     "help": "包含工具调用/思考等非对话条目（默认开；--no-with-notes 关闭）",
+     "note": null
+    },
+    {
+     "name": "--verbose",
+     "dest": "verbose",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": null,
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "export-analysis",
+   "card_id": "export",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--kind",
+     "dest": "kind",
+     "kind": "enum",
+     "default": null,
+     "required": true,
+     "choices": [
+      "sessions",
+      "tools",
+      "errors",
+      "skills",
+      "triage"
+     ],
+     "src": "none",
+     "negates": null,
+     "help": "导出类别",
+     "note": null
+    },
+    {
+     "name": "--format",
+     "dest": "format",
+     "kind": "enum",
+     "default": "md",
+     "required": false,
+     "choices": [
+      "md",
+      "json"
+     ],
+     "src": "none",
+     "negates": null,
+     "help": "出口格式（同源双出口，默认 md）",
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    },
+    {
+     "name": "--days",
+     "dest": "days",
+     "kind": "float",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "只统计最近 N 天（缺省全库）",
+     "note": "缺省=全库；0 不是全库而是「0 天窗口」（上游实测差异，勿踩）"
+    },
+    {
+     "name": "--sids",
+     "dest": "sids",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "sessions_api",
+     "negates": null,
+     "help": "sessions kind：逗号分隔会话 sid 清单（缺省=全库含错误步骤的会话）",
+     "note": null
+    },
+    {
+     "name": "--min-count",
+     "dest": "min_count",
+     "kind": "int",
+     "default": 2,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "triage kind：pattern 入队最小次数（默认 2）",
+     "note": null
+    },
+    {
+     "name": "--top",
+     "dest": "top",
+     "kind": "int",
+     "default": 10,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "triage kind：高信号会话条数（默认 10）",
+     "note": null
+    },
+    {
+     "name": "--cards-root",
+     "dest": "cards_root",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "triage kind：既有卡片目录",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "harvest-eval",
+   "card_id": "ledger",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    },
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "suggestions_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "建议台账 meta 库路径",
+     "note": null
+    },
+    {
+     "name": "--since",
+     "dest": "since",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "未记 adopted_at 时的分界回退值（YYYY-MM-DD 或 'YYYY-MM-DD HH:MM:SS'）",
+     "note": "只统计最近 N 天（按 steps.ts，近似口径）"
+    },
+    {
+     "name": "--window-days",
+     "dest": "window_days",
+     "kind": "int",
+     "default": 7,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "前后窗口天数（默认 14）",
+     "note": null
+    },
+    {
+     "name": "--threshold",
+     "dest": "threshold",
+     "kind": "float",
+     "default": 0.1,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "相对变化阈值（默认 0.10 = ±10%% 内算无变化）",
+     "note": null
+    },
+    {
+     "name": "--min-per-window",
+     "dest": "min_per_window",
+     "kind": "int",
+     "default": 5,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "样本门槛：每个窗口最少几条错误，达不到一律「不下结论（样本不足）」（默认 5）",
+     "note": null
+    },
+    {
+     "name": "--min-total",
+     "dest": "min_total",
+     "kind": "int",
+     "default": 20,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "样本门槛：两窗口合计最少几条错误（默认 20）",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "报告输出路径（缺省打印）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "index",
+   "card_id": "browse",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--from",
+     "dest": "from_dir",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "exports_dir",
+     "negates": null,
+     "help": "export 产物目录（读 *.json）",
+     "note": null
+    },
+    {
+     "name": "--all",
+     "dest": "all",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "实时扫描全部数据源",
+     "note": null
+    },
+    {
+     "name": "--deepseek-file",
+     "dest": "deepseek_file",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "直接索引一个 DeepSeek 导出 JSON/ZIP",
+     "note": null
+    },
+    {
+     "name": "--export-file",
+     "dest": "export_file",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "直接索引一个官方导出文件（可多次），如 --export-file chatgpt-export=C:/x/conversations.json ；id 可选值: ['chatgpt-export', 'claude-export', 'deepseek-export', 'doubao-raw', 'qianwen-raw', 'yuanbao-raw']",
+     "note": null
+    },
+    {
+     "name": "--sources",
+     "dest": "sources",
+     "kind": "str",
+     "default": "sources.json",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": null,
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    },
+    {
+     "name": "--with-notes",
+     "dest": "with_notes",
+     "kind": "bool",
+     "default": true,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": "--no-with-notes",
+     "help": "含工具调用/思考等非对话条目（默认开；--no-with-notes 关闭）",
+     "note": null
+    },
+    {
+     "name": "--verbose",
+     "dest": "verbose",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": null,
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "kb-init",
+   "card_id": "kb",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--root",
+     "dest": "root",
+     "kind": "str",
+     "default": "C:\\Users\\yianyao\\.workbuddy\\knowledge",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": null,
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "kb-stats",
+   "card_id": "kb",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--root",
+     "dest": "root",
+     "kind": "str",
+     "default": "C:\\Users\\yianyao\\.workbuddy\\knowledge",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": null,
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "keywords",
+   "card_id": "keywords",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    },
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "keywords_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "关键词 meta 库路径（run 追加式）",
+     "note": null
+    },
+    {
+     "name": "--n",
+     "dest": "n",
+     "kind": "str",
+     "default": "2,3",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "n-gram 档位列表，逗号分隔（默认 2,3）",
+     "note": null
+    },
+    {
+     "name": "--role",
+     "dest": "role",
+     "kind": "enum",
+     "default": "user",
+     "required": false,
+     "choices": [
+      "user",
+      "all"
+     ],
+     "src": "chips",
+     "negates": null,
+     "help": "消息角色过滤（默认 user；all=全部）",
+     "note": "keywords：user 只统计用户话 / all 全部角色"
+    },
+    {
+     "name": "--sid",
+     "dest": "sid",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "sessions_api",
+     "negates": null,
+     "help": "限定会话 sid（可重复；缺省=全库）",
+     "note": null
+    },
+    {
+     "name": "--topic",
+     "dest": "topic",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "限定主题 id（可重复；从 --topics-meta 注册库展开成员，与 --sid 合并去重）",
+     "note": null
+    },
+    {
+     "name": "--topics-meta",
+     "dest": "topics_meta",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "主题注册库路径（--topic 展开成员用）",
+     "note": null
+    },
+    {
+     "name": "--stopwords",
+     "dest": "stopwords",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "追加停用词文件（每行一词，# 注释；可多次）。默认已启用随包通用表，本项用于叠加私有表（如作品人名，由使用者自备）",
+     "note": null
+    },
+    {
+     "name": "--no-stopwords",
+     "dest": "no_stopwords",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": "--no-stopwords",
+     "help": "关闭停用词过滤（含默认表），用于复现历史口径",
+     "note": null
+    },
+    {
+     "name": "--top",
+     "dest": "top",
+     "kind": "int",
+     "default": 50,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "报告每档 Top N（默认 50）",
+     "note": null
+    },
+    {
+     "name": "--keep-runs",
+     "dest": "keep_runs",
+     "kind": "int",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "GC：统计后只保留最近 N 次 run（含本次），更早的 run 与其 keyword_stats 一并删除（v0.45；不设则该库只增不减）",
+     "note": null
+    },
+    {
+     "name": "--vacuum",
+     "dest": "vacuum",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "GC 后回收磁盘（VACUUM；仅在确有删除时执行）",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "报告输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "keywords-gc",
+   "card_id": "keywords",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "keywords_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "keywords meta 库路径",
+     "note": null
+    },
+    {
+     "name": "--keep-runs",
+     "dest": "keep_runs",
+     "kind": "int",
+     "default": 1,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "保留最近几次 run（缺省 1；必须 >=1）",
+     "note": null
+    },
+    {
+     "name": "--vacuum",
+     "dest": "vacuum",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "确有删除时执行 VACUUM 回收磁盘",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "ledger-sync",
+   "card_id": "ledger",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "suggestions_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "建议台账 meta 库路径",
+     "note": null
+    },
+    {
+     "name": "--topics-meta",
+     "dest": "topics_meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "主题注册表库路径",
+     "note": null
+    },
+    {
+     "name": "--apply",
+     "dest": "apply",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "真的写入（缺省只打印将要发生的变更）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "mcp-serve",
+   "card_id": "service",
+   "tier": "C",
+   "args": [
+    {
+     "name": "--sources",
+     "dest": "sources",
+     "kind": "str",
+     "default": "sources.json",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": null,
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "search 用的索引库",
+     "note": null
+    },
+    {
+     "name": "--topics-meta",
+     "dest": "topics_meta",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "主题注册 meta 库（启用 topic_list/topic_export/chain_read）",
+     "note": null
+    },
+    {
+     "name": "--chain-root",
+     "dest": "chain_root",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "topic-chain 长文目录（缺省 ~/.workbuddy/knowledge/topics）",
+     "note": null
+    },
+    {
+     "name": "--cards-root",
+     "dest": "cards_root",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "卡片目录（启用 cards_list）",
+     "note": null
+    },
+    {
+     "name": "--artifacts-meta",
+     "dest": "artifacts_meta",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "产物 meta 库（启用 artifacts_list）",
+     "note": null
+    },
+    {
+     "name": "--suggestions-meta",
+     "dest": "suggestions_meta",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "建议状态 meta 库（启用 suggest_list）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "pack",
+   "card_id": "export",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--select",
+     "dest": "select",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "序号表达式，如 \"3,5-9\"",
+     "note": null
+    },
+    {
+     "name": "--tokens",
+     "dest": "tokens",
+     "kind": "int",
+     "default": 2000,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "token 预算",
+     "note": null
+    },
+    {
+     "name": "--question",
+     "dest": "question",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "附加接续任务说明",
+     "note": null
+    },
+    {
+     "name": "--sources",
+     "dest": "sources",
+     "kind": "str",
+     "default": "sources.json",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": null,
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": "context_pack.md",
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": null,
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "probe",
+   "card_id": "collect",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": "sources.json",
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": null,
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--verbose",
+     "dest": "verbose",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": null,
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "read",
+   "card_id": "browse",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--sources",
+     "dest": "sources",
+     "kind": "str",
+     "default": "sources.json",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": null,
+     "note": null
+    },
+    {
+     "name": "--turn",
+     "dest": "turn",
+     "kind": "str",
+     "default": "1",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "回合号 1..N / last / all（默认 1）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "regress",
+   "card_id": "service",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "人读报告输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--json",
+     "dest": "json",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "机读结果（JSON）输出路径；人读/机读分出口（下游是程序就别给人读那份）",
+     "note": null
+    },
+    {
+     "name": "--keep-temp",
+     "dest": "keep_temp",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "保留临时库目录（报告里给出路径），缺省跑完即删",
+     "note": null
+    },
+    {
+     "name": "--temp-base",
+     "dest": "temp_base",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "--keep-temp 时临时目录的父目录（缺省当前目录）",
+     "note": null
+    },
+    {
+     "name": "--list",
+     "dest": "list",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "同时把报告打印到 stdout（配合 --out）",
+     "note": null
+    },
+    {
+     "name": "--corpus",
+     "dest": "corpus",
+     "kind": "str",
+     "default": "default",
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "语料变体：default（内置 12 条）/ drift（**故意漂移**：多一条会话，用来实测「断言失败 → 退出码 1」这条路是通的）",
+     "note": "regress：default 内置语料 / drift 故意漂移（验证断言会红）"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "report-chains",
+   "card_id": "errors",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    },
+    {
+     "name": "--since",
+     "dest": "since",
+     "kind": "float",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "只统计最近 N 天（按 steps.ts，近似口径）",
+     "note": "只统计最近 N 天（按 steps.ts，近似口径）"
+    },
+    {
+     "name": "--top",
+     "dest": "top",
+     "kind": "int",
+     "default": 10,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "高步会话 Top N（默认 10）",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "报告输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "report-errors",
+   "card_id": "errors",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    },
+    {
+     "name": "--since",
+     "dest": "since",
+     "kind": "float",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "只统计最近 N 天",
+     "note": "只统计最近 N 天（按 steps.ts，近似口径）"
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "报告输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "report-skill",
+   "card_id": "skill",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    },
+    {
+     "name": "--skill",
+     "dest": "skill",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "只看这一个 skill（输出全量调用深挖清单）",
+     "note": null
+    },
+    {
+     "name": "--min-calls",
+     "dest": "min_calls",
+     "kind": "int",
+     "default": 0,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "样本量阈值：calls<阈值的 skill 标 low-sample（默认 0=不标）",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "报告输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "report-skill-join",
+   "card_id": "skill",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--chain",
+     "dest": "chain",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "cards_api",
+     "negates": null,
+     "help": "chain 长文路径",
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    },
+    {
+     "name": "--skill",
+     "dest": "skill",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "只交叉指定 skill 名（缺省全部）",
+     "note": null
+    },
+    {
+     "name": "--margin-days",
+     "dest": "margin_days",
+     "kind": "float",
+     "default": 0.0,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "stage 时间窗向后放宽天数（默认 0）",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "报告输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "report-tools",
+   "card_id": "tools",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--sources",
+     "dest": "sources",
+     "kind": "str",
+     "default": "sources.json",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": null,
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径；steps 表有数据时用结构化口径（含重试/放弃率）",
+     "note": null
+    },
+    {
+     "name": "--since",
+     "dest": "since",
+     "kind": "float",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "只统计最近 N 天（按 steps.ts，近似口径）",
+     "note": "只统计最近 N 天（按 steps.ts，近似口径）"
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "报告输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--verbose",
+     "dest": "verbose",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": null,
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "report-traces",
+   "card_id": "tools",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--root",
+     "dest": "root",
+     "kind": "str",
+     "default": "C:\\Users\\yianyao\\.workbuddy\\traces",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "traces 目录（默认 ~/.workbuddy/traces）",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "报告输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "scan",
+   "card_id": "browse",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--sources",
+     "dest": "sources",
+     "kind": "str",
+     "default": "sources.json",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "probe 产出的路径配置",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": "outline",
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "纲要输出目录",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--verbose",
+     "dest": "verbose",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": null,
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "search",
+   "card_id": "browse",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": null,
+     "note": null
+    },
+    {
+     "name": "--limit",
+     "dest": "limit",
+     "kind": "int",
+     "default": 20,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": null,
+     "note": null
+    },
+    {
+     "name": "--source",
+     "dest": "source",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "限定来源 adapter id",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "suggest-agents",
+   "card_id": "ledger",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    },
+    {
+     "name": "--since",
+     "dest": "since",
+     "kind": "float",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "只统计最近 N 天",
+     "note": "只统计最近 N 天（按 steps.ts，近似口径）"
+    },
+    {
+     "name": "--min-count",
+     "dest": "min_count",
+     "kind": "int",
+     "default": 3,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "模式出条目的最低实测次数（默认 3）",
+     "note": null
+    },
+    {
+     "name": "--max",
+     "dest": "max",
+     "kind": "int",
+     "default": 15,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "最多条目数",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": "agents_suggestions.md",
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "建议文件输出路径",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "建议状态 meta 库路径（suggestion_status 表；缺省不读状态，全部按 pending 渲染）",
+     "note": null
+    },
+    {
+     "name": "--coverage",
+     "dest": "coverage",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "追加「建议池 ↔ 台账」覆盖核对（v0.45）：列出待裁决、台账陈旧·已采纳（疑似生效，不算欠账）与·其他（应清账），另附人账总览；只对账不代改",
+     "note": null
+    },
+    {
+     "name": "--coverage-out",
+     "dest": "coverage_out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "覆盖核对报告输出路径（缺省打印）",
+     "note": null
+    },
+    {
+     "name": "--topics-meta",
+     "dest": "topics_meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "主题注册表库路径（--coverage 的人账总览用；V0.46 P2-5）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "suggest-status",
+   "card_id": "ledger",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "meta 库路径",
+     "note": null
+    },
+    {
+     "name": "--key",
+     "dest": "key",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "建议条目 key（建议池条目=title，待人工归因模式=pattern）",
+     "note": null
+    },
+    {
+     "name": "--status",
+     "dest": "status",
+     "kind": "enum",
+     "default": null,
+     "required": true,
+     "choices": [
+      "pending",
+      "adopted",
+      "rejected"
+     ],
+     "src": "none",
+     "negates": null,
+     "help": "审阅结论",
+     "note": null
+    },
+    {
+     "name": "--adopted-at",
+     "dest": "adopted_at",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "采纳时刻（YYYY-MM-DD 或 'YYYY-MM-DD HH:MM:SS'）；harvest-eval 用它当 A/B 分界 T。不传则首次采纳记当前时间、已有值保留（只增不减）",
+     "note": null
+    },
+    {
+     "name": "--note",
+     "dest": "note",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "人工说明；推荐写法里含一行 `pattern: <错误pattern>`，harvest-eval 会用它做匹配（key 仍是建议句原文）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "sync",
+   "card_id": "collect",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--root",
+     "dest": "root",
+     "kind": "str",
+     "default": ".",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "项目根目录（其余相对路径的基准）",
+     "note": null
+    },
+    {
+     "name": "--sources",
+     "dest": "sources",
+     "kind": "str",
+     "default": "sources.json",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "数据源声明（相对 root）",
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径（相对 root）",
+     "note": null
+    },
+    {
+     "name": "--inbox",
+     "dest": "inbox",
+     "kind": "str",
+     "default": "inbox",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "收件箱目录（相对 root）",
+     "note": null
+    },
+    {
+     "name": "--exports",
+     "dest": "exports",
+     "kind": "str",
+     "default": "exports",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "导出目录（相对 root）",
+     "note": null
+    },
+    {
+     "name": "--no-notes",
+     "dest": "no_notes",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": "--no-notes",
+     "help": "导出时排除 note 角色（默认包含——工具步骤藏在 note 消息里，排除会导致 steps 表为空、分析失效）",
+     "note": null
+    },
+    {
+     "name": "--keywords-meta",
+     "dest": "keywords_meta",
+     "kind": "str",
+     "default": "keywords_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "keywords meta 库路径（相对 root）；sync 收尾会回收它（只留最近 N 次 run，见 --keywords-keep-runs）",
+     "note": null
+    },
+    {
+     "name": "--keywords-keep-runs",
+     "dest": "keywords_keep_runs",
+     "kind": "int",
+     "default": 1,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "sync 收尾保留的 keywords run 数（默认 1：读路径只读最新一次，留多个只是把体积乘 N）",
+     "note": null
+    },
+    {
+     "name": "--no-prune-keywords",
+     "dest": "no_prune_keywords",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": "--no-prune-keywords",
+     "help": "关闭 sync 收尾的 keywords GC（默认开：keyword_stats 是累积表，靠人记得手动跑 keywords-gc = 库会一直涨）",
+     "note": null
+    },
+    {
+     "name": "--verbose",
+     "dest": "verbose",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": null,
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "topic",
+   "card_id": "topic",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "主题 meta 库路径（默认 topics_meta.db）",
+     "note": null
+    },
+    {
+     "name": "--name",
+     "dest": "name",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "register：主题名称；rename：新名称",
+     "note": null
+    },
+    {
+     "name": "--keywords",
+     "dest": "keywords",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "register：逗号分隔关键词",
+     "note": null
+    },
+    {
+     "name": "--id",
+     "dest": "id_",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "add/remove/merge/show/export/md/chain：主题 id",
+     "note": null
+    },
+    {
+     "name": "--from",
+     "dest": "from_",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "merge：逗号分隔源主题 id（成员并入 --id 后删除）",
+     "note": null
+    },
+    {
+     "name": "--keep-sources",
+     "dest": "keep_sources",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "merge：保留源主题行（缺省删除）",
+     "note": null
+    },
+    {
+     "name": "--sids",
+     "dest": "sids",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "sessions_api",
+     "negates": null,
+     "help": "add：逗号分隔成员 sid 列表",
+     "note": null
+    },
+    {
+     "name": "--evidence",
+     "dest": "evidence",
+     "kind": "str",
+     "default": "",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "add：成员证据说明（如关键词命中口径）",
+     "note": null
+    },
+    {
+     "name": "--sid",
+     "dest": "sid",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "sessions_api",
+     "negates": null,
+     "help": "remove/fine/artifact 档：成员 sid",
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "chain/pack/export：索引库路径（只读）",
+     "note": null
+    },
+    {
+     "name": "--chain-root",
+     "dest": "chain_root",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "export/md：chain 正式位目录（合并各链锚点用；md 不给则关键转折/结论/未决标注为「未执行」）",
+     "note": null
+    },
+    {
+     "name": "--cap",
+     "dest": "cap",
+     "kind": "int",
+     "default": 200,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "turns：预览每回合截断字符数（默认 200）",
+     "note": null
+    },
+    {
+     "name": "--full",
+     "dest": "full",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "turns：输出 raw 全文（逐字引文用；体积大）",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "chain/pack/md：产物输出路径（缺省打印）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--level",
+     "dest": "level",
+     "kind": "enum",
+     "default": "title",
+     "required": false,
+     "choices": [
+      "title",
+      "coarse",
+      "mid",
+      "fine",
+      "artifact"
+     ],
+     "src": "chips",
+     "negates": null,
+     "help": "chain/pack 分层：title(极粗~2K)/coarse(粗~10K)/mid(中~30K)/fine/artifact（后两档按需，须 --sid）",
+     "note": "title 极粗 ~2K / coarse ~10K / mid ~30K / fine·artifact 按需档"
+    },
+    {
+     "name": "--artifacts-meta",
+     "dest": "artifacts_meta",
+     "kind": "str",
+     "default": "artifacts_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "artifact 档产物 meta 库路径",
+     "note": null
+    },
+    {
+     "name": "--max-chars",
+     "dest": "max_chars",
+     "kind": "int",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "覆盖该档默认字符预算",
+     "note": "覆盖该档默认字符预算（不填=用档位预算）"
+    }
+   ],
+   "subactions": [
+    {
+     "name": "register",
+     "tier": "B"
+    },
+    {
+     "name": "add",
+     "tier": "B"
+    },
+    {
+     "name": "remove",
+     "tier": "B"
+    },
+    {
+     "name": "merge",
+     "tier": "B"
+    },
+    {
+     "name": "rename",
+     "tier": "B"
+    },
+    {
+     "name": "delete",
+     "tier": "B"
+    },
+    {
+     "name": "keywords",
+     "tier": "B"
+    },
+    {
+     "name": "list",
+     "tier": "A"
+    },
+    {
+     "name": "show",
+     "tier": "A"
+    },
+    {
+     "name": "export",
+     "tier": "A"
+    },
+    {
+     "name": "md",
+     "tier": "A"
+    },
+    {
+     "name": "dedupe",
+     "tier": "A"
+    },
+    {
+     "name": "turns",
+     "tier": "A"
+    },
+    {
+     "name": "chain",
+     "tier": "A"
+    },
+    {
+     "name": "pack",
+     "tier": "A"
+    }
+   ],
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "topic-candidates",
+   "card_id": "triage",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    },
+    {
+     "name": "--topics-meta",
+     "dest": "topics_meta",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "主题注册库（只读，用于排除已注册成员）",
+     "note": null
+    },
+    {
+     "name": "--min-sim",
+     "dest": "min_sim",
+     "kind": "float",
+     "default": 0.35,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "成簇相似度阈值（默认 0.35）",
+     "note": null
+    },
+    {
+     "name": "--min-size",
+     "dest": "min_size",
+     "kind": "int",
+     "default": 2,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "最小簇大小（默认 2）",
+     "note": null
+    },
+    {
+     "name": "--top-tools",
+     "dest": "top_tools",
+     "kind": "int",
+     "default": 3,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "任务签名的工具序列 top-k（默认 3）",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "报告输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "topic-consolidate",
+   "card_id": "triage",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "主题 meta 库路径（默认 topics_meta.db）",
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库（只读；出梳理包时用于取成员标题与零散候选）",
+     "note": null
+    },
+    {
+     "name": "--chain-root",
+     "dest": "chain_root",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "chain 正式位目录（统计每主题已有几条链）",
+     "note": null
+    },
+    {
+     "name": "--plan-out",
+     "dest": "plan_out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "梳理包输出路径（缺省打印到 stdout）",
+     "note": null
+    },
+    {
+     "name": "--apply",
+     "dest": "apply",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "执行指定的 plan.yaml（缺省 dry-run，加 --yes 才写库）",
+     "note": null
+    },
+    {
+     "name": "--yes",
+     "dest": "yes",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "真的写库（缺省只校验并打印预览）",
+     "note": null
+    },
+    {
+     "name": "--snap-dir",
+     "dest": "snap_dir",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "被舍弃主题的快照输出目录",
+     "note": null
+    },
+    {
+     "name": "--noise-list",
+     "dest": "noise_list",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "列出已登记的零散会话",
+     "note": null
+    },
+    {
+     "name": "--noise-max-chars",
+     "dest": "noise_max_chars",
+     "kind": "int",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "梳理包里「零散会话候选」的字符阈值（默认 40；调小 = 只挑最窄的一批）",
+     "note": null
+    },
+    {
+     "name": "--triage",
+     "dest": "triage",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "零散分诊：按「只要求查询且无整合诉求」判定并打印",
+     "note": null
+    },
+    {
+     "name": "--triage-out",
+     "dest": "triage_out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "分诊报告输出路径（缺省打印到 stdout）",
+     "note": null
+    },
+    {
+     "name": "--triage-json",
+     "dest": "triage_json",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "分诊结果 JSON 输出路径（**全量 rows，不截断**）；填 plan 要用它，别照人读报告（每类只印 60 条）",
+     "note": null
+    },
+    {
+     "name": "--triage-brief",
+     "dest": "triage_brief",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "分诊简报：一行一条（verdict/sid/日期/命中主题/首条原文），**不截断条数**；可选值只列某一类判定",
+     "note": null
+    },
+    {
+     "name": "--triage-brief-out",
+     "dest": "triage_brief_out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "分诊简报输出路径（缺省打印；与 --triage-brief 配合）",
+     "note": null
+    },
+    {
+     "name": "--brief-chars",
+     "dest": "brief_chars",
+     "kind": "int",
+     "default": 60,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "简报里首条原文的截断字符数（默认 60）",
+     "note": null
+    },
+    {
+     "name": "--plan-seed",
+     "dest": "plan_seed",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "从分诊 JSON 生成 plan 草稿（机械映射 + 完整性校验）；语义判断走 --judgment",
+     "note": null
+    },
+    {
+     "name": "--judgment",
+     "dest": "judgment",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "--plan-seed 的逐轮判断文件（YAML：new_topics/craft_topic/overrides/noise/skip）",
+     "note": null
+    },
+    {
+     "name": "--craft-topic",
+     "dest": "craft_topic",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "--plan-seed：craft_material 整类的去处（tp-xxx 或 new:KEY）；不给则该类本轮不动",
+     "note": null
+    },
+    {
+     "name": "--require-covered",
+     "dest": "require_covered",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "--plan-seed：逗号分隔的判定类，若其中仍有未归置的 sid 则报错退出（如 noise_high）",
+     "note": null
+    },
+    {
+     "name": "--seed-out",
+     "dest": "seed_out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "--plan-seed 的 plan 输出路径（缺省打印到 stdout）",
+     "note": null
+    },
+    {
+     "name": "--triage-max-turns",
+     "dest": "triage_max_turns",
+     "kind": "int",
+     "default": 3,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "分诊范围：user 回合数 ≤ 该值的会话（默认 3）",
+     "note": null
+    },
+    {
+     "name": "--triage-deep",
+     "dest": "triage_deep",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "同时捞出**深会话**（user 回合 > --triage-max-turns），单列为 deep_topic_hint / deep_unassigned 两类，**永不参与零散判定**（v0.39；不这么做的副作用是深会话永远进不了归位视野）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "triage",
+   "card_id": "triage",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    },
+    {
+     "name": "--since",
+     "dest": "since",
+     "kind": "float",
+     "default": 7.0,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "窗口天数（默认 7；传 0 表示全库）",
+     "note": "只统计最近 N 天（按 steps.ts，近似口径）"
+    },
+    {
+     "name": "--cards-root",
+     "dest": "cards_root",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "已有卡片目录（做'疑似已有卡'子串比对）",
+     "note": null
+    },
+    {
+     "name": "--min-count",
+     "dest": "min_count",
+     "kind": "int",
+     "default": 2,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "pattern 入队的最小出现次数（默认 2）",
+     "note": null
+    },
+    {
+     "name": "--top",
+     "dest": "top",
+     "kind": "int",
+     "default": 10,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "高信号会话条数（默认 10）",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "队列输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "update",
+   "card_id": "collect",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--root",
+     "dest": "root",
+     "kind": "str",
+     "default": ".",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "项目根目录（其余相对路径的基准）",
+     "note": null
+    },
+    {
+     "name": "--sources",
+     "dest": "sources",
+     "kind": "str",
+     "default": "sources.json",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "数据源声明（相对 root）",
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径（相对 root）",
+     "note": null
+    },
+    {
+     "name": "--inbox",
+     "dest": "inbox",
+     "kind": "str",
+     "default": "inbox",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "收件箱目录（相对 root）",
+     "note": null
+    },
+    {
+     "name": "--exports",
+     "dest": "exports",
+     "kind": "str",
+     "default": "exports",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "导出目录（相对 root）",
+     "note": null
+    },
+    {
+     "name": "--no-notes",
+     "dest": "no_notes",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": "--no-notes",
+     "help": "导出时排除 note 角色（默认包含，理由同 sync）",
+     "note": null
+    },
+    {
+     "name": "--verbose",
+     "dest": "verbose",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": null,
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "weblogin check",
+   "card_id": "service",
+   "tier": "C",
+   "args": [],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "weblogin init-config",
+   "card_id": "service",
+   "tier": "C",
+   "args": [
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": "webchat.accounts.json",
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": null,
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "weblogin prepare",
+   "card_id": "service",
+   "tier": "C",
+   "args": [],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  }
+ ],
+ "tiers": {
+  "A": "只读直接执行",
+  "B": "写 meta/采集库（两段提交）",
+  "C": "只生成命令，永不执行"
+ }
+}

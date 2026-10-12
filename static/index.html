@@ -131,6 +131,36 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 .tl-node:hover{border-color:var(--accent)}
 .tl-node .anchor{font-family:Consolas,monospace;font-size:12px;
   color:var(--accent);margin-right:8px}
+/* ---- v0.34 P1：解释层（结论卡/卡片本体/导语/悬停卡/chips） ---- */
+.concl{border:1px solid var(--line);border-left:3px solid var(--accent);
+  background:var(--bg);border-radius:8px;padding:8px 12px;margin:10px 0}
+.concl .c-judge{font-weight:600}
+.concl .c-actions{margin-top:6px;display:flex;gap:6px;flex-wrap:wrap}
+.concl .c-actions button{font-size:12px;padding:2px 10px}
+.concl .c-sub{color:var(--ink2);font-size:12px;margin-top:4px}
+.gterm{text-decoration:underline dotted var(--accent);cursor:help}
+#gl-pop{position:fixed;z-index:30;max-width:360px;background:var(--ink);
+  color:#fff;border-radius:8px;padding:10px 12px;font-size:12px;
+  line-height:1.6;box-shadow:0 4px 16px rgba(0,0,0,.25);display:none}
+#gl-pop .t{font-weight:700;margin-bottom:2px}
+#gl-pop .ex{color:#c9d4e3;margin-top:4px}
+.panel-intro{border:1px dashed var(--line);border-radius:8px;
+  padding:6px 10px;margin:0 0 10px;font-size:12px;color:var(--ink2)}
+.panel-intro summary{cursor:pointer;color:var(--accent)}
+.card-body{border:1px solid var(--line);border-radius:8px;padding:8px 12px;
+  margin-bottom:10px}
+.card-body h4{margin:0 0 4px;font-size:13px;display:flex;gap:8px;
+  align-items:center;flex-wrap:wrap}
+.card-body .c-ev{font-family:Consolas,monospace;font-size:12px;
+  color:var(--ink2);background:var(--bg);border-radius:6px;
+  padding:6px 8px;margin:6px 0;white-space:pre-wrap;word-break:break-word}
+.card-body .c-anc{margin-top:4px}
+.chip{display:inline-block;border:1px solid var(--line);border-radius:11px;
+  padding:1px 10px;font-size:12px;color:var(--ink2);cursor:pointer;
+  margin:0 4px 4px 0;user-select:none}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.chip:hover{border-color:var(--accent)}
+.chiprow{margin:6px 0}
 </style>
 </head>
 <body>
@@ -152,6 +182,8 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 <section class="tab" id="tab-sessions">
   <main>
   <div id="left">
+    <div id="sess-intro"></div>
+    <div id="sess-chips" class="chiprow" style="display:none"></div>
     <div id="filters">
       <label>来源 <select id="f-source"><option value="">全部</option></select></label>
       <label>模型 <select id="f-model"><option value="">全部</option></select></label>
@@ -200,6 +232,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
     <button id="btn-tri-json" class="xbtn" title="导出机器可读 JSON（含归一模式去重说明），可直接交给 Agent 分析">导出 JSON</button>
     <span class="sub2" id="tri-meta"></span>
   </div>
+  <div id="tri-concl"></div>
   <div class="report-box" id="tri-out"><div class="empty">尚未生成</div></div>
 </section>
 
@@ -223,6 +256,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
     <button id="btn-rep-json" class="xbtn" title="导出机器可读 JSON（上游原始结构 + 归一模式去重说明），可直接交给 Agent 分析">导出 JSON</button>
     <span class="sub2" id="rep-meta"></span>
   </div>
+  <div id="rep-concl"></div>
   <div class="report-box" id="rep-out"><div class="empty">尚未生成</div></div>
 </section>
 
@@ -248,6 +282,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
       <button id="btn-topics-refresh">刷新</button>
       <span class="sub2" id="topics-meta"></span>
     </div>
+    <div id="topics-intro"></div>
     <div id="topics-list"><div class="empty">加载中…</div></div>
   </div>
   <div id="topics-mid">
@@ -275,7 +310,12 @@ const $ = id => document.getElementById(id);
 const state = {no:0, offset:0, limit:50, total:0, q:"", sid:null,
                tab:"sessions", repKind:"tools", sel:new Set(),
                loaded:{sessions:false, triage:false, reports:false,
-                       agg:false, topics:false}};
+                       agg:false, topics:false},
+               /* v0.34 P1：解释层与筛选状态（errChip=报告页模式类别，
+                  sessChip=会话页类别；errChipRep=全库 errors 报告缓存；
+                  sessClsMap=sid→类别集合缓存；cardsBodies=卡片本体缓存） */
+               errChip:"", sessChip:"", errChipRep:null,
+               sessClsMap:{}, sessClsSess:null, cardsBodies:[]};
 
 /* ---------- 工具 ---------- */
 function esc(s){return String(s??"").replace(/[&<>"']/g,
@@ -306,6 +346,140 @@ function bindAnchors(root){
                              a.dataset.err||"");
 }
 function errorBox(msg){return "<div class='empty'>"+esc(msg)+"</div>";}
+
+/* ---------- P1 解释层：glossary 加载 / 术语悬停 / 面板导语 / 结论卡 ---------- */
+/* 数据源：view 仓本地只读服务 viewserver.py（端口 8766，决策 D9）。
+   服务未启动时解释层静默降级：页面照常，只是没有导语/悬停/人话。 */
+const glossary = {loaded:false, data:null};
+async function loadGlossary(){
+  if(glossary.loaded)return glossary.data;
+  const res=await fetch("/view/glossary");
+  if(!res.ok)throw new Error("glossary 服务不可用（HTTP "+res.status+"）");
+  glossary.data=await res.json();
+  glossary.loaded=true;
+  return glossary.data;
+}
+/* 归一模式 → 人话（glossary.patterns 精确匹配；未收录返回空=不显示） */
+function patternPlain(p){
+  const ps=(glossary.data||{}).patterns||[];
+  const hit=ps.find(x=>x.pattern===p);
+  return hit?hit.plain:"";
+}
+const CLASS_LABEL={env:"环境类",tool_interface:"用法类",
+  context:"上下文类",unclassified:"未归类"};
+function clsLabel(c){return CLASS_LABEL[c]||c;}
+/* 术语 → 卡（精确匹配；悬停弹层用） */
+function termCard(term){
+  const ts=(glossary.data||{}).terms||[];
+  return ts.find(x=>x.term===term)||null;
+}
+/* 给 root 内文本包虚线下划线（每个文本节点最多包第一个命中；已包过/
+   弹层/脚本内跳过；≤3 字符纯英文词不包防误伤）。重渲染后由调用方再跑。 */
+function applyTermTooltips(root){
+  const ts=(glossary.data||{}).terms||[];
+  if(!ts.length||!root)return;
+  const tw=ts.map(t=>t.term)
+    .filter(t=>t&&!(t.length<=3&&/^[A-Za-z0-9_]+$/.test(t)))
+    .sort((a,b)=>b.length-a.length);
+  if(!tw.length)return;
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+  const nodes=[];
+  while(walker.nextNode())nodes.push(walker.currentNode);
+  for(const node of nodes){
+    const text=node.nodeValue;
+    if(!text||text.length<2)continue;
+    if(node.parentElement&&node.parentElement.closest&&
+       node.parentElement.closest(".gterm,#gl-pop,script,style"))continue;
+    let hit=null,hidx=-1;
+    for(const t of tw){const i=text.indexOf(t);
+      if(i>=0){hit=t;hidx=i;break;}}
+    if(!hit)continue;
+    const frag=document.createDocumentFragment();
+    frag.appendChild(document.createTextNode(text.slice(0,hidx)));
+    const span=document.createElement("span");
+    span.className="gterm";span.dataset.term=hit;
+    span.textContent=hit;
+    frag.appendChild(span);
+    frag.appendChild(document.createTextNode(text.slice(hidx+hit.length)));
+    node.parentNode.replaceChild(frag,node);
+  }
+}
+/* 全局悬停弹层：事件委托一次绑定；滚动即收起 */
+(function(){
+  let pop=null;
+  function ensurePop(){
+    if(pop)return pop;
+    pop=document.createElement("div");pop.id="gl-pop";
+    document.body.appendChild(pop);
+    return pop;
+  }
+  document.addEventListener("mouseover",e=>{
+    const el=e.target&&e.target.closest?e.target.closest(".gterm"):null;
+    if(!el)return;
+    const c=termCard(el.dataset.term);
+    if(!c)return;
+    const p=ensurePop();
+    p.innerHTML="<div class='t'>"+esc(c.term)+"</div>"+esc(c.plain)+
+      (c.example?"<div class='ex'>例："+esc(c.example)+"</div>":"");
+    p.style.display="block";
+    const w=Math.min(360,window.innerWidth-20);
+    const r=el.getBoundingClientRect();
+    p.style.width=w+"px";
+    p.style.left=Math.max(8,Math.min(r.left,window.innerWidth-w-8))+"px";
+    p.style.top=Math.min(r.bottom+6,window.innerHeight-140)+"px";
+  });
+  document.addEventListener("mouseout",e=>{
+    if(!pop)return;
+    const el=e.target&&e.target.closest?e.target.closest(".gterm"):null;
+    if(el)pop.style.display="none";
+  });
+  document.addEventListener("scroll",()=>{
+    if(pop)pop.style.display="none";},true);
+})();
+/* 面板导语（glossary.panels；key=面板标识，可折叠） */
+function panelIntro(key){
+  const ps=(glossary.data||{}).panels||[];
+  const p=ps.find(x=>x.panel===key);
+  if(!p||!p.intro)return "";
+  return "<details class='panel-intro'><summary>怎么读</summary>"+
+    esc(p.intro)+"</details>";
+}
+/* 结论卡骨架（纯模板，无 LLM）：o={lines:[{text,ok?}],sub,
+   actions:[{id,label,title}]}；ok 行=判语加粗 */
+function conclusionCard(o){
+  let h="<div class='concl'>";
+  for(const l of (o.lines||[]))
+    h+="<div"+(l.ok!==undefined?" class='c-judge'":"")+">"+l.text+"</div>";
+  if(o.sub)h+="<div class='c-sub'>"+o.sub+"</div>";
+  const acts=o.actions||[];
+  if(acts.length){
+    h+="<div class='c-actions'>";
+    for(const a of acts)
+      h+="<button data-cact='"+esc(a.id)+"' title='"+esc(a.title||"")+"'>"+
+        esc(a.label)+"</button>";
+    h+="</div>";
+  }
+  return h+"</div>";
+}
+function bindConcl(root,handlers){
+  for(const b of root.querySelectorAll("[data-cact]")){
+    const fn=handlers[b.dataset.cact];
+    if(fn)b.onclick=()=>fn();
+  }
+}
+/* 卡片 sid 显示：真卡 sid 是长路径形态（dsh:…/session-<uuid>/…），
+   抓 uuid 前 13 位显示，完整 sid 放 title（悬停可见） */
+function shortSid(sid){
+  const m=String(sid||"").match(/session-([0-9a-f][0-9a-f-]+)/i);
+  if(m)return m[1].slice(0,13)+"…";
+  const s=String(sid||"");
+  return s.length>28?s.slice(0,25)+"…":s;
+}
+/* 卡片本体锚点：走主题页同款跳转（sid+turn 直达回合全文） */
+function bindCardAnchors(root){
+  for(const a of root.querySelectorAll(".card-body a.anchor"))
+    a.onclick=()=>gotoTopicAnchor(a.dataset.sid,Number(a.dataset.turn||0));
+}
 
 /* ---------- API 访问（经本地代理） ---------- */
 async function api(path){
@@ -399,6 +573,10 @@ async function initUpstreams(){
 async function loadAll(){
   $("rows").innerHTML="<tr><td colspan='4' class='empty'>加载中…</td></tr>";
   $("meta").textContent="";
+  /* P1-1/P1-4：glossary 先行（失败静默——解释层可降级，数据面不依赖它） */
+  try{ await loadGlossary(); }catch(e){}
+  $("sess-intro").innerHTML=panelIntro("sessions");
+  if(glossary.loaded)applyTermTooltips($("sess-intro"));
   try{ await loadMeta(); }catch(e){}
   try{ await loadFacets(); }catch(e){}
   try{ await loadSessions(); }catch(e){}
@@ -471,6 +649,10 @@ async function loadSessions(){
     +state.total+" 条"):"";
   $("btn-prev").disabled=state.offset<=0;
   $("btn-next").disabled=state.offset+state.limit>=state.total;
+  /* P1-5：异常类别 chips（条数=全库 errors 报告；会话级核对按需懒加载） */
+  renderSessChips();
+  if($("f-erronly").checked)
+    ensureErrChipData().then(()=>renderSessChips()).catch(()=>{});
 }
 /* ---- 勾选与批量导出（v2.3） ---- */
 function updateSelInfo(){
@@ -572,6 +754,172 @@ async function gotoAnchor(sid,seq,errText){
     +"可按 step #"+seq+" 在回合列表中人工定位。");
 }
 
+/* ---------- P1-5：会话异常类别 chips（错误→会话对账） ---------- */
+/* 口径：chips 上的条数来自 /api/reports/errors?days=0 的 by_class
+   （与 G2 报告同源同库，全库=381 对账基准）；「哪些会话涉哪类」上游无
+   聚合端点，用 /api/session/<sid> 的 error_steps 逐会话懒加载并缓存
+   （每会话一次只读查询，现场给进度提示）。两路数字分开显示：
+   条数=报告口径，会话数=逐步核对口径，不混用。 */
+async function ensureErrChipData(){
+  if(state.errChipRep)return state.errChipRep;
+  /* 全库口径=不传 days（apiserve 语义：缺省=全库；days=0 是"0 天窗口"） */
+  const d=await api("/api/reports/errors");
+  state.errChipRep=d;
+  return d;
+}
+function renderSessChips(){
+  const box=$("sess-chips");
+  const d=state.errChipRep;
+  if(!$("f-erronly").checked||!d){box.style.display="none";
+    box.innerHTML="";return;}
+  const bc=d.by_class||{};
+  const tot=Object.values(bc).reduce((a,b)=>a+b,0);
+  const cur=state.sessChip||"";
+  let h="<span class='sub2'>错误类别（条数"+
+    (state.sessClsSess?"/涉及会话":"")+"，全库对账）：</span>";
+  h+="<span class='chip"+(cur?"":" on")+"' data-sesschip=''>全部 "+tot+
+    "</span>";
+  h+=Object.entries(bc).sort((a,b)=>b[1]-a[1]).map(e=>
+    "<span class='chip"+(cur===e[0]?" on":"")+
+    "' data-sesschip='"+esc(e[0])+"'>"+esc(clsLabel(e[0]))+" "+e[1]+
+    ((state.sessClsSess&&state.sessClsSess[e[0]]!=null)?
+      " / "+state.sessClsSess[e[0]]+" 会话":"")+"</span>").join("");
+  box.style.display="";box.innerHTML=h;
+  for(const el of box.querySelectorAll("[data-sesschip]"))
+    el.onclick=()=>{state.sessChip=el.dataset.sesschip||"";
+      renderSessChips();applySessChipFilter().catch(()=>{});};
+}
+async function applySessChipFilter(){
+  const cls=state.sessChip;
+  const rows=[...$("rows").querySelectorAll("tr[data-sid]")];
+  if(!cls){
+    for(const tr of rows)tr.style.display="";
+    return;
+  }
+  const missing=rows.map(tr=>tr.dataset.sid)
+    .filter(sid=>!state.sessClsMap[sid]);
+  if(missing.length)
+    showBanner("warn","正在核对 "+missing.length+" 个会话的错误类别"+
+      "（每会话一次只读查询，稍候…）");
+  let done=0;
+  for(let i=0;i<missing.length;i+=5){
+    await Promise.all(missing.slice(i,i+5).map(async sid=>{
+      try{
+        const s=await api("/api/session/"+encodeURIComponent(sid));
+        state.sessClsMap[sid]=new Set(
+          (s.error_steps||[]).map(x=>x["class"]));
+      }catch(e){ state.sessClsMap[sid]=new Set(); }
+      done++;
+    }));
+    if(missing.length>10)
+      showBanner("warn","正在核对错误类别… "+done+"/"+missing.length);
+  }
+  const agg={};
+  for(const set of Object.values(state.sessClsMap))
+    for(const c of set)agg[c]=(agg[c]||0)+1;
+  state.sessClsSess=agg;
+  let shown=0;
+  for(const tr of rows){
+    const set=state.sessClsMap[tr.dataset.sid]||new Set();
+    const on=!cls||set.has(cls);
+    tr.style.display=on?"":"none";
+    if(on)shown++;
+  }
+  hideBanner();
+  renderSessChips();
+  $("selinfo").textContent="按「"+clsLabel(cls)+"」筛出本页 "+
+    shown+"/"+rows.length+" 个会话（条数口径见 chips；明细见 G2 报告）";
+}
+/* ---------- P1-2/P1-3 配套：面板结论卡与卡片本体拉取 ---------- */
+/* 结论卡纪律（提案 §3.1）：主语+数字+判语+动作，全 if/else+字符串模板，
+   数字全部取自本次 API 响应现算，LLM 不进这一层。「环比」暂缺基线字段，
+   诚实不做（不造数）。 */
+function renderRepConcl(kind,d){
+  const box=$("rep-concl");
+  let cc="", handlers=null;
+  const introKey=kind;
+  if(kind==="tools"){
+    const tot=(d.tools||[]).reduce((a,t)=>a+t.calls,0);
+    const err=(d.tools||[]).reduce((a,t)=>a+t.error,0);
+    const given=(d.tools||[]).reduce((a,t)=>a+(t.given_up||0),0);
+    const worst=(d.tools||[]).filter(t=>t.error>0)
+      .sort((a,b)=>(b.given_up||0)-(a.given_up||0)||b.error-a.error)[0];
+    const rate=tot?(err/tot*100).toFixed(1):"0.0";
+    cc=conclusionCard({
+      lines:[{text:"窗口内工具调用 "+tot+" 次，失败 "+err+"（"+rate+
+        "%），其中失败后未再重试 "+given+" 次。"},
+        {text:worst?("最该先看："+esc(worst.tool)+"（失败 "+worst.error+
+          "｜放弃 "+(worst.given_up||0)+"）——高放弃+高失败=用户路径被硬挡。")
+          :"窗口内没有工具失败。",ok:!worst}],
+      sub:"机械事实：由 /api/reports/tools 现算；「最该先看」=放弃数优先、"+
+        "失败数次之的第一名。",
+      actions:[{id:"root",label:"看根因",title:"跳到本页根因明细"},
+        {id:"bench",label:"起草班规",title:"打开建议池（agents 报告）"},
+        {id:"cmd",label:"在命令台打开",title:"P2 接入（占位）"}]});
+    handlers={root:()=>$("rep-out").scrollIntoView({behavior:"smooth"}),
+      bench:()=>{$("rep-kind").value="agents";loadReport(true).catch(()=>{});},
+      cmd:()=>showBanner("warn","命令台在 P2 阶段接入（占位）")};
+  }else if(kind==="errors"){
+    const m=d.meta||{};
+    const bc=d.by_class||{};
+    const order=Object.entries(bc).sort((a,b)=>b[1]-a[1]);
+    const top=order[0];
+    const n=m.error_count||0;
+    cc=conclusionCard({
+      lines:[{text:"窗口内错误 "+n+" 条 / 总步骤 "+(m.total_steps||0)+
+        "，涉及 "+(m.sessions||0)+" 个会话。"},
+        {text:top?("结构上「"+clsLabel(top[0])+"」最多（"+top[1]+" 条）。")
+          :"窗口内没有错误。",ok:!n}],
+      sub:"机械事实：由 /api/reports/errors 现算；类别口径见「怎么读」。",
+      actions:[{id:"root",label:"看根因",title:"跳到本页模式明细"},
+        {id:"bench",label:"起草班规",title:"打开建议池（agents 报告）"},
+        {id:"cmd",label:"在命令台打开",title:"P2 接入（占位）"}]});
+    handlers={root:()=>$("rep-out").scrollIntoView({behavior:"smooth"}),
+      bench:()=>{$("rep-kind").value="agents";loadReport(true).catch(()=>{});},
+      cmd:()=>showBanner("warn","命令台在 P2 阶段接入（占位）")};
+  }else if(kind==="agents"){
+    const entries=d.entries||[];
+    const todo=entries.filter(e=>(e.unresolved_count||0)>=1).length;
+    const watch=entries.filter(e=>!(e.unresolved_count>=1)).length;
+    const unres=entries.reduce((a,e)=>a+(e.unresolved_count||0),0);
+    cc=conclusionCard({
+      lines:[{text:"达标条目 "+entries.length+"：待修 "+todo+
+        "（未解决错误 "+unres+" 处）、已自愈 "+watch+"。"},
+        {text:todo?"待修清单排在最前，逐条带证据锚点；裁决后用 suggest-status 落账。"
+          :"没有待修条目，建议池干净。",ok:!todo}],
+      sub:"机械事实：由 /api/reports/agents 现算；「自愈」=同一模式后来没再失败。",
+      actions:[{id:"root",label:"看根因",title:"跳到待修清单"},
+        {id:"bench",label:"起草班规",title:"规则句即草稿，复制后人工并入配置"},
+        {id:"cmd",label:"在命令台打开",title:"P2 接入（占位）"}]});
+    handlers={root:()=>$("rep-out").scrollIntoView({behavior:"smooth"}),
+      bench:()=>showBanner("warn","本视图绝不写配置：复制规则句，"+
+        "在 CLI 侧人工并入并 suggest-status 落账"),
+      cmd:()=>showBanner("warn","命令台在 P2 阶段接入（占位）")};
+  }
+  box.innerHTML=(cc||"")+panelIntro(introKey);
+  if(handlers)bindConcl(box,handlers);
+  if(glossary.loaded)applyTermTooltips(box);
+}
+function triageConcl(d){
+  const np=(d.new_patterns||[]).length, op=(d.old_patterns||[]).length,
+        sk=(d.skills||[]).length, hs=(d.hot_sessions||[]).length;
+  const first=np?(d.new_patterns||[]).slice()
+    .sort((a,b)=>b.count-a.count)[0]:null;
+  return conclusionCard({
+    lines:[{text:"本窗口：新错误 pattern "+np+"、旧坑重现 "+op+
+      "、skill 候选 "+sk+"、高信号会话 "+hs+"。"},
+      {text:np?("优先做 pitfall 卡："+esc(first.pattern)+"（"+first.count+
+        " 次）。"):"无首次出现的错误 pattern，观察旧坑与 skill 链即可。",ok:!np}],
+    sub:"机械事实：由 /api/triage 现算；机器只排队，判断与 evidence 由人补全。"});
+}
+async function fetchCardsBodies(){
+  const res=await fetch("/view/cards");
+  if(!res.ok)
+    throw new Error("HTTP "+res.status);
+  const d=await res.json();
+  state.cardsBodies=d.cards||[];
+}
+
 /* ---------- Tab 2: 蒸馏队列 ---------- */
 async function loadTriage(manual){
   const out=$("tri-out");
@@ -582,7 +930,11 @@ async function loadTriage(manual){
   if(btn){btn.disabled=true;btn.textContent="生成中…";}
   const t0=Date.now();
   let ok=false;
-  try{ await _renderTriage(out,t0); ok=true; }
+  try{ await _renderTriage(out,t0); ok=true;
+    try{ await loadGlossary(); }catch(e){}
+    $("tri-concl").innerHTML=triageConcl(state.triLast)+panelIntro("triage");
+    if(glossary.loaded)applyTermTooltips(out);
+  }
   catch(e){ out.innerHTML=errorBox("生成失败："+e.message+
     "（若刚升级代码：api-serve 与 view 两个窗口都要关掉重开，旧进程不加载新代码）"); }
   finally{
@@ -694,12 +1046,22 @@ async function loadReport(manual){
       ? await api("/api/cards")
       : await api("/api/reports/"+kind+"?"+p.toString());
     state.repLast=d;
+    /* P1-3：卡片本体来自 view 仓本地服务（决策 D9）；失败不阻断校验页 */
+    if(kind==="cards"){
+      try{ await fetchCardsBodies(); }
+      catch(e){ state.cardsBodies=[];
+        showBanner("warn","卡片本体数据不可用："+e.message+
+          "——在 view 仓运行 viewserver.py 后刷新本页"); }
+    }
+    try{ await loadGlossary(); }catch(e){}
     if(kind==="tools")renderTools(d,out);
     else if(kind==="errors")renderErrors(d,out);
     else if(kind==="skills")renderSkills(d,out);
     else if(kind==="agents")renderAgents(d,out);
     else if(kind==="cards")renderCards(d,out);
     bindAnchors(out);
+    renderRepConcl(kind,d);
+    if(glossary.loaded)applyTermTooltips(out);
     $("rep-meta").textContent+=($("rep-meta").textContent?"｜":"")+
       "生成于 "+new Date().toLocaleTimeString("zh-CN",{hour12:false})+
       "（"+((Date.now()-t0)/1000).toFixed(1)+"s）";
@@ -869,15 +1231,40 @@ function renderErrors(d,out){
   let pats=d.patterns||[];
   if(f.q)pats=pats.filter(x=>hitQ(x.pattern+" "+x.tools.join("/"),f.q));
   pats=[...pats].sort((a,b)=>b.count-a.count);
+  /* P1-5：类别 chips（点击=按类别过滤本表；条数与 by_class 同源） */
+  if(pats.length){
+    /* chips 数字口径=错误事件条数（与上方三分类 by_class 同值同源），
+       「全部」=各模式 count 求和≡by_class 求和（真实载荷门对账①钉住）；
+       chips 过滤的是下方模式行（行数=模式数，两种数字各司其职）。 */
+    const clsCount={};
+    for(const x of pats)clsCount[x["class"]]=(clsCount[x["class"]]||0)+x.count;
+    const evTotal=pats.reduce((a,x)=>a+x.count,0);
+    const cur=(typeof state!=="undefined"&&state.errChip&&
+               clsCount[state.errChip])?state.errChip:"";
+    html+="<div class='chiprow'>"+
+      "<span class='chip"+(cur?"":" on")+"' data-errchip=''>全部 "+
+      evTotal+"</span>"+
+      Object.entries(clsCount).sort((a,b)=>b[1]-a[1]).map(e=>
+        "<span class='chip"+(cur===e[0]?" on":"")+
+        "' data-errchip='"+esc(e[0])+"'>"+esc(clsLabel(e[0]))+" "+
+        e[1]+"</span>").join("")+"</div>";
+    if(cur)pats=pats.filter(x=>x["class"]===cur);
+  }
   html+=pats.length?("<table><thead><tr><th class='num'>次数</th>"+
     "<th>模式</th><th>类别</th><th>工具</th><th>样例锚点</th></tr></thead><tbody>"+
-    pats.slice(0,60).map(x=>"<tr><td class='num'>x"+x.count+
-    "</td><td>"+esc(x.pattern)+"</td><td>"+esc(x["class"])+"</td><td>"+
-    esc(x.tools.join("/"))+"</td><td>"+
-    x.samples.map(s=>anchor(s.sid,s.seq,s.error)).join("<br>")+
-    "</td></tr>").join("")+"</tbody></table>")
+    pats.slice(0,60).map(x=>{
+      const pl=patternPlain(x.pattern);   /* P1-1 模式人话（未收录不显示） */
+      return "<tr><td class='num'>x"+x.count+"</td><td>"+esc(x.pattern)+
+      (pl?"<div class='sub2'>人话："+esc(pl)+"</div>":"")+"</td><td>"+
+      esc(x["class"])+"</td><td>"+esc(x.tools.join("/"))+"</td><td>"+
+      x.samples.map(s=>anchor(s.sid,s.seq,s.error)).join("<br>")+
+      "</td></tr>";}).join("")+"</tbody></table>")
     :"<div class='empty'>steps 表无错误记录</div>";
   out.innerHTML=html;
+  for(const el of out.querySelectorAll("[data-errchip]"))
+    el.onclick=()=>{if(typeof state==="undefined")return;
+      state.errChip=el.dataset.errchip||"";
+      if(state.repLast)renderErrors(state.repLast,out);};
 }
 function renderSkills(d,out){
   const f=repFilter();
@@ -998,10 +1385,51 @@ function renderCards(d,out){
     :"<div class='empty'>"+(filtered&&s.cards?
       "已过滤：0/"+s.cards+" 张卡（过滤前 "+s.cards+"，当前库无匹配异常）"
       :(s.cards?"无问题卡片":"目录下没有卡片"))+"</div>";
+  /* P1-3：卡片本体列表（本体来自 view 仓 /view/cards，校验来自上游；
+     两路按相对路径合并。本体侧只解析不校验——校验口径唯一权威在上游） */
+  html+="<h3 class='sec'>卡片本体（结论 / 证据 / 锚点 / 置信度）</h3>";
+  const bodies=(typeof state!=="undefined"&&state.cardsBodies)||[];
+  if(!bodies.length){
+    html+="<div class='empty'>本体数据未加载——在 view 仓运行 "+
+          "viewserver.py（本地只读服务，端口 8766）后刷新本页。</div>";
+  }else{
+    const byPath={};
+    for(const b of bodies)byPath[b.path]=b;
+    const unbodied=(d.cards||[]).filter(c=>!byPath[c.path]);
+    if(unbodied.length)
+      html+="<div class='empty'>"+unbodied.length+
+        " 张卡无本体（校验有、本体缺）："+
+        esc(unbodied.slice(0,3).map(c=>c.path).join("、"))+
+        (unbodied.length>3?"…":"")+"</div>";
+    for(const b of bodies){
+      const v=(d.cards||[]).find(c=>c.path===b.path);
+      const errs=v?v.errors:[], warns=v?v.warnings:[];
+      const vp=!v?"<span class='pill known'>校验缺失</span>"
+        :errs.length?"<span class='pill err'>校验错误 "+errs.length+"</span>"
+        :warns.length?"<span class='pill known'>校验警告 "+warns.length+
+        "</span>":"<span class='pill ok'>校验通过</span>";
+      html+="<div class='card-body'><h4>"+esc(b.title||b.id||b.path)+" "+vp+
+        (b.confidence!=null?"<span class='pill known' "+
+          "title='卡片蒸馏时的置信度'>置信度 "+b.confidence+"</span>":"")+
+        (b.type?"<span class='sub2'>"+esc(b.type)+"</span>":"")+"</h4>";
+      if(b.conclusion)html+="<div>"+esc(b.conclusion)+"</div>";
+      if(b.evidence)html+="<div class='c-ev'>"+esc(b.evidence)+"</div>";
+      if(b.anchors&&b.anchors.length)
+        html+="<div class='c-anc'>"+b.anchors.map(a=>
+          "<a class='anchor' data-sid='"+esc(a.sid)+"' data-turn='"+
+          Number(a.turn||0)+"' href='javascript:void(0)' title='"+
+          esc(a.sid)+"'>"+esc(shortSid(a.sid))+"#"+Number(a.turn||0)+
+          "</a>").join("　")+"</div>";
+      if(!b.parsed)html+="<div class='sub2'>⚠ frontmatter 未解析出"+
+        "（原样保留未吞内容；该卡校验结论仍以上游为准）</div>";
+      html+="</div>";
+    }
+  }
   html+="<p class='sub2'>结论："+(s.error?"存在错误卡片，修复前不得并入主库。"
     :s.warn?"无错误但有警告——复核警告项后再并入主库。"
     :"全部卡片满足 §8 规范，可并入主库。")+"</p>";
   out.innerHTML=html;
+  bindCardAnchors(out);
 }
 
 /* ---------- Tab 5: 主题（T3-5，数据驱动） ---------- */
@@ -1044,6 +1472,9 @@ function renderTopics(d,out){
 }
 async function loadTopics(){
   $("topics-list").innerHTML="<div class='empty'>加载中…</div>";
+  try{ await loadGlossary(); }catch(e){}
+  $("topics-intro").innerHTML=panelIntro("topics");
+  if(glossary.loaded)applyTermTooltips($("topics-intro"));
   const d=await api("/api/topics");
   state.topicsLast=d;
   renderTopics(d,$("topics-list"));
@@ -1392,6 +1823,7 @@ function rerenderReport(){
   else if(kind==="agents")renderAgents(state.repLast,out);
   else if(kind==="cards")renderCards(state.repLast,out);
   bindAnchors(out);
+  if(glossary.loaded)applyTermTooltips(out);
 }
 $("rep-q").addEventListener("input",rerenderReport);
 $("rep-erronly").onchange=rerenderReport;

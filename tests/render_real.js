@@ -44,7 +44,8 @@ function extractFn(name, sig) {
 }
 
 /* 渲染函数依赖的桩：store/$/esc 与 index.html 里的全局一致 */
-const store = { "topic-doc": { innerHTML: "" } };
+const store = { "topic-doc": { innerHTML: "" }, "rep-meta": { textContent: "" } };
+function mkOut() { return { innerHTML: "", querySelectorAll: () => [] }; }
 const $ = id => store[id];
 const esc = s => String(s == null ? "" : s);
 eval(extractFn("kwText", "k"));
@@ -52,6 +53,7 @@ eval(extractFn("renderTopics", "d,out"));
 eval(extractFn("renderChain", "d,out,idx"));
 eval(extractFn("bindChainSwitch", "root,d"));
 eval(extractFn("bindTopicNodes", "root"));
+eval(extractFn("renderErrors", "d,out"));
 
 const topics = (P.topics && P.topics.topics) || [];
 const kwOf = t => {
@@ -136,6 +138,37 @@ if (chains.length < 2) {
   } else {
     note("右栏换链断言", "载荷里的链没有 name（无法判断是否换了）");
   }
+}
+
+/* ③ 真实 /api/reports/errors 载荷（v0.34 P1）：chips 渲染 + 对账断言 */
+const ER = P.errors || {};
+const bc = ER.by_class || {};
+const bcSum = Object.values(bc).reduce((a, b) => a + b, 0);
+const pats = ER.patterns || [];
+const patSum = pats.reduce((a, x) => a + x.count, 0);
+/* 桩：renderErrors 依赖 state.errChip 与 patternPlain/clsLabel（冒烟同款） */
+const stateStub = { errChip: "" };
+const clsLabel = c => ({ env: "环境类", tool_interface: "用法类",
+  context: "上下文类" }[c] || c);
+const patternPlain = () => "";
+const repFilter = () => ({ q: "", only: false });
+const hitQ = (t, q) => !q || String(t || "").toLowerCase().includes(q);
+const anchor = (sid, seq, text) => "<a>" + sid + "#" + seq + "</a>";
+if (bcSum === 0 || pats.length === 0) {
+  note("errors chips 对账", "真库窗口内无错误（无数据可断言）");
+} else {
+  const erOut = mkOut();
+  renderErrors(ER, erOut);
+  check("chips 行数 = 类别数 + 全部（真库 " + Object.keys(bc).length + " 类）",
+    (erOut.innerHTML.match(/data-errchip=/g) || []).length ===
+    Object.keys(bc).length + 1);
+  check("对账①：chips「全部」数字 = by_class 求和 = " + bcSum,
+    erOut.innerHTML.includes("全部 " + bcSum));
+  /* P1-5 验收口径：模式明细条数求和 ≡ by_class 求和（同库同源） */
+  check("对账②：patterns 求和 " + patSum + " = by_class 求和 " + bcSum,
+    patSum === bcSum);
+  /* 对账③：与真实总错误数（AGENTS.md 快照 2026-10-12 = 381）比对 */
+  check("对账③：全库错误总数 = 381（快照口径，2026-10-12）", bcSum === 381);
 }
 
 console.log("\nok " + ok + " / n/a " + na + " / FAIL " + fails);

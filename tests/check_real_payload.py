@@ -55,7 +55,8 @@ def main() -> int:
             return NOT_RUN
     sys.path.insert(0, str(root))
     try:
-        from harvester.apiserve import api_topic_chain, api_topics
+        from harvester.apiserve import (api_reports_errors, api_topic_chain,
+                                        api_topics)
     except ImportError as exc:                       # pragma: no cover
         print(f"未执行：import harvester 失败（{exc}）", file=sys.stderr)
         return NOT_RUN
@@ -69,15 +70,23 @@ def main() -> int:
                         key=lambda t: -(t.get("chains_count") or 0))
         tid = ranked[0]["id"] if ranked else None
         mc = api_topic_chain(con, db, tid, meta, chains) if tid else {}
+        # v0.34 P1：真实 errors 报告载荷（全库窗口，喂 renderErrors 断言）。
+        # 注意口径：apiserve 的 days 缺省=全库；显式 days=0 是"最近 0 天"≠全库
+        # （view 端 0 天窗口时干脆不传参），这里不传才是全库。
+        errs = api_reports_errors(con, db, {})
     finally:
         con.close()
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({"topics": topics, "multichain": mc,
-                               "multichain_topic_id": tid},
+                               "multichain_topic_id": tid,
+                               "errors": errs},
                               ensure_ascii=False), encoding="utf-8")
+    bc = (errs.get("by_class") or {})
     print(f"载荷: {OUT}（主题 {len(topics['topics'])} 个；"
-          f"多链主题 {tid} 有 {mc.get('chain_count', 0)} 条链）")
+          f"多链主题 {tid} 有 {mc.get('chain_count', 0)} 条链；"
+          f"errors 报告 {sum(bc.values())} 条 / "
+          f"{len(errs.get('patterns') or [])} 模式）")
 
     r = subprocess.run(["node", str(CHECKER), str(OUT),
                         str(VIEW / "static" / "index.html")],

@@ -33,12 +33,23 @@ function freshStore(q, only) {
 }
 const $ = id => store[id];
 const esc = s => String(s == null ? "" : s);
+/* v0.34：渲染目标 out 需要 querySelectorAll（chips/锚点接线），桩统一供给 */
+function mkOut() { return { innerHTML: "", querySelectorAll: () => [] }; }
 const repFilter = () => ({
   q: store["rep-q"].value.trim().toLowerCase(),
   only: store["rep-erronly"].checked,
 });
 const hitQ = (t, q) => !q || String(t || "").toLowerCase().includes(q);
 const anchor = (sid, seq, text) => "<a>" + sid + "#" + seq + "</a>";
+/* v0.34 P1 桩：renderCards 现在依赖 shortSid/bindCardAnchors（D9 本体合并），
+   冒烟环境用最简桩——断言"渲染不崩 + 本体节出现"；接线细节由
+   test_v34_local_data + 真实载荷门覆盖。 */
+const shortSid = sid => String(sid || "").slice(0, 12);
+const bindCardAnchors = root => {};
+const clsLabel = c => ({ env: "环境类", tool_interface: "用法类",
+  context: "上下文类" }[c] || c);
+const patternPlain = () => "";
+const state = { cardsBodies: [], errChip: "" };
 
 /* 数据夹具：Edit 带 roots（2 根因，count 5+2=7），Bash 无 roots（降级
    errors，count 3，pattern 与 Edit 的 P1 同文本 → 跨工具合并 5+3=8） */
@@ -74,7 +85,7 @@ function check(label, cond) {
 
 function runTools(q, only) {
   store = freshStore(q, only);
-  const out = { innerHTML: "" };
+  const out = mkOut();
   renderTools(DATA, out);
   return out.innerHTML;
 }
@@ -98,7 +109,7 @@ const OLD = { tools: DATA.tools.map(t => {
   const c = Object.assign({}, t); delete c.roots; return c;
 }) };
 store = freshStore("", false);
-const oldOut = { innerHTML: "" };
+const oldOut = mkOut();
 renderTools(OLD, oldOut);
 check("无 roots 降级 errors 扁平化", oldOut.innerHTML.includes("RAW-E1"));
 
@@ -110,7 +121,7 @@ const SK = { n_invocations: 9, skills: [
     sources: ["src"], args_samples: [], chains: {}, anchors: [] },
 ] };
 store = freshStore("", true);  // 勾选 rep-erronly：aa（无异常）被滤掉
-const skOut = { innerHTML: "" };
+const skOut = mkOut();
 renderSkills(SK, skOut);
 check("rep-erronly 后 meta 含'已过滤'", skOut2_meta());
 function skOut2_meta() { return store["rep-meta"].textContent.includes("已过滤"); }
@@ -119,7 +130,7 @@ check("全异常被滤光时空态带计数", (() => {
     { skill: "aa", calls: 5, sids: 2, ok: 5, err: 0, no_result: 0,
       sources: ["src"], args_samples: [], chains: {}, anchors: [] }] };
   store = freshStore("", true);
-  const o = { innerHTML: "" };
+  const o = mkOut();
   renderSkills(SK0, o);
   return o.innerHTML.includes("已过滤：0/1 个 skill");
 })());
@@ -129,10 +140,47 @@ const CD = { root: "/cards", summary: { cards: 4, ok: 4, warn: 0, error: 0,
   { path: "a.md", errors: [], warnings: [] },
   { path: "b.md", errors: [], warnings: [] }] };
 store = freshStore("", true);  // 只看错误级：无错误卡 → 空态
-const cdOut = { innerHTML: "" };
+const cdOut = mkOut();
 renderCards(CD, cdOut);
 check("G3 rep-erronly 后 meta 含'已过滤'", store["rep-meta"].textContent.includes("已过滤"));
 check("G3 过滤态空态带计数", cdOut.innerHTML.includes("已过滤：0/4 张卡"));
+
+/* --- v0.34 P1-3 卡片本体合并（D9）--- */
+const CDB = { root: "/cards", summary: { cards: 2, ok: 2, warn: 0, error: 0,
+  anchor_checked: 1, anchor_misses: 0 }, cards: [
+  { path: "a.md", errors: [], warnings: [] },
+  { path: "ghost.md", errors: ["锚点 x 不在索引库"], warnings: [] }] };
+state.cardsBodies = [
+  { path: "a.md", parsed: true, id: "kc-1", title: "标题甲",
+    type: "pitfall", confidence: 0.9, evidence: "证据引文甲",
+    conclusion: "结论甲", anchors: [{ sid: "dsh:abc", turn: 5 }] }];
+store = freshStore("", false);
+const cdbOut = mkOut();
+renderCards(CDB, cdbOut);
+check("P1-3 本体节渲染（标题出现）", cdbOut.innerHTML.includes("标题甲"));
+check("P1-3 校验徽章与本体合并（校验通过 pill）",
+  cdbOut.innerHTML.includes("校验通过"));
+check("P1-3 证据片段渲染", cdbOut.innerHTML.includes("证据引文甲"));
+check("P1-3 锚点渲染（sid#turn）", cdbOut.innerHTML.includes("#5"));
+check("P1-3 无本体校验卡显式标注（ghost）",
+  cdbOut.innerHTML.includes("ghost.md") &&
+  cdbOut.innerHTML.includes("无本体"));
+state.cardsBodies = [];
+store = freshStore("", false);
+const cdb0 = mkOut();
+renderCards(CDB, cdb0);
+check("P1-3 本体未加载时给运行 viewserver 提示（不冒充空柜）",
+  cdb0.innerHTML.includes("viewserver"));
+
+/* --- v0.34 P1-1/P1-5 glossary/chips 纪律断言（源码级） --- */
+check("模式人话只在收录时显示（patternPlain 未收录返回空）",
+  html.includes("function patternPlain"));
+check("chips 有 class 过滤接线（data-errchip）",
+  html.includes("data-errchip"));
+check("结论卡数字全部来自 API 现算（renderRepConcl 存在）",
+  html.includes("function renderRepConcl"));
+check("导语来自 glossary 而非散落文案（panelIntro 消费 glossary）",
+  html.includes("function panelIntro"));
 
 /* --- v0.22 T3-5 主题 tab（H22：动态性 + 接线断言） ---
  * 主题必须数据驱动：渲染 /api/topics 返回什么就显示什么，绝无写死主题名。
@@ -163,7 +211,7 @@ const TOPICS = { topics: [
   { id: "tp-z", name: "空类目", keywords: "不是JSON", members_count: 0,
     first_activity: null, last_activity: null, chains_count: 0,
     chain_names: [] }] };
-const tOut = { innerHTML: "" };
+const tOut = mkOut();
 renderTopics(TOPICS, tOut);
 check("主题列表渲染主题甲（数据驱动）", tOut.innerHTML.includes("主题甲"));
 check("主题列表渲染主题乙——不假定单一主题", tOut.innerHTML.includes("主题乙"));
@@ -182,11 +230,11 @@ check("无链主题显示占位符而非空白", tOut.innerHTML.includes("—"))
 check("0 成员类目灰显（自己类目还没挂成员）",
   tOut.innerHTML.includes("opacity:.55"));
 
-const tEmpty = { innerHTML: "" };
+const tEmpty = mkOut();
 renderTopics({ topics: [] }, tEmpty);
 check("空注册表空态", tEmpty.innerHTML.includes("尚无注册主题"));
 
-const tHint = { innerHTML: "" };
+const tHint = mkOut();
 renderTopics({ topics: [], hint: "topics_meta 未配置" }, tHint);
 check("未配置上游显示 hint 且声明动态发现",
   tHint.innerHTML.includes("topics_meta 未配置") &&
@@ -194,7 +242,7 @@ check("未配置上游显示 hint 且声明动态发现",
 
 /* renderChain：时间线（阶段/节点/锚点）+ 右栏文档 */
 store = freshStore("", false);
-store["topic-doc"] = { innerHTML: "" };
+store["topic-doc"] = mkOut();
 const CH = { topic_id: "tp-x", chain_path: "topics/chain-主题甲.md",
   body: "## 阶段一\n正文内容示例",
   fm: { topic: "主题甲", members: ["s1", "s2"],
@@ -205,7 +253,7 @@ const CH = { topic_id: "tp-x", chain_path: "topics/chain-主题甲.md",
         { sid: "yuanbao-raw:b", turn: 4, note: "跨模型交叉验证" }] },
       { stage: "阶段二·迭代", span: "2025-06", nodes: [
         { sid: "deepseek-export:a", turn: 9, note: "数十轮打磨" }] }] } };
-const chOut = { innerHTML: "" };
+const chOut = mkOut();
 renderChain(CH, chOut);
 check("阶段标题渲染", chOut.innerHTML.includes("阶段一·诊断") &&
   chOut.innerHTML.includes("阶段二·迭代"));
@@ -234,13 +282,13 @@ const CH2 = { topic_id: "tp-x", chain_count: 2,
       fm: { topic: "主题甲", members: ["s1", "s2"], anchors: [
         { stage: "本体一", span: "2025-02", nodes: [
           { sid: "yuanbao-raw:b", turn: 7, note: "设定补全" }] }] } } ] };
-store["topic-doc"] = { innerHTML: "" };
-const ch2Out = { innerHTML: "" };
+store["topic-doc"] = mkOut();
+const ch2Out = mkOut();
 renderChain(CH2, ch2Out, 0);
 check("多链第一条：切换条两个按钮 + 标注 1/2",
   (ch2Out.innerHTML.match(/data-chain-idx=/g) || []).length === 2 &&
   ch2Out.innerHTML.includes("技法一") && !ch2Out.innerHTML.includes("本体一"));
-store["topic-doc"] = { innerHTML: "" };
+store["topic-doc"] = mkOut();
 renderChain(CH2, ch2Out, 1);
 check("按 idx 渲染第二条（阶段与正文都换）",
   ch2Out.innerHTML.includes("本体一") &&
@@ -251,7 +299,7 @@ check("右栏标出当前是第几条链",
 const cBtn = { dataset: { chainIdx: "0" }, onclick: null };
 const fakeRoot = { querySelectorAll: s =>
   s === "[data-chain-idx]" ? [cBtn] : [], innerHTML: "" };
-store["topic-doc"] = { innerHTML: "" };
+store["topic-doc"] = mkOut();
 bindChainSwitch(fakeRoot, CH2);
 check("链切换按钮已接线（onclick 是函数）", typeof cBtn.onclick === "function");
 cBtn.onclick();
@@ -300,7 +348,7 @@ const DE = {
       context: 0, unclassified: 0, total: 1 },
   ],
 };
-const deOut = { innerHTML: "" };
+const deOut = mkOut();
 renderErrors(DE, deOut);
 const deH = deOut.innerHTML;
 check("交叉表节渲染", deH.includes("数据源 × model × 错误类别交叉表"));
@@ -310,11 +358,47 @@ check("首行=最多坑组合（API 序，dsh×deepseek-flash 在前）",
 check("model（未知）直出与合计列",
   deH.includes("（未知）") && deH.includes("<td class='num'>2</td>"));
 const DE_OLD = Object.assign({}, DE); delete DE_OLD.cross;
-const deOldOut = { innerHTML: "" };
+const deOldOut = mkOut();
 renderErrors(DE_OLD, deOldOut);
 check("旧上游无 cross 降级：不渲染交叉表且不崩（三分类仍在）",
   !deOldOut.innerHTML.includes("交叉表") &&
   deOldOut.innerHTML.includes("三分类分布"));
+
+/* --- v0.34 P1-5：errors 类别 chips 渲染 + 点击过滤真的能滤（H22）---
+   DE.patterns 为空（上面交叉表夹具），chips 断言用带 3 模式的专用夹具：
+   env×1 + tool_interface×2（x2+x3 两行）。 */
+const DEP = Object.assign({}, DE, { patterns: [
+  { pattern: "PAT-ENV", "class": "env", count: 1, tools: ["t1"], samples: [] },
+  { pattern: "PAT-TI-A", "class": "tool_interface", count: 2, tools: ["t2"],
+    samples: [] },
+  { pattern: "PAT-TI-B", "class": "tool_interface", count: 3, tools: ["t3"],
+    samples: [] }] });
+state.errChip = "";
+const depAll = mkOut();
+renderErrors(DEP, depAll);
+check("chips 行渲染（全部 + 2 类别）",
+  (depAll.innerHTML.match(/data-errchip=/g) || []).length === 3 &&
+  depAll.innerHTML.includes("用法类 5"));
+check("chips 数字=事件条数（全部 6 = 1+2+3），而模式行仍是 3 行",
+  depAll.innerHTML.includes("全部 6") &&
+  depAll.innerHTML.includes("x1</td>") &&
+  depAll.innerHTML.includes("x2</td>") &&
+  depAll.innerHTML.includes("x3</td>"));
+state.errChip = "env";
+const depEnv = mkOut();
+renderErrors(DEP, depEnv);
+check("chips 选中 env 后过滤真的能滤（只剩 PAT-ENV 一行）",
+  depEnv.innerHTML.includes("PAT-ENV") &&
+  !depEnv.innerHTML.includes("PAT-TI-A") &&
+  !depEnv.innerHTML.includes("PAT-TI-B"));
+state.errChip = "tool_interface";
+const depTI = mkOut();
+renderErrors(DEP, depTI);
+check("chips 选中用法类（两行合计 x5）",
+  depTI.innerHTML.includes("x2</td>") &&
+  depTI.innerHTML.includes("x3</td>") &&
+  !depTI.innerHTML.includes("PAT-ENV"));
+state.errChip = "";
 
 if (failed) { console.error(failed + " check(s) failed"); process.exit(1); }
 console.log("ALL RENDER CHECKS PASSED");

@@ -206,14 +206,40 @@ SRC: dict[str, str] = {
     "file": "none",
     "path": "none",
     "id": "none",
+    "id_": "topics_api",
+    "from_": "topics_api",
+    "evidence": "none",
     "query": "none",
     "prompt": "none",
     "title": "none",
     "keywords": "none",
+    # —— 输出 / 预算 / 枚举：不接受自由文本（选择器或自动命名）——
     "out": "auto_out",
+    "plan_out": "auto_out",
+    "coverage_out": "auto_out",
+    "seed_out": "auto_out",
+    "triage_out": "auto_out",
+    "triage_brief_out": "auto_out",
     "max_chars": "chips",
+    "cap": "chips",
     "role": "chips",
+    "samples": "chips",
+    "json": "chips",
+    "list_limit": "chips",
+    "triage_max_turns": "chips",
+    "brief_chars": "chips",
+    "noise_max_chars": "chips",
+    "craft_topic": "topics_api",
+    "topic": "topics_api",
+    "skill": "chips",
+    "type": "chips",
+    "source": "chips",
+    # 服务端已定、**但值本身是可选项**（页面给选择器而不是输入框）：
+    # `--corpus` 只有 default/drift 两种，选错没意义
     "corpus": "chips",
+    # 服务端已定、且**页面绝不暴露**（regress 的临时目录父目录：让人指路
+    # 就等于给"顺手指向真库"留后门；接受客户端传值同样不行）
+    "temp_base": "server",
     # —— 服务端已定（页面不暴露）——
     "root": "server",
     "db": "server",
@@ -224,6 +250,8 @@ SRC: dict[str, str] = {
     "suggestions_meta": "server",
     "cards_root": "server",
     "chain_root": "server",
+    "artifacts_meta": "server",
+    "artifact_meta": "server",
     "queue": "server",
     "plan": "none",
     "apply": "none",
@@ -247,7 +275,7 @@ SERVER_DESTS: frozenset[str] = frozenset({
     "coverage", "coverage_out", "evidence_file", "export_file", "from_dir",
     "judgment", "keywords_meta_path", "meta", "plan_out", "plan_seed",
     "report_root", "roots", "seed_out", "snap_dir", "stopwords",
-    "temp_base", "triage_brief", "triage_brief_out", "triage_json",
+    "triage_brief", "triage_brief_out", "triage_json",
     "triage_out", "inputs", "artifact_meta",
 })
 

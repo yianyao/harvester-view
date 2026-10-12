@@ -28,7 +28,41 @@
   环境/用法/上下文/未归类过滤；会话页条数与 G2 报告同源对账。
 
 一键启动（含三个进程）：`start-viewv2.cmd`（api-serve 8765 +
-viewserver 8766 + view 8088）。
+**actions-serve 8766** + view 8088；P2 起 8766 由 `actions/actionsserve.py`
+承担，P1 的 viewserver.py 已归并进去，仍是**同一个端口、一个进程**）。
+
+## v0.35 新增（P2 打通层，2026-10-12）
+
+- **actions-serve（`actions/actionsserve.py`，8766）**：本仓唯一的动作面，
+  也是**唯一** import 兄弟仓库的地方（只 import 调用，不改它）。P1 的
+  `/view/cards`、`/view/glossary`、`/view/health` 原样归并（路径/结构不变），
+  新增：
+  - `GET /api/health`：自检 + **版本握手**（上报 `harvester.__version__`
+    与 `commands.json.adapter_version`，不匹配 → 命令台黄条 + 禁 B 档）；
+  - `GET /api/commands`：静态命令注册表（43 命令 / 13 动词卡 / 参数数据源）；
+  - `GET /api/actions`：**A 档冻结白名单**（现有 4 个动作）；
+  - `POST /api/actions/run` → `202 {job_id}`，`GET /api/actions/job/<id>`
+    轮询；**进程内线程调 harvester 函数，非 shell**；长任务不阻塞页面；
+  - `GET /api/topic/<id>/timeline?level=`：五档时间线透出（title/coarse/
+    mid 直接给；fine/artifact 需 sid）；
+  - `GET /api/pattern-sessions?pattern=&days=`：错误模式 → 命中会话清单
+    （数字皆门第二跳，与 G2 报告同源同口径）。
+  - 参数 `--corpus-watermark` 开启后，timeline 会附带库龄判定
+    （`stale`；缺省关，见该参数 help）。
+- **命令台（Tab「命令台」）**：13 张动词卡 → 命令 chips → 参数选择器
+  （`src=chips` 预设、`src=topics_api/sessions_api` 从库里选、路径类参数
+  **不暴露**）→ 命令行预演 → 执行 → 结果抽屉（数字可点，原始 JSON 可展开）。
+  A 档直接执行；B/C 档只给命令行（红线：命令台不是万能 shell）。
+- **数字皆门三跳**：错误模式（可点的次数）→ 命中会话清单（逐会话次数/
+  未解决/工具，**逐会话之和与模式总数显式对账**）→ 回合原文
+  （复用既有 `gotoAnchor`，按错误原文逐字定位并高亮）。
+- **命令注册表由真解析器生成**：`python -m actions.commandgen`
+  （`--check` 比对漂移；`tests/test_v35_actions.py` 里逐命令逐参数钉住
+  ——上游加参数而注册表没跟上就红）。人手只写两样：参数数据源 `src`、
+  三档权限 `tier`。
+
+一键启动（含三个进程）：`start-viewv2.cmd`（api-serve 8765 +
+actions-serve 8766 + view 8088）。
 
 ## 快速开始
 

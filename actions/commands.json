@@ -428,7 +428,7 @@
       "workflow",
       "insight"
      ],
-     "src": "none",
+     "src": "chips",
      "negates": null,
      "help": "卡片类型（默认 pitfall）",
      "note": null
@@ -616,7 +616,7 @@
      "default": 20,
      "required": false,
      "choices": null,
-     "src": "none",
+     "src": "chips",
      "negates": null,
      "help": "各区块明细最多列几条；0 = 不限（默认 20，超出会显式印「另有 N 条」）",
      "note": null
@@ -770,7 +770,7 @@
       "workflow",
       "insight"
      ],
-     "src": "none",
+     "src": "chips",
      "negates": null,
      "help": "目标卡片类型（默认 pitfall）",
      "note": null
@@ -1356,7 +1356,7 @@
      "default": null,
      "required": false,
      "choices": null,
-     "src": "none",
+     "src": "topics_api",
      "negates": null,
      "help": "限定主题 id（可重复；从 --topics-meta 注册库展开成员，与 --sid 合并去重）",
      "note": null
@@ -1798,7 +1798,7 @@
      "default": null,
      "required": false,
      "choices": null,
-     "src": "none",
+     "src": "chips",
      "negates": null,
      "help": "机读结果（JSON）输出路径；人读/机读分出口（下游是程序就别给人读那份）",
      "note": null
@@ -1984,7 +1984,7 @@
      "default": null,
      "required": false,
      "choices": null,
-     "src": "none",
+     "src": "chips",
      "negates": null,
      "help": "只看这一个 skill（输出全量调用深挖清单）",
      "note": null
@@ -2054,7 +2054,7 @@
      "default": null,
      "required": false,
      "choices": null,
-     "src": "none",
+     "src": "chips",
      "negates": null,
      "help": "只交叉指定 skill 名（缺省全部）",
      "note": null
@@ -2274,7 +2274,7 @@
      "default": null,
      "required": false,
      "choices": null,
-     "src": "none",
+     "src": "chips",
      "negates": null,
      "help": "限定来源 adapter id",
      "note": null
@@ -2380,7 +2380,7 @@
      "default": null,
      "required": false,
      "choices": null,
-     "src": "server",
+     "src": "auto_out",
      "negates": null,
      "help": "覆盖核对报告输出路径（缺省打印）",
      "note": null
@@ -2654,7 +2654,7 @@
      "default": null,
      "required": false,
      "choices": null,
-     "src": "none",
+     "src": "topics_api",
      "negates": null,
      "help": "add/remove/merge/show/export/md/chain：主题 id",
      "note": null
@@ -2666,7 +2666,7 @@
      "default": null,
      "required": false,
      "choices": null,
-     "src": "none",
+     "src": "topics_api",
      "negates": null,
      "help": "merge：逗号分隔源主题 id（成员并入 --id 后删除）",
      "note": null
@@ -2750,7 +2750,7 @@
      "default": 200,
      "required": false,
      "choices": null,
-     "src": "none",
+     "src": "chips",
      "negates": null,
      "help": "turns：预览每回合截断字符数（默认 200）",
      "note": null
@@ -3017,7 +3017,7 @@
      "default": null,
      "required": false,
      "choices": null,
-     "src": "server",
+     "src": "auto_out",
      "negates": null,
      "help": "梳理包输出路径（缺省打印到 stdout）",
      "note": null
@@ -3077,7 +3077,7 @@
      "default": null,
      "required": false,
      "choices": null,
-     "src": "none",
+     "src": "chips",
      "negates": null,
      "help": "梳理包里「零散会话候选」的字符阈值（默认 40；调小 = 只挑最窄的一批）",
      "note": null
@@ -3101,7 +3101,7 @@
      "default": null,
      "required": false,
      "choices": null,
-     "src": "server",
+     "src": "auto_out",
      "negates": null,
      "help": "分诊报告输出路径（缺省打印到 stdout）",
      "note": null
@@ -3137,7 +3137,7 @@
      "default": null,
      "required": false,
      "choices": null,
-     "src": "server",
+     "src": "auto_out",
      "negates": null,
      "help": "分诊简报输出路径（缺省打印；与 --triage-brief 配合）",
      "note": null
@@ -3149,7 +3149,7 @@
      "default": 60,
      "required": false,
      "choices": null,
-     "src": "server",
+     "src": "chips",
      "negates": null,
      "help": "简报里首条原文的截断字符数（默认 60）",
      "note": null
@@ -3185,7 +3185,7 @@
      "default": null,
      "required": false,
      "choices": null,
-     "src": "none",
+     "src": "topics_api",
      "negates": null,
      "help": "--plan-seed：craft_material 整类的去处（tp-xxx 或 new:KEY）；不给则该类本轮不动",
      "note": null
@@ -3209,7 +3209,7 @@
      "default": null,
      "required": false,
      "choices": null,
-     "src": "server",
+     "src": "auto_out",
      "negates": null,
      "help": "--plan-seed 的 plan 输出路径（缺省打印到 stdout）",
      "note": null
@@ -3221,7 +3221,7 @@
      "default": 3,
      "required": false,
      "choices": null,
-     "src": "none",
+     "src": "chips",
      "negates": null,
      "help": "分诊范围：user 回合数 ≤ 该值的会话（默认 3）",
      "note": null

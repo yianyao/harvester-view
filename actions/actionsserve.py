@@ -111,7 +111,8 @@ class Config:
                  keywords_meta: Path | None = None,
                  suggestions_meta: Path | None = None,
                  exports_root: Path | None = None,
-                 commands_json: Path | None = None):
+                 commands_json: Path | None = None,
+                 corpus_watermark: bool = False):
         self.db = Path(db)
         self.cards_root = Path(cards_root)
         self.glossary = Path(glossary)
@@ -124,6 +125,27 @@ class Config:
                                  else None)
         self.exports_root = Path(exports_root) if exports_root else None
         self.commands_json = Path(commands_json or DEFAULT_COMMANDS_JSON)
+        #: 是否在 timline 端点里附带库龄误判（`stale`）。缺省 **关**：
+        #: 它要扫一遍语料盘（实测 0.08 s，但盘在网络上/语料巨大时会变慢），
+        #: P2-3 的验收是"无 chain 主题也能看时间线"，不该被库龄判定拖住。
+        self.want_watermark = bool(corpus_watermark)
+        self._corpus_mtime: float | None = None
+        self._wm_done = False
+
+    def corpus_mtime(self) -> float | None:
+        """当前语料最新 mtime（惰性、只算一次）。**基准是"这次的盘"**，
+        与库里记录的"上次索引看到的"（`corpus_indexed_mtime`）对比才得到
+        `stale`——这正是上游 H104 纠正过的口径（库文件 mtime 会给出假 STALE）。"""
+        if not self.want_watermark:
+            return None
+        if not self._wm_done:
+            self._wm_done = True
+            try:
+                from harvester.outline import corpus_watermark
+                self._corpus_mtime = corpus_watermark().get("mtime")
+            except Exception:  # noqa: BLE001 - 库里判定失败不该拖垮时间线
+                self._corpus_mtime = None
+        return self._corpus_mtime
 
     def default_for(self, name: str) -> Path | None:
         """参数缺省值的数据源（服务端已定，故页面不暴露路径类参数）。"""
@@ -184,6 +206,68 @@ def _action_topic_list(cfg: Config, params: dict) -> dict:
     return {"view_actions_api": VIEW_ACTIONS_API, "topics": topics}
 
 
+#: `regress` 允许的语料变体（冻结：与上游 `regress.CORPUS_VARIANTS` 同集合，
+#: 见 `_action_regress` 的用法）。写在这里是为了让"允许值"在本仓可见可测。
+_REGRESS_CORPORA = frozenset({"default", "drift"})
+
+
+def _rm_tree(path: Path) -> None:
+    """删掉动作自己造的临时目录（失败不抛：清理是收尾动作，不该盖住结果）。"""
+    import shutil
+    try:
+        shutil.rmtree(path, ignore_errors=True)
+    except Exception:  # noqa: BLE001 - 见 docstring
+        pass
+
+
+def _action_regress(cfg: Config, params: dict) -> dict:
+    """A 档：端到端回归（**唯一的重活**，实测 ~26 s）。
+
+    为什么它算 A 档（只读）而不是 B 档：`regress` 全程只在临时目录里用
+    `indexing.SCHEMA` 造库（上游 docstring 明说"真 harvester.db /
+    topics_meta.db 一字节不动"），既不写采集库也不写 meta 库。命令台把它
+    跑起来，等于替人省掉一次"复制命令 + 开终端 + 看退出码"。"""
+    from harvester.regress import (EXIT_FAIL, EXIT_NOT_RUN, EXIT_OK,
+                                   corpus_by_name, run_regress)
+    corpus = str(params.get("corpus") or "default")
+    if corpus not in _REGRESS_CORPORA:
+        raise _BadRequest("corpus 只支持 %s，收到 %r"
+                          % (" / ".join(sorted(_REGRESS_CORPORA)), corpus))
+    # temp_base 归 server：临时目录父目录由服务端定，页面不指路。**不接受
+    # 客户端传路径**——那正是"顺手指向真库"的后门（上游 cmd_regress 特意
+    # 不给 --db/--meta 就是为了堵它）。用 mkdtemp：CWD 可能是只读仓库。
+    import tempfile
+    base = Path(tempfile.mkdtemp(prefix="view-action-regress-"))
+    try:
+        r = run_regress(base, corpus=corpus_by_name(corpus),
+                        keep_temp=bool(params.get("keep_temp")))
+    finally:
+        if not params.get("keep_temp"):
+            _rm_tree(base)
+    # 步骤字典的键是 **step**（`Step.to_dict`），不是 name——认错键的后果是
+    # 页面上 8 个步骤全显示空名（首版实测如此，已改正）
+    steps = r.get("steps") or []
+    failed = [s for s in steps if s.get("status") == "fail"]
+    code = (EXIT_OK if not failed and r.get("failed_assertions", 0) == 0
+            else EXIT_FAIL)
+    return {"view_actions_api": VIEW_ACTIONS_API,
+            "corpus": corpus,
+            "exit_code": code,
+            "assertions": r.get("assertions"),
+            "failed_assertions": r.get("failed_assertions"),
+            "steps_total": len(steps),
+            "steps_failed": len(failed),
+            "steps_not_run": len([s for s in steps
+                                  if s.get("status") == "not_run"]),
+            "steps": [{"step": s.get("step"), "what": s.get("what"),
+                       "status": s.get("status"), "why": s.get("why"),
+                       "failed_checks": s.get("failed") or []}
+                      for s in steps],
+            "exit_codes": {"ok": EXIT_OK, "fail": EXIT_FAIL,
+                           "not_run": EXIT_NOT_RUN},
+            "summary": r.get("summary")}
+
+
 #: A 档动作白名单。**冻结**：执行器只认这张表（SOP §5.3 红线——新增的不是
 #: 任意执行，而是一张冻结的动作注册表）。
 ACTIONS: dict[str, dict] = {
@@ -219,6 +303,22 @@ ACTIONS: dict[str, dict] = {
         "writes": "",
         "handler": _action_topic_list,
     },
+    "regress": {
+        "tier": "A",
+        "label": "端到端回归（重活）",
+        "desc": "从空库跑完整链路并逐项核对数字；只用临时库，真库一字节不动。",
+        "params": {"corpus": {"type": "text", "src": "chips",
+                              "default": "default",
+                              "choices": ["default", "drift"],
+                              "label": "语料变体"},
+                   "temp_base": {"type": "path", "src": "server",
+                                 "default": None,
+                                 "label": "临时目录父目录（服务端）"}},
+        "est_sec": 3,
+        "reversible": "幂等（全程临时目录，跑完即删）",
+        "writes": "",
+        "handler": _action_regress,
+    },
 }
 
 
@@ -241,11 +341,18 @@ def _days_params(days: float | None) -> dict:
     return {} if days is None else {"days": str(days)}
 
 
-def _clean_params(action: dict, raw: dict) -> dict:
+def _clean_params(action: dict, raw: dict, cfg: Config | None = None) -> dict:
     """按动作声明的 params 过滤 + 类型校验（**只认声明过的键**，多余键丢弃
-    ——命令台传来的任何东西都不会变成 argparse 风格的自由参数）。"""
+    ——命令台传来的任何东西都不会变成 argparse 风格的自由参数）。
+
+    src="server_choice" 的参数：值由**服务端**决定（页面只读展示，不给输入
+    框），客户端传什么都被忽略——否则"页面不暴露路径"就只是前端自觉。
+    """
     out: dict = {}
     for name, spec in (action.get("params") or {}).items():
+        if spec.get("src") == "server_choice":
+            out[name] = spec.get("default")
+            continue
         if name not in raw:
             out[name] = spec.get("default")
             continue
@@ -412,9 +519,27 @@ def topic_timeline(cfg: Config, topic_id: str, level: str,
     except KeyError as e:  # show_topic 未命中 → 主题不存在
         raise _NotFound("主题 %s 不存在（KeyError %s）" % (topic_id, e))
     out = dict(d)
+    # 库龄（可选）：上游 timeline 内部调 db_fingerprint 时默认不判库龄
+    # （stale=None）。要看库龄就得在**外圈**补算并覆写——只动本仓的响应，
+    # 不碰上游函数签名。
+    cm = cfg.corpus_mtime()
+    if cm is not None and isinstance(out.get("db_fingerprint"), dict):
+        fp = dict(out["db_fingerprint"])
+        water = fp.get("corpus_indexed_mtime")
+        fp["corpus_mtime"] = _fmt_mtime(cm)
+        fp["stale"] = None
+        if water:
+            fp["stale"] = _fmt_mtime(cm) > water  # 字符串比较=时间序（同口径）
+        out["db_fingerprint"] = fp
     out["view_actions_api"] = VIEW_ACTIONS_API
     out["topic_id"] = topic_id
     return out
+
+
+def _fmt_mtime(epoch: float) -> str:
+    """epoch 秒 → 'YYYY-MM-DD HH:MM:SS'（与 dbmeta 同格式，便于字符串比较）。"""
+    from datetime import datetime
+    return datetime.fromtimestamp(float(epoch)).strftime("%Y-%m-%d %H:%M:%S")
 
 
 class _BadRequest(Exception):
@@ -629,7 +754,7 @@ def make_handler(cfg: Config):
                                      "（B 档两段提交见 P3-2）" % action_id}, 403)
                 return
             try:
-                params = _clean_params(spec, req.get("params") or {})
+                params = _clean_params(spec, req.get("params") or {}, cfg)
             except ValueError as e:
                 self._json({"error": str(e)}, 400)
                 return
@@ -750,6 +875,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--suggestions-meta", default=None)
     ap.add_argument("--exports-root", default=None)
     ap.add_argument("--commands-json", default=str(DEFAULT_COMMANDS_JSON))
+    ap.add_argument("--corpus-watermark", action="store_true",
+                    help="在 timeline 端点附带库龄判定（要扫一遍语料盘；"
+                         "缺省关，见 Config.want_watermark 注释）")
     return ap
 
 
@@ -767,7 +895,8 @@ def config_from_args(args) -> Config:
                                     if args.suggestions_meta else None),
                   exports_root=(Path(args.exports_root)
                                 if args.exports_root else None),
-                  commands_json=Path(args.commands_json))
+                  commands_json=Path(args.commands_json),
+                  corpus_watermark=getattr(args, "corpus_watermark", False))
 
 
 def serve(cfg: Config, host: str = "127.0.0.1",

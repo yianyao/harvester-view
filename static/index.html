@@ -131,6 +131,36 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 .tl-node:hover{border-color:var(--accent)}
 .tl-node .anchor{font-family:Consolas,monospace;font-size:12px;
   color:var(--accent);margin-right:8px}
+/* ---- P2-4：命令台（动词面板 v0） ---- */
+#tab-cmd main{display:grid;grid-template-columns:250px minmax(320px,1fr) 330px;
+  gap:12px;padding:10px 14px;align-items:start}
+#cmd-cards{display:flex;flex-direction:column;gap:4px}
+.cmd-card{border:1px solid var(--line);border-radius:6px;padding:6px 9px;
+  cursor:pointer;background:#fff;text-align:left}
+.cmd-card:hover{border-color:var(--accent)}
+.cmd-card.on{border-color:var(--accent);background:#eef4ff}
+.cmd-card .t{font-weight:600}
+.cmd-card .n{font-size:11px;color:var(--sub)}
+.tierbadge{display:inline-block;font-size:10px;border-radius:9px;
+  padding:1px 6px;margin-left:4px;border:1px solid var(--line);color:var(--sub)}
+.tierbadge.A{color:#1a7f37;border-color:#1a7f37}
+.tierbadge.B{color:#9a6700;border-color:#9a6700}
+.tierbadge.C{color:#a40e26;border-color:#a40e26}
+#cmd-params label{display:block;margin:6px 0 2px;font-size:12px;color:var(--sub)}
+#cmd-actions{display:flex;flex-direction:column;gap:6px}
+.cmd-act{border:1px solid var(--line);border-radius:6px;padding:7px 9px}
+.cmd-act.on{border-color:var(--accent);background:#f7faff}
+.cmd-act .d{font-size:11px;color:var(--sub)}
+.meta-badges{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0;font-size:11px}
+.riskchip{border:1px solid var(--line);border-radius:9px;padding:1px 7px;
+  color:var(--sub)}
+.riskchip.no{color:#a40e26;border-color:#a40e26}
+#cmd-params .prow{display:flex;align-items:center;gap:6px;margin:5px 0}
+#cmd-params .prow .pn{font-size:12px;color:var(--sub);min-width:74px}
+.cmd-cli{font-family:ui-monospace,Consolas,monospace;font-size:11px;
+  background:#f6f8fa;border:1px solid var(--line);border-radius:4px;
+  padding:5px 7px;word-break:break-all;white-space:pre-wrap}
+#job-out{max-height:460px;overflow:auto}
 /* ---- v0.34 P1：解释层（结论卡/卡片本体/导语/悬停卡/chips） ---- */
 .concl{border:1px solid var(--line);border-left:3px solid var(--accent);
   background:var(--bg);border-radius:8px;padding:8px 12px;margin:10px 0}
@@ -172,6 +202,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
     <button data-tab="reports">报告</button>
     <button data-tab="agg">中台</button>
     <button data-tab="topics">主题</button>
+    <button data-tab="cmd">命令台</button>
   </nav>
   <select id="upstream" title="切换上游实例"></select>
   <span class="meta" id="meta"></span>
@@ -304,6 +335,40 @@ h3.sec{font-size:14px;margin:18px 0 6px}
   </main>
 </section>
 
+<!-- ============ Tab 6: 命令台（P2-4 动词面板 v0） ============
+  数据源：view 仓本地动作面 actions/actionsserve.py（端口 8766，SOP D3）。
+  动作一律来自 /api/actions 的**冻结白名单**（A 档）；命令注册表来自
+  静态 commands.json 生成的 /api/commands。参数区只渲染 src 指向端点的
+  选择器 + chips，**不暴露任何路径类参数**（SOP §5 红线）；C 档命令
+  只显示命令行供复制，页面永不执行（红线 3）。 -->
+<section class="tab" id="tab-cmd" style="display:none">
+  <main>
+  <div id="cmd-left">
+    <div class="toolbar">
+      <button id="btn-cmd-refresh">刷新注册表</button>
+      <span class="sub2" id="cmd-meta"></span>
+    </div>
+    <div id="cmd-cards"><div class="empty">加载中…</div></div>
+  </div>
+  <div id="cmd-mid">
+    <div id="cmd-intro"></div>
+    <div id="cmd-head" class="sub2">← 选一张动词卡</div>
+    <div id="cmd-actions"></div>
+    <div id="cmd-params"></div>
+    <div id="cmd-runbar" class="toolbar" style="display:none">
+      <button id="btn-cmd-run">执行</button>
+      <span id="cmd-est" class="sub2"></span>
+    </div>
+    <div id="cmd-banner" class="sub2"></div>
+    <div id="cmd-browsable"></div>
+  </div>
+  <div id="cmd-right">
+    <h3 class="sec">结果抽屉</h3>
+    <div id="job-out"><div class="empty">尚未执行任何动作</div></div>
+  </div>
+  </main>
+</section>
+
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
@@ -315,7 +380,12 @@ const state = {no:0, offset:0, limit:50, total:0, q:"", sid:null,
                   sessChip=会话页类别；errChipRep=全库 errors 报告缓存；
                   sessClsMap=sid→类别集合缓存；cardsBodies=卡片本体缓存） */
                errChip:"", sessChip:"", errChipRep:null,
-               sessClsMap:{}, sessClsSess:null, cardsBodies:[]};
+               sessClsMap:{}, sessClsSess:null, cardsBodies:[],
+               /* P2-4：命令台状态（act=本地动作面数据；cmdCard/actionId=
+                  当前选择；job=轮询句柄与产物） */
+               act:{loaded:false,actions:[],commands:null,error:null},
+               cmdCard:null, actionId:null, cmdParams:{}, job:null,
+               chain:[], chainSilent:false};
 
 /* ---------- 工具 ---------- */
 function esc(s){return String(s??"").replace(/[&<>"']/g,
@@ -525,6 +595,23 @@ async function exportAnalysis(kind,fmt){
   }
   showBanner("warn","已导出 "+kind+"（"+fmt+"，浏览器下载）");
 }
+/* 动作面（8766）直连：CORS 已在服务端放行；服务没起时黄条 + null，
+   命令台据此把动作标成"暂不可执行"（诚实降级，不假装能跑）。 */
+const ACT_BASE="http://127.0.0.1:8766";
+async function actApi(path,opt){
+  try{
+    const res=await fetch(ACT_BASE+path,opt);
+    const body=await res.json().catch(()=>({}));
+    if(!res.ok)return {__err:body.error||("HTTP "+res.status),__status:res.status};
+    return body;
+  }catch(e){
+    return {__err:"动作面不可达（请确认 actionsserve 在 8766 运行）",__net:1};
+  }
+}
+async function actJson(path,obj){
+  return actApi(path,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(obj)});
+}
 async function failApi(res){
   let body={}; try{ body=await res.json(); }catch(e){}
   if(body.kind==="unreachable")
@@ -553,6 +640,7 @@ function switchTab(name){
     if(name==="reports") loadReport().catch(()=>{});
     if(name==="agg") loadAggFacets().catch(()=>{});
     if(name==="topics") loadTopics().catch(()=>{});
+    if(name==="cmd") loadCmdData().catch(()=>{});
   }
 }
 for(const b of document.querySelectorAll("#tabs button"))
@@ -1254,10 +1342,15 @@ function renderErrors(d,out){
     "<th>模式</th><th>类别</th><th>工具</th><th>样例锚点</th></tr></thead><tbody>"+
     pats.slice(0,60).map(x=>{
       const pl=patternPlain(x.pattern);   /* P1-1 模式人话（未收录不显示） */
-      return "<tr><td class='num'>x"+x.count+"</td><td>"+esc(x.pattern)+
+      return "<tr><td class='num'><a href='javascript:void(0)' class='anchor'"+
+      " data-pat2=\""+esc(x.pattern)+"\" title='把本模式命中的**全部**会话"+
+      "列出来（数字皆门第二跳；样例只有 3 条，代表不了全部）'>x"+
+      x.count+"</a></td><td>"+esc(x.pattern)+
       (pl?"<div class='sub2'>人话："+esc(pl)+"</div>":"")+"</td><td>"+
       esc(x["class"])+"</td><td>"+esc(x.tools.join("/"))+"</td><td>"+
       x.samples.map(s=>anchor(s.sid,s.seq,s.error)).join("<br>")+
+      "<div class='sub2'><a href='javascript:void(0)' class='anchor' "+
+      "data-pat2=\""+esc(x.pattern)+"\">会话列表 →</a></div>"+
       "</td></tr>";}).join("")+"</tbody></table>")
     :"<div class='empty'>steps 表无错误记录</div>";
   out.innerHTML=html;
@@ -1265,6 +1358,12 @@ function renderErrors(d,out){
     el.onclick=()=>{if(typeof state==="undefined")return;
       state.errChip=el.dataset.errchip||"";
       if(state.repLast)renderErrors(state.repLast,out);};
+  if(typeof bindPatternDrill==="function")bindPatternDrill(out);
+}
+/* P2-5 第二跳入口接线：模式次数 / 「会话列表 →」都通向命中会话清单 */
+function bindPatternDrill(root){
+  for(const a of root.querySelectorAll("[data-pat2]"))
+    a.onclick=()=>showPatternSessions(a.dataset.pat2,root);
 }
 function renderSkills(d,out){
   const f=repFilter();
@@ -1796,6 +1895,403 @@ function mdReport(kind,d){
   }
   return md;
 }
+/* ---------- Tab 6: 命令台（P2-4 动词面板 v0） ----------
+   数据源两个，都来自本仓动作面（8766）：
+   - /api/actions  冻结白名单（A 档可执行；B/C 档由注册表声明权限，
+     页面按档位只给"复制命令"）；
+   - /api/commands 静态命令注册表（由真实 argparse 生成，含参数数据源）。
+   红线：页面**只执行 A 档**；路径类参数（src=server）不渲染输入框；
+   C 档永不执行。 */
+function tierLabel(t){return t==="A"?"可执行":(t==="B"?"需确认（P3）":"只给命令");}
+
+async function loadCmdData(manual){
+  const meta=$("cmd-meta");
+  if(meta)meta.textContent="加载动作面…";
+  const reg=await actApi("/api/actions");
+  if(reg.__err){
+    state.act={loaded:false,actions:[],commands:null,error:reg.__err};
+    if(meta)meta.textContent="动作面不可用";
+    renderCmdCards();
+    $("cmd-banner").innerHTML="<span class='errline'>动作面不可达："+
+      esc(reg.__err)+"</span>　（起 start-viewv2.cmd 会在 8766 启动它；"+
+      "命令注册表与选择器仍可用，但执行按钮会保持禁用）";
+    const cmds=await actApi("/api/commands");
+    state.act.commands=cmds.__err?null:cmds;
+    renderCmdActions();renderCmdParams();
+    return;
+  }
+  const cmds=await actApi("/api/commands");
+  state.act={loaded:true,actions:reg.actions||[],
+             commands:cmds.__err?null:cmds,error:null};
+  if(meta)meta.textContent="动作 "+(reg.actions||[]).length+" 个｜harvester "+
+    (reg.harvester_version||"?")+"｜命令 "+
+    ((state.act.commands&&state.act.commands.commands||[]).length)+" 条";
+  if(manual)showBanner("warn","命令注册表已刷新（动作面 + 静态注册表）");
+  renderCmdCards();renderCmdActions();
+  renderCmdBrowsable();
+  if(state.cmdCard)renderCmdParams();
+}
+
+function cmdCommands(){
+  return (state.act.commands&&state.act.commands.commands)||[];
+}
+function renderCmdCards(){
+  const box=$("cmd-cards");
+  const cmds=cmdCommands();
+  if(!cmds.length){
+    box.innerHTML=errorBox(state.act.error?("动作面不可达："+state.act.error)
+      :"命令注册表为空");
+    return;
+  }
+  const cards=(state.act.commands.cards||[]).slice()
+    .sort((a,b)=>(a.order||0)-(b.order||0));
+  let h="";
+  for(const c of cards){
+    const n=cmds.filter(x=>x.card_id===c.card_id);
+    const nA=n.filter(x=>x.tier==="A").length;
+    h+="<button class='cmd-card"+(state.cmdCard===c.card_id?" on":"")+
+      "' data-card=\""+esc(c.card_id)+"\"><span class='t'>"+esc(c.label)+
+      "</span><span class='tierbadge "+esc(c.tier)+"'>"+tierLabel(c.tier)+
+      "</span><div class='n'>"+n.length+" 命令"+
+      (nA?("（"+nA+" 可直接执行）"):"（只给命令）")+"</div></button>";
+  }
+  box.innerHTML=h;
+  for(const b of box.querySelectorAll("[data-card]"))
+    b.onclick=()=>{
+      state.cmdCard=b.dataset.card;
+      const first=cmdCommands().find(x=>x.card_id===state.cmdCard);
+      state.actionId=null;state.cmdParams={};state.chain=[];
+      renderCmdCards();renderCmdActions();renderCmdParams();
+      if(first)selectCmdCommand(first.cmd);
+    };
+}
+
+function renderCmdActions(){
+  const box=$("cmd-actions");
+  if(!state.cmdCard){box.innerHTML="";$("cmd-head").textContent="← 选一张动词卡";return;}
+  const cmds=cmdCommands().filter(x=>x.card_id===state.cmdCard);
+  $("cmd-head").innerHTML="动词卡："+esc((state.act.commands.cards||[])
+    .find(c=>c.card_id===state.cmdCard)?.label||state.cmdCard)+
+    "（"+cmds.length+" 条命令）——挑一条查看参数";
+  let h="<div class='chiprow'>"+cmds.map(c=>
+    "<span class='chip"+(state.actionId===c.cmd?" on":"")+"' data-cmd=\""+
+    esc(c.cmd)+"\">"+esc(c.cmd)+" <span class='tierbadge "+esc(c.tier)+"'>"+
+    c.tier+"</span></span>").join("")+"</div>";
+  const cur=cmds.find(c=>c.cmd===state.actionId);
+  if(!cur){
+    h+="<div class='sub2'>点上面的命令名选择；A 档可在本页直接跑，"+
+       "B/C 档只生成命令行（红线：命令台不是万能 shell）。</div>";
+  }else{
+    if(cur.help)h+="<div class='sub2'>"+esc(cur.help)+"</div>";
+    if(cur.subactions&&cur.subactions.length)
+      h+="<div class='sub2'>子动作（档位各不相同）："+cur.subactions.map(s=>
+        esc(s.name)+"<span class='tierbadge "+esc(s.tier)+"'>"+s.tier+
+        "</span>").join(" ")+"</div>";
+  }
+  box.innerHTML=h;
+  for(const el of box.querySelectorAll("[data-cmd]"))
+    el.onclick=()=>selectCmdCommand(el.dataset.cmd);
+}
+
+function selectCmdCommand(name){
+  state.actionId=name;state.cmdParams={};state.chain=[];
+  const c=cmdCommands().find(x=>x.cmd===name);
+  for(const a of (c&&c.args)||[]){
+    if(a.src==="chips"&&a.default!==null&&a.default!==undefined)
+      state.cmdParams[a.dest]=a.default;
+  }
+  renderCmdActions();renderCmdParams();
+}
+
+/* 参数选择器：src=none → 文本框；chips → 预设按钮；枚举 → 下拉。
+   src=server（路径类）**刻意不渲染**（SOP §5 红线）；
+   topics_api / sessions_api 由"浏览数据"面板给可选项（见 renderCmdBrowsable）。 */
+function renderCmdParams(){
+  const box=$("cmd-params");
+  const cur=cmdCommands().find(c=>c.cmd===state.actionId);
+  if(!cur){box.innerHTML="";$("cmd-runbar").style.display="none";return;}
+  const vis=(cur.args||[]).filter(a=>a.src!=="server"&&a.kind!=="switch");
+  let h=vis.length?"<h3 class='sec'>参数（"+esc(cur.cmd)+"）</h3>":"";
+  for(const a of vis){
+    const val=state.cmdParams[a.dest];
+    h+="<div class='prow'><span class='pn'>"+esc(a.name)+"</span>";
+    if(a.src==="chips"&&a.kind==="enum"){
+      h+="<select data-p=\""+esc(a.dest)+"\"><option value=''>（缺省）</option>"+
+        (a.choices||[]).map(c=>"<option"+(String(val)===c?" selected":"")+
+        ">"+esc(c)+"</option>").join("")+"</select>";
+    }else if(a.src==="chips"){
+      h+="<input type='number' data-p=\""+esc(a.dest)+"\" style='width:90px' "+
+        "value='"+(val===undefined||val===null?"":esc(val))+"' "+
+        "placeholder='缺省=全库'>";
+    }else{
+      h+="<input data-p=\""+esc(a.dest)+"\" style='width:230px' value='"+
+        esc(val===undefined||val===null?"":val)+"' placeholder='"+
+        (a.choices?esc(a.choices.slice(0,6).join("|")):"自由文本")+"'>";
+    }
+    if(a.choices&&a.src!=="chips")
+      h+="<span class='sub2'>可选："+esc(a.choices.join(" / "))+"</span>";
+    if(a.note)h+="<span class='sub2'>"+esc(a.note)+"</span>";
+    h+="</div>";
+  }
+  const skipped=(cur.args||[]).filter(a=>a.src==="server");
+  if(skipped.length)
+    h+="<div class='sub2'>"+skipped.length+" 个路径类参数由服务端起服时"+
+       "确定（命令台不暴露路径，免得把库指错）："+
+       esc(skipped.map(a=>a.name).join(" / "))+"</div>";
+  box.innerHTML=h;
+  for(const el of box.querySelectorAll("[data-p]")){
+    const ev=el.tagName==="SELECT"?"change":"input";
+    el.addEventListener(ev,()=>{
+      let v=el.value;
+      if(v==="")delete state.cmdParams[el.dataset.p];
+      else if(el.type==="number")state.cmdParams[el.dataset.p]=Number(v);
+      else state.cmdParams[el.dataset.p]=v;
+      updateCmdPreview();
+    });
+  }
+  updateCmdPreview();
+}
+
+/* 预演命令行：与真实 CLI 同形（页面不执行它，只是让人核对参数对不对）。 */
+function cmdLine(c,params){
+  let s="python -m harvester "+c.cmd;
+  for(const a of c.args||[]){
+    if(a.src==="server")continue;
+    const v=params[a.dest];
+    if(v===undefined)continue;
+    if(a.kind==="switch"){s+=" "+a.name;continue;}
+    s+=" "+a.name+" "+String(v);
+  }
+  return s;
+}
+function updateCmdPreview(){
+  const c=cmdCommands().find(x=>x.cmd===state.actionId);
+  const bar=$("cmd-runbar"),banner=$("cmd-banner");
+  if(!c){bar.style.display="none";banner.innerHTML="";return;}
+  /* 分支**必须**按"有没有可执行动作"来分，不能只按档位：A 档也有尚未
+     实现动作的命令（白名单 3 个 vs 注册表 43 条），直接读 act.est_sec
+     会整页抛错（2026-10-12 由 tests/render_cmd.js 实测抓出）。 */
+  const act=A_ACTIONS()[actionForCommand(c.cmd)];
+  const cmdHtml="<div class='cmd-cli'>"+esc(cmdLine(c,state.cmdParams))+
+    "</div>";
+  bar.style.display="";
+  if(act&&c.tier==="A"){
+    $("btn-cmd-run").disabled=false;
+    $("btn-cmd-run").textContent="执行（进程内调用 harvester，非 shell）";
+    $("cmd-est").textContent="预估 ~"+act.est_sec+"s｜"+act.reversible+
+      "｜写入："+(act.writes||"无（只读）");
+  }else{
+    $("btn-cmd-run").disabled=true;
+    $("btn-cmd-run").textContent="本命令不可在页面执行";
+    const why=c.tier==="C"
+      ? "C 档：要占端口常驻／要人亲手登录——只生成命令（红线 3）"
+      : (c.tier==="B"
+         ? "B 档：会写库，需两段提交确认（P3-2 才提供）"
+         : "A 档，但动作面的白名单里还没有这条（现有 "+
+           Object.keys(A_ACTIONS()).length+" 个）");
+    $("cmd-est").textContent=why+"｜请复制下方命令自行执行";
+  }
+  banner.innerHTML=cmdHtml;
+}
+/* 命令名 → 动作 id：只映**已实现**的 A 档动作（不猜、不造）。
+   写成函数而不是 const 表：本仓的渲染门（tests/render_cmd.js）只 extract
+   `function name(...)` 形态的源码——`const` 顶层表 extract 不到，映射就
+   落在门的保护之外（"门绿但映射被删"）。 */
+function cmdActionMap(){
+  return {"report-tools":"report_tools","report-errors":"report_errors",
+    "topic":"topic_list"};
+}
+function actionForCommand(cmd){return cmdActionMap()[cmd]||null;}
+function A_ACTIONS(){
+  const m={};
+  for(const a of state.act.actions||[])m[a.action_id]=a;
+  return m;
+}
+
+async function runCmdAction(){
+  const c=cmdCommands().find(x=>x.cmd===state.actionId);
+  const aid=actionForCommand(c&&c.cmd);
+  if(!c||!aid){showBanner("warn","这条命令没有已实现的 A 档动作");return;}
+  const act=A_ACTIONS()[aid];
+  const params={};
+  for(const k of Object.keys(act.params||{}))
+    if(state.cmdParams[k]!==undefined)params[k]=state.cmdParams[k];
+  $("job-out").innerHTML="<div class='empty'>已入队，等待结果…</div>";
+  const started=Date.now();
+  const r=await actJson("/api/actions/run",{action_id:aid,params:params,
+    view_actions_api:1});
+  if(r.__err){showBanner("err","执行失败："+r.__err);
+    $("job-out").innerHTML=errorBox(r.__err);return;}
+  state.job={id:r.job_id,est:r.est_sec,t0:started,label:c.cmd};
+  $("job-out").innerHTML="<div class='sub2'>已入队 "+esc(r.job_id)+
+    "（预估 ~"+esc(String(r.est_sec))+"s）——页面可关，回来还能查</div>";
+  pollCmdJob(r.job_id);
+}
+
+async function pollCmdJob(jid){
+  const job=await actApi("/api/actions/job/"+jid);
+  if(job.__err){showBanner("warn","作业查询失败："+job.__err);return;}
+  const el=$("job-out");
+  const secs=((Date.now()-(state.job?state.job.t0:Date.now()))/1000).toFixed(1);
+  if(job.status==="queued"||job.status==="running"){
+    el.innerHTML="<div class='sub2'>"+esc(job.label||"")+" 执行中…"+" 已用 "+
+      secs+"s（预估 ~"+esc(String(state.job?state.job.est:"?"))+"s）</div>";
+    setTimeout(()=>pollCmdJob(jid),400);
+    return;
+  }
+  if(job.status==="failed"){
+    el.innerHTML="<div class='errline'>失败："+esc(job.error||"")+"</div>"+
+      (job.traceback?"<details><summary>traceback</summary><pre>"+
+       esc(job.traceback)+"</pre></details>":"");
+    showBanner("err","动作失败："+(job.error||""));
+    return;
+  }
+  el.innerHTML="<div class='sub2'>完成：用时 "+((job.elapsed_ms||0)/1000)
+    .toFixed(2)+"s｜"+esc(job.label||"")+"</div>"+jobResultHtml(job);
+  showBanner("warn","动作完成："+(job.label||"")+"（结果在右侧抽屉）");
+  if(glossary.loaded)applyTermTooltips(el);
+}
+/* 结果渲染：**数字皆门**——能点开的数字都给出口，不打印一整坨 JSON。
+   （原始 JSON 永远可在下面展开，机器口径不丢。） */
+function jobResultHtml(job){
+  const r=job.result||{};
+  let h="";
+  if(r.topics){
+    h+="<div class='sub2'>主题 "+r.topics.length+" 个</div><table><thead><tr>"+
+      "<th>主题</th><th class='num'>成员</th></tr></thead><tbody>"+
+      r.topics.map(t=>"<tr><td>"+esc(t.name)+"<div class='sub2'>"+
+        esc(t.id)+"</div></td><td class='num'>"+t.members_count+
+        "</td></tr>").join("")+"</tbody></table>";
+  }else if(r.tools||r.by_class||r.patterns){
+    const m=r.meta||{};
+    h+="<div class='sub2'>库快照："+(r.db_fingerprint?
+      (r.db_fingerprint.sessions+" 会话 / "+r.db_fingerprint.steps+
+       " 步骤 / "+r.db_fingerprint.errors+" 错误 @ "+
+       esc(r.db_fingerprint.db_mtime)):"—")+"</div>";
+    if(r.meta&&r.meta.error_count!==undefined)
+      h+="<div>错误 "+m.error_count+" 条 / 总步骤 "+m.total_steps+
+        "｜涉及 "+m.sessions+" 会话</div>";
+    const cls=r.by_class||{};
+    h+="<table><thead><tr><th>类别</th><th class='num'>次数</th></tr></thead>"+
+      "<tbody>"+Object.entries(cls).sort((a,b)=>b[1]-a[1]).map(e=>
+      "<tr><td>"+esc(clsLabel(e[0]))+"</td><td class='num'>"+e[1]+
+      "</td></tr>").join("")+"</tbody></table>";
+    const pats=(r.patterns||[]).slice(0,8);
+    if(pats.length)
+      h+="<div class='sub2'>模式 Top "+pats.length+"（点次数看命中会话）</div>"+
+        pats.map(p=>"<div>"+esc(p.pattern)+" "+
+        "<a href='javascript:void(0)' data-pat=\""+esc(p.pattern)+
+        "\" class='anchor'>x"+p.count+"</a></div>").join("");
+  }
+  h+="<details><summary>原始 JSON</summary><pre style='max-height:260px;"+
+    "overflow:auto;font-size:11px'>"+esc(JSON.stringify(r,null,1).slice(0,20000))+
+    "</pre></details>";
+  setTimeout(()=>{
+    const el=$("job-out");
+    for(const a of el.querySelectorAll("[data-pat]"))
+      a.onclick=()=>showPatternSessions(a.dataset.pat);
+  },0);
+  return h;
+}
+/* ---------- P2-5 数字皆门（三跳） ----------
+   一跳 错误报告的模式行（次数 xN）→ 二跳 命中会话清单 →
+   三跳 会话回合原文（startThreeHop）。
+   数字对账纪律：二跳的 count 与一跳的模式 count **同源**（都是
+   errstats.normalize_error 归一后计数），逐会话次数之和必须等于总数；
+   任一跳断了都只能说"断在哪"，不许两边各显示一个数糊过去。 */
+async function showPatternSessions(pattern,backTo){
+  const out=$("rep-out");
+  out.innerHTML="<div class='empty'>取模式「"+esc(pattern)+"」的命中会话…</div>";
+  const d=await actApi("/api/pattern-sessions?pattern="+
+    encodeURIComponent(pattern));
+  if(d.__err){out.innerHTML=errorBox("第二跳失败："+d.__err+
+    "（需要动作面在 8766 运行）");return;}
+  renderPatternSessions(d,out,backTo);
+  showBanner("warn","第二跳：模式「"+pattern+"」命中 "+d.sessions_count+
+    " 会话（共 "+d.count+" 次）");
+}
+function renderPatternSessions(d,out,backTo){
+  const sum=(d.sessions||[]).reduce((a,s)=>a+s.occurrences,0);
+  const ok=sum===d.count;
+  let h="<h3 class='sec'>第二跳 · 模式命中会话："+esc(d.pattern)+"</h3>"+
+    "<p class='sub2'>本模式共 <b>x"+d.count+"</b> 次，分布在 <b>"+
+    d.sessions_count+"</b> 个会话；其中未解决（失败后同工具再未调用）<b>"+
+    d.given_up+"</b> 次。<br>逐会话次数之和 = <b>"+sum+"</b> "+
+    (ok?("<span class='c-judge'>与模式总数一致 ✓</span>")
+       :("<span class='errline'>与模式总数 "+d.count+" 不一致 ✗"+
+          "（数字对账断了，先别下结论）</span>"))+
+    "。点会话名进第三跳（回合原文，经既有 gotoAnchor 直通高亮）。</p>"+
+    "<div class='toolbar'><button id='btn-pat-back'>← 回错误报告</button>"+
+    "<span class='sub2'>轨迹：错误模式 → 会话列表 → 回合原文</span>"+
+    "</div><table><thead><tr><th>会话</th><th class='num'>次数</th>"+
+    "<th class='num'>未解决</th><th>工具</th></tr></thead><tbody>"+
+    (d.sessions||[]).map(s=>"<tr><td><a href='javascript:void(0)' "+
+      "class='anchor' data-sid=\""+esc(s.sid)+"\" data-seq=\""+
+      Number(s.sample_seq||0)+"\" data-err=\""+esc(s.sample_error||"")+
+      "\">"+esc(s.title||shortSid(s.sid))+"</a><div class='sub2'>"+
+      esc((s.updated_at||"").slice(0,10))+"</div></td>"+
+      "<td class='num'>"+s.occurrences+"</td><td class='num'>"+
+      (s.given_up?"<span class='errline'>"+s.given_up+"</span>":"0")+
+      "</td><td>"+esc((s.tools||[]).join("/"))+"</td></tr>").join("")+
+          "</tbody></table>";
+  out.innerHTML=h;
+  $("btn-pat-back").onclick=()=>(backTo?rerenderReport():switchTab("reports"));
+  bindAnchors(out);
+  if(glossary.loaded)applyTermTooltips(out);
+}
+/* 第三跳：会话 → 回合原文。**刻意不自己拼 turn 号**：steps.seq 是库内
+   步骤序号，与 api_turn 的回合号 n 不是同一口径，直接拿 seq 当 n 会跳错
+   回合（且错得很安静）。复用既有 gotoAnchor——它按**错误原文逐字**扫回合
+   并高亮命中消息，扫不到就诚实说"表述可能经 adapter 改写"。 */
+function startThreeHop(sid,seq,errText){
+  if(!sid){showBanner("warn","第三跳缺会话 id（第二跳数据不完整）");return;}
+  if(typeof gotoAnchor!=="function")return;
+  gotoAnchor(sid,seq||0,errText||"").catch(e=>
+    showBanner("err","第三跳失败："+e.message));
+}
+
+/* 浏览数据：给参数区提供"从库里来的选择器"（SOP §5.5）。
+   只读、按需取；不可达时退化为无面板（参数仍可手输，但页面会提示）。 */
+function renderCmdBrowsable(){
+  const box=$("cmd-browsable");
+  if(!box)return;
+  box.innerHTML="<h3 class='sec'>从库里选（只读）</h3>"+
+    "<div class='toolbar'><button id='btn-cmd-topics'>载入主题清单</button>"+
+    "<button id='btn-cmd-sids'>载入最近异常会话</button></div>"+
+    "<div id='cmd-pick' class='sub2'>点上面按钮把可选值取回来——"+
+    "命令台的参数不该靠人背（SOP §5.5）。</div>";
+  $("btn-cmd-topics").onclick=async()=>{
+    $("cmd-pick").textContent="取主题…";
+    try{
+      const d=await api("/api/topics");
+      state.topicPick=d;
+      $("cmd-pick").innerHTML="主题 "+(d.topics||[]).length+" 个："+
+        (d.topics||[]).map(t=>"<span class='chip' data-topicid=\""+
+          esc(t.id)+"\">"+esc(t.name)+" ("+t.members_count+")</span>").join(" ");
+      for(const el of $("cmd-pick").querySelectorAll("[data-topicid]"))
+        el.onclick=()=>{state.cmdParams["id_"]=el.dataset.topicid;
+          state.cmdParams["id"]=el.dataset.topicid;
+          showBanner("warn","已选主题 "+el.dataset.topicid+
+            "（参数已填入下方输入框，可直接核对命令行）");};
+    }catch(e){$("cmd-pick").textContent="取主题失败："+e.message;}
+  };
+  $("btn-cmd-sids").onclick=async()=>{
+    $("cmd-pick").textContent="取会话…";
+    try{
+      const d=await api("/api/sessions?errors_only=1&limit=20");
+      state.sidPick=d;
+      $("cmd-pick").innerHTML="最近异常会话 "+(d.items||[]).length+" 个："+
+        (d.items||[]).map(s=>"<span class='chip' data-picksid=\""+
+          esc(s.sid)+"\">"+esc(String(s.title||s.sid).slice(0,18))+
+          "</span>").join(" ");
+      for(const el of $("cmd-pick").querySelectorAll("[data-picksid]"))
+        el.onclick=()=>{state.cmdParams["sid"]=el.dataset.picksid;
+          state.cmdParams["sids"]=el.dataset.picksid;
+          showBanner("warn","已选会话（参数已填入，核对命令行后再执行）");};
+    }catch(e){$("cmd-pick").textContent="取会话失败："+e.message;}
+  };
+}
+
 /* ---------- 事件绑定 ---------- */
 $("btn-search").onclick=()=>{state.q=$("f-q").value.trim();state.offset=0;
   loadSessions().catch(()=>{});};
@@ -1885,6 +2381,10 @@ $("btn-tri-json").onclick=()=>{
   exportAnalysis("triage","json")
     .catch(e=>showBanner("err","导出失败："+e.message));
 };
+
+$("btn-cmd-refresh").onclick=()=>loadCmdData(true).catch(()=>{});
+$("btn-cmd-run").onclick=()=>runCmdAction()
+  .catch(e=>showBanner("err","执行失败："+e.message));
 
 initUpstreams().then(()=>{
   state.no=Number($("upstream").value||0);

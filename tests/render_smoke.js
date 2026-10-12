@@ -381,9 +381,12 @@ check("chips 行渲染（全部 + 2 类别）",
   depAll.innerHTML.includes("用法类 5"));
 check("chips 数字=事件条数（全部 6 = 1+2+3），而模式行仍是 3 行",
   depAll.innerHTML.includes("全部 6") &&
-  depAll.innerHTML.includes("x1</td>") &&
-  depAll.innerHTML.includes("x2</td>") &&
-  depAll.innerHTML.includes("x3</td>"));
+  /* P2-5 起每格是"可点的门"（data-pat2 锚点），故断言门与次数文本，
+     而不是旧的 `x1</td>` 字面形态——含义不变：三种模式各一行、次数正确 */
+  (depAll.innerHTML.match(/data-pat2=/g) || []).length === 6 &&
+  depAll.innerHTML.includes(">x1</a>") &&
+  depAll.innerHTML.includes(">x2</a>") &&
+  depAll.innerHTML.includes(">x3</a>"));
 state.errChip = "env";
 const depEnv = mkOut();
 renderErrors(DEP, depEnv);
@@ -395,8 +398,8 @@ state.errChip = "tool_interface";
 const depTI = mkOut();
 renderErrors(DEP, depTI);
 check("chips 选中用法类（两行合计 x5）",
-  depTI.innerHTML.includes("x2</td>") &&
-  depTI.innerHTML.includes("x3</td>") &&
+  depTI.innerHTML.includes(">x2</a>") &&
+  depTI.innerHTML.includes(">x3</a>") &&
   !depTI.innerHTML.includes("PAT-ENV"));
 state.errChip = "";
 

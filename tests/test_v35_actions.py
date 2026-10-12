@@ -317,6 +317,48 @@ class ActionsServeTest(_ServerMixin, unittest.TestCase):
         self.assertEqual(cm.exception.code, 400)
 
 
+class RegressActionTest(unittest.TestCase):
+    """A 档重活：`regress` 动作必须**真跑**并保留上游的退出码三分。
+
+    这是本阶段"能失败的断言"证据：同一动作跑 `corpus=drift`（上游故意漂移
+    的语料）必须变红——如果两种情况都绿，说明这个动作只是个装饰。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if AS.ensure_harvester_importable():
+            raise unittest.SkipTest("上游不可用")
+
+    def test_default_corpus_passes(self):
+        out = AS.ACTIONS["regress"]["handler"]
+        r = out(None, {"corpus": "default"})
+        self.assertEqual(r["exit_code"], 0, r)
+        self.assertEqual(r["failed_assertions"], 0)
+        self.assertGreater(r["assertions"], 50, r)
+        self.assertEqual(r["steps_failed"], 0)
+        # 步骤名必须真的带出来（首版认错了键 → 8 个空名，页面上看不出来）
+        names = [s["step"] for s in r["steps"]]
+        self.assertEqual(names[0], "precondition")
+        self.assertIn("diagnostics", names)
+        self.assertNotIn(None, names)
+
+    def test_drift_corpus_turns_red(self):
+        out = AS.ACTIONS["regress"]["handler"]
+        r = out(None, {"corpus": "drift"})
+        self.assertEqual(r["exit_code"], 1,
+                         "drift 语料（故意漂移）必须让断言变红；都绿=断言没用")
+        self.assertGreater(r["failed_assertions"], 0)
+        # 未执行 ≠ 失败：链路后半段要被单独计成 not_run（AGENTS.md §五 16）
+        self.assertGreater(r["steps_not_run"], 0)
+        self.assertEqual(r["steps_not_run"] + r["steps_failed"] +
+                         len([s for s in r["steps"] if s["status"] == "pass"]),
+                         r["steps_total"])
+
+    def test_bad_corpus_400(self):
+        with self.assertRaises(AS._BadRequest):
+            AS.ACTIONS["regress"]["handler"](None, {"corpus": "nope"})
+
+
 class CommandsRegistryTest(unittest.TestCase):
     """P2-2 验收：注册表覆盖真 CLI 全部子命令与参数，且参数有数据源标注。"""
 
@@ -333,8 +375,8 @@ class CommandsRegistryTest(unittest.TestCase):
         cards = {c["card_id"] for c in d["cards"]}
         self.assertEqual({c["card_id"] for c in cmds}, cards)
         # 每个参数都有 src，且取值在允许集合内
-        allowed = {"none", "server", "chips", "topics_api", "sessions_api",
-                   "cards_api", "exports_dir", "auto_out"}
+        allowed = {"none", "server", "chips", "topics_api",
+                   "sessions_api", "cards_api", "exports_dir", "auto_out"}
         n = 0
         for c in cmds:
             self.assertIn(c["tier"], "ABC", "%s 档位非法" % c["cmd"])
@@ -387,6 +429,46 @@ class CommandsRegistryTest(unittest.TestCase):
                                  "chain_root"):
                     self.assertEqual(a["src"], "server",
                                      "%s %s 应标 server" % (c["cmd"], a["name"]))
+
+    def test_key_annotations_are_pinned(self):
+        """**关键参数的数据源一个都不许悄悄掉回 none**（本轮真实教训）。
+
+        为什么单列一条：我在改这个表时误删了一整段，`src` 全掉成 `none`、
+        可计数从 132 掉到 106——而**所有门照样绿**（`none` 本来就是合法
+        取值，没有任何断言盯着"哪些 dest 必须是指定 src"）。掉回 none 的
+        后果是页面上这些参数从"选择器"退化成"要人背的手输框"，正是 SOP
+        §5.5 要消灭的东西，却没有任何信号。
+        """
+        d = json.loads(CG.OUT.read_text(encoding="utf-8"))
+        got: dict[str, set] = {}
+        for c in d["commands"]:
+            for a in c["args"]:
+                got.setdefault(a["dest"], set()).add(a["src"])
+        expect = {
+            "days": "chips", "since": "chips", "level": "chips",
+            "max_chars": "chips", "role": "chips", "corpus": "chips",
+            "out": "auto_out", "plan_out": "auto_out",
+            "sid": "sessions_api", "sids": "sessions_api",
+            "from_dir": "exports_dir", "chain": "cards_api",
+            "id_": "topics_api", "craft_topic": "topics_api",
+            "db": "server", "meta": "server", "topics_meta": "server",
+            "keywords_meta": "server", "suggestions_meta": "server",
+            "cards_root": "server", "chain_root": "server",
+            "artifacts_meta": "server", "temp_base": "server",
+            "sources": "none",
+        }
+        for dest, want in expect.items():
+            self.assertIn(dest, got, "参数 %s 在注册表里消失了？" % dest)
+            self.assertEqual(got[dest], {want},
+                             "参数 %s 的数据源应为 %r，实际 %r"
+                             % (dest, want, sorted(got[dest])))
+        # 有数据源标注的参数总量不许大幅缩水（掉回 none 的静默失效信号）
+        annotated = sum(1 for c in d["commands"] for a in c["args"]
+                        if a["src"] != "none")
+        # 145 是量到的真值；阈值留一成余量——**低到能抓"整段掉回 none"
+        # （本轮实测 106），又不会因为多一个自由文本参数就假红**
+        self.assertGreaterEqual(annotated, 135,
+                                "标注数异常缩水（本轮曾因误删一段掉到 106）")
 
     def test_sources_stays_free_text(self):
         """`--sources` 是 sources.json 的**路径**，但也是自由文本（可换任何
@@ -484,6 +566,35 @@ class RealTimelineTest(unittest.TestCase):
     def test_missing_topic_404(self):
         with self.assertRaises(AS._NotFound):
             AS.topic_timeline(self.cfg, "tp-不存在-000", "title", None)
+
+    def test_corpus_watermark_opt_in_only(self):
+        """库龄判定**缺省关**（stale=None=未判定）；开了才真判。
+
+        这条钉两件事：① 默认不扫语料盘（timeline 的验收是"能看时间线"，
+        不该被库龄拖住）；② 开了之后 `stale` 确实由"当前语料 mtime ⟷ 上次
+        索引水位"算出来，而不是照抄库文件 mtime（H104 的假 STALE 教训）。
+        """
+        up = AS.upstream_root()
+        con = AS.open_ro(up / "topics_meta.db")
+        try:
+            tid = con.execute("SELECT id FROM topics ORDER BY id").fetchone()[0]
+        finally:
+            con.close()
+        d_off = AS.topic_timeline(self.cfg, tid, "title", None)
+        self.assertIsNone(d_off["db_fingerprint"].get("stale"),
+                          "缺省不该判库龄（未判定必须是 None）")
+        cfg_on = AS.Config(db=self.cfg.db, cards_root=self.cfg.cards_root,
+                           glossary=self.cfg.glossary,
+                           topics_meta=self.cfg.topics_meta,
+                           corpus_watermark=True)
+        fp = AS.topic_timeline(cfg_on, tid, "title", None)["db_fingerprint"]
+        self.assertIsNotNone(fp.get("corpus_mtime"))
+        self.assertIsNotNone(fp.get("corpus_indexed_mtime"))
+        self.assertIn(fp.get("stale"), (True, False),
+                      "开了之后必须是明确判定，不能还是 None")
+        # 口径检查：判定必须等于 two 个时间串的比较（同格式可直接比）
+        self.assertEqual(fp["stale"],
+                         fp["corpus_mtime"] > fp["corpus_indexed_mtime"])
 
 
 if __name__ == "__main__":

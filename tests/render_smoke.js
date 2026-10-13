@@ -142,7 +142,14 @@ const CD = { root: "/cards", summary: { cards: 4, ok: 4, warn: 0, error: 0,
 store = freshStore("", true);  // 只看错误级：无错误卡 → 空态
 const cdOut = mkOut();
 renderCards(CD, cdOut);
-check("G3 rep-erronly 后 meta 含'已过滤'", store["rep-meta"].textContent.includes("已过滤"));
+/* 卡片页的 meta 现在用 innerHTML（要在 title 里放完整路径、正文放缩写路径，
+   用户 2026-10-12 要求展示面不印本机绝对路径），故这里读 innerHTML；
+   同时钉住"正文不出现绝对路径"（title 里允许有，那是悬停可见的定位信息）。 */
+check("G3 rep-erronly 后 meta 含'已过滤'",
+  store["rep-meta"].innerHTML.includes("已过滤"));
+check("G3 meta 正文字不印本机绝对路径（用户 2026-10-12）",
+  !/>[A-Za-z]:[\\/]/.test(store["rep-meta"].innerHTML) &&
+  !store["rep-meta"].innerHTML.includes("C:\\Users"));
 check("G3 过滤态空态带计数", cdOut.innerHTML.includes("已过滤：0/4 张卡"));
 
 /* --- v0.34 P1-3 卡片本体合并（D9）--- */

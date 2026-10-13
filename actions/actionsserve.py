@@ -569,6 +569,9 @@ def health(cfg: Config) -> dict:
         "actions_meta": str(cfg.actions_meta),
         "actions_meta_ledger": (runlib.ledger_stats(cfg.actions_meta)
                                 if cfg.actions_meta else None),
+        # 用户目录：**给页面做路径缩写用**（展示面不印本机绝对路径，用户 2026-10-12
+        # 要求；前端把 home 前缀换成 `~`）。这是路径不是凭据，回环服务本就可信。
+        "home": str(Path.home()),
     }
 
 

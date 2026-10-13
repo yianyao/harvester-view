@@ -205,11 +205,19 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 .concl .c-actions button{font-size:12px;padding:2px 10px}
 .concl .c-sub{color:var(--ink2);font-size:12px;margin-top:4px}
 .gterm{text-decoration:underline dotted var(--accent);cursor:help}
-#gl-pop{position:fixed;z-index:30;max-width:360px;background:var(--ink);
-  color:#fff;border-radius:8px;padding:10px 12px;font-size:12px;
-  line-height:1.6;box-shadow:0 4px 16px rgba(0,0,0,.25);display:none}
-#gl-pop .t{font-weight:700;margin-bottom:2px}
-#gl-pop .ex{color:#c9d4e3;margin-top:4px}
+/* 术语悬停卡：**浅色底 + 深色字 + 明确描边**。
+   历史问题（用户 2026-10-12 报）：原来用 background:var(--ink)（深底）+ color:#fff，
+   在浅色页面上像一块异物、副文 #c9d4e3 落深底偏灰，"背景和文字太奇怪"。
+   现改为与页面同一套色板（--panel/--ink/--ink2 + 强调色描边），对比度按
+   WCAG AA 的正文要求（≥4.5:1）取色：底 #fffdf5 / 字 #1c2330 = 约 14:1。 */
+#gl-pop{position:fixed;z-index:30;max-width:380px;background:#fffdf5;
+  color:var(--ink);border:1px solid var(--accent);border-left:4px solid var(--accent);
+  border-radius:8px;padding:9px 12px;font-size:12.5px;
+  line-height:1.65;box-shadow:0 6px 20px rgba(20,30,50,.22);display:none}
+#gl-pop .t{font-weight:700;margin-bottom:3px;color:#12305e}
+#gl-pop .ex{color:var(--ink2);margin-top:5px;border-top:1px dashed var(--line);
+  padding-top:5px;font-family:ui-monospace,Consolas,monospace;font-size:11.5px;
+  word-break:break-word}
 .panel-intro{border:1px dashed var(--line);border-radius:8px;
   padding:6px 10px;margin:0 0 10px;font-size:12px;color:var(--ink2)}
 .panel-intro summary{cursor:pointer;color:var(--accent)}
@@ -467,10 +475,25 @@ function showBanner(kind,msg){const b=$("banner");b.className=kind;
 function hideBanner(){const b=$("banner");b.className="";b.textContent="";}
 function daysVal(id){const v=Number($(id).value||0);return v>0?v:0;}
 /* 锚点链接（sid#seq，可点 → 会话下钻并定位错误原文） */
+/* 锚点（sid#seq）：**显示截断、悬停出全量**。
+   sid 是 `dsh:--C-Users-.../session-<uuid>/session.v4.jsonl.zstd` 这种长串，
+   一行 3 条会把表格撑到横向滚动（用户 2026-10-12 报）。
+   截断只影响**显示**：data-sid/data-seq/data-err 原样保留，三跳语义不变。 */
 function anchor(sid,seq,err){
+  const full=String(sid)+"#"+Number(seq);
   return "<a class='anchor' data-sid='"+esc(sid)+"' data-seq='"+Number(seq)+
-    "' data-err='"+esc(err||"")+"' href='javascript:void(0)'>"+
-    esc(sid)+"#"+seq+"</a>";
+    "' data-err='"+esc(err||"")+"' title='"+esc(full)+
+    "' href='javascript:void(0)'>"+esc(cssShortId(sid))+"#"+Number(seq)+"</a>";
+}
+/* 与 `shortSid`（P1 的卡片锚点用）同口径，但**自带内联定义**：
+   本函数会被渲染门（render_smoke/render_cmd/render_home）单独 extract 执行，
+   依赖外部全局就会在缺桩环境下 ReferenceError——门里已经踩过这个坑，
+   所以这里宁可重复三行也不跨函数依赖。 */
+function cssShortId(sid){
+  const s=String(sid||"");
+  const m=s.match(/session-([0-9a-f][0-9a-f-]+)/i);
+  if(m)return m[1].slice(0,13)+"…";
+  return s.length>28?s.slice(0,25)+"…":s;
 }
 function bindAnchors(root){
   for(const a of root.querySelectorAll("a.anchor"))
@@ -575,8 +598,9 @@ function applyTermTooltips(root){
     const c=termCard(el.dataset.term);
     if(!c)return;
     const p=ensurePop();
-    p.innerHTML="<div class='t'>"+esc(c.term)+"</div>"+esc(c.plain)+
-      (c.example?"<div class='ex'>例："+esc(c.example)+"</div>":"");
+    p.innerHTML="<div class='t'>"+esc(c.term)+"</div>"+
+      "<div class='pl'>"+esc(c.plain)+"</div>"+
+      (c.example?"<div class='ex'>真实例子："+esc(c.example)+"</div>":"");
     p.style.display="block";
     const w=Math.min(360,window.innerWidth-20);
     const r=el.getBoundingClientRect();
@@ -1409,7 +1433,8 @@ function renderErrors(d,out){
     if(cur)pats=pats.filter(x=>x["class"]===cur);
   }
   html+=pats.length?("<table><thead><tr><th class='num'>次数</th>"+
-    "<th>模式</th><th>类别</th><th>工具</th><th>样例锚点</th></tr></thead><tbody>"+
+    "<th>模式</th><th>类别</th><th>工具</th>"+
+    "<th style='max-width:190px'>样例锚点</th></tr></thead><tbody>"+
     pats.slice(0,60).map(x=>{
       const pl=patternPlain(x.pattern);   /* P1-1 模式人话（未收录不显示） */
       return "<tr><td class='num'><a href='javascript:void(0)' class='anchor'"+
@@ -1417,7 +1442,8 @@ function renderErrors(d,out){
       "列出来（数字皆门第二跳；样例只有 3 条，代表不了全部）'>x"+
       x.count+"</a></td><td>"+esc(x.pattern)+
       (pl?"<div class='sub2'>人话："+esc(pl)+"</div>":"")+"</td><td>"+
-      esc(x["class"])+"</td><td>"+esc(x.tools.join("/"))+"</td><td>"+
+      esc(x["class"])+"</td><td>"+esc(x.tools.join("/"))+"</td>"+
+      "<td style='max-width:190px;word-break:break-all'>"+
       x.samples.map(s=>anchor(s.sid,s.seq,s.error)).join("<br>")+
       "<div class='sub2'><a href='javascript:void(0)' class='anchor' "+
       "data-pat2=\""+esc(x.pattern)+"\">会话列表 →</a></div>"+
@@ -1542,7 +1568,15 @@ function renderCards(d,out){
   if(f.q)bad=bad.filter(c=>hitQ(c.path+" "+
     c.errors.concat(c.warnings).join(" "),f.q));
   const filtered=f.only||f.q;
-  $("rep-meta").textContent=d.root+"｜卡片 "+s.cards+"｜锚点校验 "+
+  /* 卡片目录：**不印本机绝对路径**（用户 2026-10-12 要求）。
+     显示成 `~/.workbuddy/knowledge/cards` 这种缩写；完整路径给 title（悬停可见），
+     需要精确定位时仍拿得到。 */
+  /* typeof 守卫：渲染门（render_smoke 等）单独 extract 本函数执行，
+     缺桩环境下不该因一个显示辅助函数就崩（P2-5 的同款处理）。 */
+  const dpath=(typeof displayPath==="function")?displayPath(d.root)
+                                              :(d.root||"");
+  $("rep-meta").innerHTML="<span title='"+esc(d.root||"")+"'>"+
+    esc(dpath)+"</span>｜卡片 "+s.cards+"｜锚点校验 "+
     s.anchor_checked+"（未命中 "+s.anchor_misses+"）"+
     (filtered?"｜已过滤 "+bad.length+"/"+s.cards+" 张":"");
   html+=bad.length?("<table><thead><tr><th>卡片</th><th>问题</th></tr>"+
@@ -1974,6 +2008,18 @@ function mdReport(kind,d){
    C 档永不执行。 */
 function tierLabel(t){return t==="A"?"可执行":(t==="B"?"需确认（P3）":"只给命令");}
 
+/* 本机绝对路径 → 展示用缩写（用户目录换成 `~`）。
+   **只用于展示**；执行面/台账仍记真实路径（那才是可审计的）。 */
+function displayPath(p){
+  if(!p)return "";
+  let s=String(p).replace(/\\/g,"/");
+  const home=(state.act&&state.act.health&&state.act.health.home)||"";
+  if(home){
+    const h=String(home).replace(/\\/g,"/").replace(/\/+$/,"");
+    if(s.indexOf(h)===0)s="~"+s.slice(h.length);
+  }
+  return s;
+}
 async function loadCmdData(manual){
   const meta=$("cmd-meta");
   if(meta)meta.textContent="加载动作面…";

@@ -43,11 +43,15 @@ function extractFn(name, sig) {
   return m[0];
 }
 
-/* 渲染函数依赖的桩：store/$/esc 与 index.html 里的全局一致 */
+/* 渲染函数依赖的桩：store/$/esc 与 index.html 里的全局一致。
+   P4-5 起 renderChain 还读 state.skJoin/skJoinQuery（挂轨道）——门里给
+   null 桩（未挂轨道形态）；挂轨道形态由 render_skilljoin.js 门专管。 */
 const store = { "topic-doc": { innerHTML: "" }, "rep-meta": { textContent: "" } };
 function mkOut() { return { innerHTML: "", querySelectorAll: () => [] }; }
 const $ = id => store[id];
 const esc = s => String(s == null ? "" : s);
+const state = { skJoin: null, skJoinQuery: null, chainIdx: 0,
+                topicCur: null, anchorRun: 0 };
 eval(extractFn("kwText", "k"));
 eval(extractFn("renderTopics", "d,out"));
 eval(extractFn("renderChain", "d,out,idx"));
@@ -112,7 +116,7 @@ if (chains.length < 2) {
   note("切换条与换链断言",
     "载荷主题只有 " + chains.length + " 条链（多链行为无从验证）");
 } else {
-  const mOut = { innerHTML: "" };
+  const mOut = mkOut();   /* P4-5 起 renderChain 末尾绑 sk 按钮，需 querySelectorAll */
   renderChain(mc, mOut, 0);
   check("切换条按钮数 = chain_count（" + chains.length + "）",
     (mOut.innerHTML.match(/data-chain-idx=/g) || []).length === chains.length);

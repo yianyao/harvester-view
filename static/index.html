@@ -315,6 +315,15 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 .dt-pre{white-space:pre-wrap;word-break:break-word;font-size:11px;
   color:var(--ink2);background:var(--bg);border-radius:6px;
   padding:6px 8px;margin:4px 0;max-height:220px;overflow:auto}
+/* P4-5 skill 调用点挂轨道（chain 时间线上的调用注记） */
+.sk-in{border:1px solid var(--line);border-radius:6px;padding:2px 6px;
+  font-size:12px;background:var(--bg);color:var(--ink)}
+.sk-line{margin:6px 0 0;display:flex;flex-wrap:wrap;gap:4px}
+.sk-chip{display:inline-block;border:1px solid var(--line);border-radius:10px;
+  padding:1px 8px;font-size:11px;font-family:Consolas,monospace;
+  cursor:pointer;user-select:none}
+.sk-chip:hover{border-color:var(--accent)}
+.sk-chip.sk-after{border-style:dashed;opacity:.85}
 </style>
 </head>
 <body>
@@ -1871,6 +1880,7 @@ async function openTopic(id){
   if(!res.ok){ await failApi(res); return; }
   const d=await res.json();
   state.topicCur={id:id};
+  state.chainLast=d;state.chainIdx=0;   /* P4-5：供 skill 调用点挂轨道重渲染 */
   updateTopicCmd();
   $("topics-right").style.display="block";
   renderChain(d,$("topics-timeline"));
@@ -1887,6 +1897,18 @@ function renderChain(d,out,idx){
   const nNodes=stages.reduce((a,s)=>a+((s.nodes||[]).length),0);
   const cnt=c=>Number(c.stages!==undefined?c.stages:((c.fm&&c.fm.anchors)||[]).length);
   const nn=c=>Number(c.nodes!==undefined?c.nodes:0);
+  /* P4-5 skill 调用点挂轨道：工具行常驻（skill 名留空=全部；margin 默认
+     90 = 叙事节奏 chain 的认可口径，TODO 裁决记录；本视图只渲染服务端
+     给的交叉表，join 计算全在 actionsserve→上游 skilljoin）。 */
+  const skBar="<div class='toolbar' id='sk-join-bar'>"+
+    "<span class='sub2'>skill 调用点挂轨道：</span>"+
+    "<input id='sk-join-skill' class='sk-in' size='22' "+
+    "placeholder='skill 名（留空=全部），如 pdf-text-extractor'>"+
+    "<input id='sk-join-margin' class='sk-in' size='4' value='90' "+
+    "title='stage 时间窗向后放宽天数（margin 只向后）'>天 "+
+    "<button class='xbtn' data-sk-load>挂轨道</button>"+
+    (state.skJoin?"<button class='xbtn' data-sk-clear>收起</button>":"")+
+    "</div>";
   const sw=list.length>1
     ?("<div class='toolbar' id='chain-switch'><span class='sub2'>本主题 "+
        list.length+" 条链：</span>"+list.map((c,k)=>
@@ -1903,7 +1925,17 @@ function renderChain(d,out,idx){
       esc(JSON.stringify(fm.db_fingerprint)).slice(0,140)+"</div>":"")+
     "<div style='white-space:pre-wrap;word-break:break-word;margin-top:10px'>"+
     esc(cur.body||d.body||"")+"</div>";
-  let h=sw+"<h3 class='sec'>演进时间线（"+stages.length+" 阶段 / "+
+  let h=sw+skBar+
+    (state.skJoin?"<div class='sub2' id='sk-join-sum'>skill 调用点：命中 "+
+      esc(String(state.skJoin.joined||0))+"/"+esc(String(state.skJoin.total||0))+
+      "（skill="+esc(String(state.skJoin.skill||"(全部)"))+"，margin="+
+      esc(String((state.skJoinQuery||{}).margin||0))+"）"+
+      (state.skJoin.after_stage?("｜<b>⚠ "+esc(String(state.skJoin.after_stage))+
+        " 次在阶段结束之后（margin 区，非阶段内贡献）</b>"):"")+
+      ((state.skJoin.unassigned||[]).length?("｜未归组 "+
+        esc(String(state.skJoin.unassigned.length))):"")+
+      "</div>":"")+
+    "<h3 class='sec'>演进时间线（"+stages.length+" 阶段 / "+
     nNodes+" 锚点）</h3>"+
     "<p class='sub2'>点节点跳回原会话对应回合（任一节点一键回原文）；"+
     "深挖分层用上方「复制命令」，由 CLI 生成蒸馏包——本视图绝不执行。</p>";
@@ -1914,16 +1946,72 @@ function renderChain(d,out,idx){
       h+="<div class='tl-node' data-sid=\""+esc(nd.sid)+"\" data-turn=\""+
         Number(nd.turn||0)+"\"><span class='anchor'>"+esc(nd.sid)+"#"+
         Number(nd.turn||0)+"</span>"+esc(nd.note||"")+"</div>";
+    /* P4-5 挂轨道：本阶段的 skill 调用点（成败可视 + margin 区虚线标记；
+       点 chip 跳会话。数据=服务端 skilljoin 交叉表，本页不重算 join）。 */
+    if(state.skJoin){
+      const sk=(state.skJoin.stages||[])
+        .find(s=>s.stage===(st.stage||""));
+      const rows=(sk&&sk.rows)||[];
+      h+="<div class='sk-line'>";
+      h+=rows.map(r=>{
+        const icon=r.status==="ok"||r.status==="success"||
+                   r.status==="completed"?" ✅"
+          :(r.status==="no_result"?" ⚠":" ❌");
+        return "<span class='sk-chip"+(r.after_stage?" sk-after":"")+
+          "' data-dt-sid=\""+esc(r.sid)+"\" title=\""+esc(r.kind)+" · "+
+          esc(r.status)+(r.ts?" · "+esc(r.ts):"")+"\">"+
+          (r.after_stage?"⚠ ":"")+esc(r.anchor)+icon+"</span>";
+      }).join("");
+      if(!rows.length)h+="<span class='sub2'>本阶段无调用</span>";
+      h+="</div>";
+    }
     h+="</div>";
   }
   if(!stages.length)h+="<div class='empty'>该 chain 无锚点数据</div>";
   out.innerHTML=h;
+  /* P4-5 挂轨道接线：挂轨道/收起按钮 + 调用 chip 跳会话（turn 未知，
+     只开到会话级；成员内归组的调用可再从会话详情定位回合） */
+  for(const b of out.querySelectorAll("[data-sk-load]"))
+    b.onclick=()=>loadSkillJoin()
+      .catch(e=>showBanner("err","skill 调用点获取失败："+e.message));
+  for(const b of out.querySelectorAll("[data-sk-clear]"))
+    b.onclick=clearSkillJoin;
 }
-/* 多链切换接线：点按钮换渲染哪条链（纯前端，不发写请求） */
+/* skill 调用点挂轨道（P4-5）：调 actionsserve 的 /api/topic/<id>/skilljoin
+   （上游 skilljoin.build_cross 直通，本页不重算 join），拿回交叉表后
+   按当前 chain 重渲染（stages 按阶段名匹配挂注）。margin 默认 90 =
+   叙事节奏 chain 的认可口径。 */
+async function loadSkillJoin(){
+  const cur=state.topicCur;
+  if(!cur){showBanner("warn","先在左侧选一个主题");return;}
+  if(!state.chainLast){showBanner("warn","当前主题没有 chain 视图可挂");return;}
+  const skill=$("sk-join-skill").value.trim();
+  const margin=$("sk-join-margin").value.trim()||"0";
+  const d=await actApi("/api/topic/"+encodeURIComponent(cur.id)+
+    "/skilljoin?skill="+encodeURIComponent(skill)+
+    "&margin="+encodeURIComponent(margin));
+  if(d.__err){showBanner("err","skill 调用点获取失败："+d.__err);return;}
+  state.skJoin=d;
+  state.skJoinQuery={skill:skill,margin:margin};
+  renderChain(state.chainLast,$("topics-timeline"),state.chainIdx||0);
+  bindTopicNodes($("topics-timeline"));
+  bindChainSwitch($("topics-timeline"),state.chainLast);
+}
+function clearSkillJoin(){
+  state.skJoin=null;state.skJoinQuery=null;
+  if(!state.chainLast)return;
+  renderChain(state.chainLast,$("topics-timeline"),state.chainIdx||0);
+  bindTopicNodes($("topics-timeline"));
+  bindChainSwitch($("topics-timeline"),state.chainLast);
+}
+/* 多链切换接线：点按钮换渲染哪条链（纯前端，不发写请求）。
+   P4-5：切链后 skill 调用点挂轨道随当前 chain 数据重渲染（stages 按
+   阶段名匹配，不同 chain 的阶段名不同 → 自然不会串轨）。 */
 function bindChainSwitch(root,d){
   for(const b of root.querySelectorAll("[data-chain-idx]"))
     b.onclick=()=>{
-      renderChain(d,root,Number(b.dataset.chainIdx));
+      state.chainIdx=Number(b.dataset.chainIdx);
+      renderChain(d,root,state.chainIdx);
       bindTopicNodes(root);
       bindChainSwitch(root,d);
     };

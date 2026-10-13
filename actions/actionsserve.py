@@ -885,6 +885,10 @@ def make_handler(cfg: Config):
                 if m:
                     self._dualtrack(unquote(m.group(1)), qs)
                     return
+                m = re.fullmatch(r"/api/topic/(.+)/skilljoin", path)
+                if m:
+                    self._skilljoin(unquote(m.group(1)), qs)
+                    return
                 if path == "/api/pattern-sessions":
                     self._pattern(qs)
                     return
@@ -909,6 +913,7 @@ def make_handler(cfg: Config):
                             "/api/actions/job/<id>",
                             "/api/topic/<id>/timeline?level=",
                             "/api/topic/<id>/dualtrack?level=coarse|mid",
+                            "/api/topic/<id>/skilljoin?skill=&margin=",
                             "/api/pattern-sessions?pattern=&days=",
                             "/api/overview",
                             "/api/workitems?target=",
@@ -1231,6 +1236,44 @@ def make_handler(cfg: Config):
                 raise RuntimeError("未配置 topics_meta（起服时加 --topics-meta）")
             tl = topic_timeline(cfg, topic_id, level, None)
             self._json(dualtrack.build(cfg, topic_id, level, tl))
+
+        def _skilljoin(self, topic_id: str, qs: dict):
+            """P4-5 skill 调用点挂轨道：chain 时间线锚点 × skill 调用锚点
+            交叉表（T4 确定性层）。**上游实现直通**——直接调
+            `harvester.skilljoin.build_cross`，不重算 join（成员内节点
+            精确归组带 turn / 时间窗归组 / margin 只向后放宽三通道全部
+            来自上游口径，本仓不复制逻辑）。chain 文件按 frontmatter
+            topic_id 在 chain-root 下定位（workitems._chain_paths 同口径，
+            文件名不可信——显示名会被截断改写）。skill 缺省=全部；
+            margin 缺省 0（叙事节奏 chain 的认可口径是 90，见 TODO 裁决
+            记录，由调用方传，不写死）。只读。"""
+            from harvester.skilljoin import build_cross
+            from .workitems import _chain_paths
+            if cfg.chain_root is None:
+                raise _BadRequest("未配置 chain-root（起服加 --chain-root）")
+            if not cfg.db:
+                raise RuntimeError("未配置索引库（--db）")
+            skill = str(qs.get("skill") or "").strip() or None
+            try:
+                margin = float(str(qs.get("margin") or 0))
+            except ValueError:
+                raise _BadRequest("margin=%r 不是数字（向后放宽天数，≥0）"
+                                  % qs.get("margin"))
+            if margin < 0:
+                raise _BadRequest("margin 只向后放宽，须 ≥0（得 %s）" % margin)
+            paths = _chain_paths(cfg).get(topic_id) or []
+            if not paths:
+                raise _NotFound("该主题没有 chain 长文（chain-root 下按 "
+                                "frontmatter.topic_id 扫不到 %s）——先由人跑 "
+                                "topic pack 蒸馏产出 chain-*.md" % topic_id)
+            d = build_cross(Path(paths[0]), cfg.db, skill=skill,
+                            margin_days=margin)
+            d["chain_path"] = paths[0]
+            if len(paths) > 1:
+                d["chain_paths_extra"] = paths[1:]
+            d["view_actions_api"] = VIEW_ACTIONS_API
+            d["topic_id"] = topic_id
+            self._json(d)
 
         def _pattern(self, qs: dict):
             pattern = qs.get("pattern")

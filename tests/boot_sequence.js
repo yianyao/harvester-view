@@ -60,6 +60,7 @@ function loadOverview() { return Promise.resolve(); }
 function loadAll() { return Promise.resolve(); }
 function showBanner() {}
 function initUpstreams() { return Promise.resolve(); }
+function maybeAutoTour(){} /* P5-1 桩：引导不参与启动序列断言 */
 const state = { no: 0, loaded: loaded };
 
 /* ---- 真跑启动块 ---- */

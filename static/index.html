@@ -324,6 +324,19 @@ h3.sec{font-size:14px;margin:18px 0 6px}
   cursor:pointer;user-select:none}
 .sk-chip:hover{border-color:var(--accent)}
 .sk-chip.sk-after{border-style:dashed;opacity:.85}
+/* P5-1 五页引导卡片（固定右下；配色全走 var，不写死底色） */
+#tour{position:fixed;right:16px;bottom:16px;z-index:60;width:340px;
+  background:var(--panel);color:var(--ink);border:1px solid var(--accent);
+  border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.18);
+  padding:12px 14px;font-size:13px}
+#tour .t-head{display:flex;justify-content:space-between;align-items:center;
+  color:var(--accent);font-weight:600;margin-bottom:6px}
+#tour .t-x{cursor:pointer;opacity:.6;font-weight:700;padding:0 4px}
+#tour .t-x:hover{opacity:1}
+#tour .t-title{font-weight:600;margin-bottom:4px}
+#tour .t-body{color:var(--ink2);margin-bottom:6px}
+#tour .t-do{background:var(--bg);border-radius:6px;padding:6px 8px;margin-bottom:8px}
+#tour .t-nav{display:flex;gap:8px;justify-content:flex-end}
 </style>
 </head>
 <body>
@@ -340,9 +353,11 @@ h3.sec{font-size:14px;margin:18px 0 6px}
     <button data-tab="cmd">命令台</button>
   </nav>
   <select id="upstream" title="切换上游实例"></select>
+  <button id="btn-tour" title="新手引导：跟随五页走完一次真实班规闭环（约 5 分钟）">5 分钟之旅</button>
   <span class="meta" id="meta"></span>
 </header>
 <div id="banner"></div>
+<div id="tour" style="display:none"></div>
 
 <!-- ============ Tab 0: 今日工作台（P3-3） ============
   数据源：/api/overview（服务端算好四队列 + 三环；**每个数字带 source 与
@@ -3599,6 +3614,79 @@ $("btn-cmd-refresh").onclick=()=>loadCmdData(true).catch(()=>{});
 $("btn-cmd-run").onclick=()=>runCmdAction()
   .catch(e=>showBanner("err","执行失败："+e.message));
 
+/* ===== P5-1 五页引导（tour） =====
+ * 「5 分钟之旅」：新手未读文档，跟随五页走完一次真实班规闭环
+ * （SOP P5-1 口径：Edit 前先 Read——错误→原文→建议→裁决→A/B 动作）。
+ * 红线：引导**只导航与讲解**，绝不执行命令、不发请求、不复制命令
+ * （与全站「view 只读不执行」同一条红线）；文案不写死会漂移的数字，
+ * 真数字让用户到页面现场看（数字皆门）。
+ */
+function tourSteps(){
+  return [
+    {tab:"home",name:"今日工作台",title:"第 1 页 · 今日工作台：你现在在哪",
+     body:"四队列=今天要处理的活，点数字直达那批明细；闭环健康=「错误→班规→效果」整条链路卡在哪一段。每个数字旁都写了口径与真源，看不懂先看灰字。",
+     todo:"在「闭环健康」找第一段（错误面），看一眼全库错误数——这是旅程的起点：错误被看见了。"},
+    {tab:"reports",name:"报告",title:"第 2 页 · 报告：机械事实（AI 只陈述，不替你下结论）",
+     body:"反复踩的坑会被归一成「错误模式」，按次数排序；这里没有 AI 编的故事，只有从库里数出来的事实。真库案例：「Edit 前先 Read」类错误模式累计上百次——改文件前没先读，踩了又踩。",
+     todo:"找一条次数高、标着「未解决」的模式，记住它的次数与样例——下一步回原文核对。"},
+    {tab:"sessions",name:"会话检索",title:"第 3 页 · 会话检索：回到原文，候选必须对得上原文才可信",
+     body:"数字皆门：报告页每个次数都是门，点进去=命中它的会话清单，再点会话=回合原文高亮。三跳：模式→会话→原文。",
+     todo:"回报告页点刚才那条模式（或在这里勾「只看异常」再搜关键字），亲眼确认坑是怎么踩的。"},
+    {tab:"work",name:"处理单",title:"第 4 页 · 处理单：AI 判断在这里等你裁决",
+     body:"错误诊断完会沉淀成建议，每条带锚点（可回翻原文）与归宿（进班规，还是记成工具/harness 问题清单）。采纳、驳回都写台账，永不静默。",
+     todo:"从工作台点「待你裁决」「待修补」的数字进这一页，逐条看建议、做你的裁决。"},
+    {tab:"cmd",name:"命令台",title:"第 5 页 · 命令台：裁决落成动作（闭环最后一段）",
+     body:"A 档=只读动作直接执行；B 档=写库动作先预演、你确认后才写，全程留台账；C 档=只给命令文本，绝不代执行。采纳的班规有没有用，跑 A 档对照验证就知道。",
+     todo:"旅程到此走完：错误被看见→回原文核实→建议待裁决→裁决落成动作→效果可验证。下次从工作台的数字继续。"},
+  ];
+}
+function tourRender(){
+  const steps=tourSteps(),i=state.tour.i,st=steps[i];
+  const nav=[];
+  if(i>0)nav.push("<button id='tour-prev'>上一步</button>");
+  nav.push(i===steps.length-1
+    ?"<button id='tour-next'>完成</button>"
+    :"<button id='tour-next'>下一步 · "+esc(steps[i+1].name)+"</button>");
+  $("tour").style.display="";
+  $("tour").innerHTML=
+    "<div class='t-head'><span>5 分钟之旅（第 "+(i+1)+"/"+steps.length+" 页）</span>"+
+    "<span class='t-x' id='tour-x' title='跳过引导'>×</span></div>"+
+    "<div class='t-title'>"+esc(st.title)+"</div>"+
+    "<div class='t-body'>"+esc(st.body)+"</div>"+
+    "<div class='t-do'><b>这一步做什么：</b>"+esc(st.todo)+"</div>"+
+    "<div class='t-nav'>"+nav.join("")+"</div>";
+  if(i>0)$("tour-prev").onclick=()=>tourNav(-1);
+  $("tour-next").onclick=()=>tourNav(1);
+  $("tour-x").onclick=()=>tourEnd(false);
+}
+function tourNav(d){
+  const steps=tourSteps();
+  if(state.tour.i===steps.length-1&&d>0){tourEnd(true);return;}
+  const i=Math.max(0,Math.min(steps.length-1,state.tour.i+d));
+  const changed=steps[i].tab!==steps[state.tour.i].tab;
+  state.tour.i=i;
+  if(changed)switchTab(steps[i].tab);
+  tourRender();
+}
+function tourStart(){
+  state.tour={i:0};
+  switchTab(tourSteps()[0].tab);
+  tourRender();
+}
+function tourEnd(done){
+  state.tour=null;
+  $("tour").style.display="none";
+  $("tour").innerHTML="";
+  try{localStorage.setItem("hv_tour_seen","1");}catch(e){}
+}
+function maybeAutoTour(){
+  try{
+    if(!localStorage.getItem("hv_tour_seen"))tourStart();
+  }catch(e){}
+}
+$("btn-tour").onclick=()=>tourStart();
+/* ===== P5-1 tour end ===== */
+
 initUpstreams().then(()=>{
   state.no=Number($("upstream").value||0);
   /* P3-3：默认落地页 = 今日工作台。**不做 loadAll()**——会话列表由用户
@@ -3608,6 +3696,7 @@ initUpstreams().then(()=>{
      挡在守卫外面 → 页面永远停在「加载中…」（用户实测撞到）。 */
   switchTab("home");
   state.loaded.home=true;
+  maybeAutoTour(); /* P5-1：首次访问自动开五页引导（seen 过不弹；先 switchTab 后调用，复用已加载态） */
 }).catch(e=>showBanner("err","初始化失败: "+e));
 </script>
 </body>

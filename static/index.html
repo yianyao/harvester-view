@@ -296,6 +296,25 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 .chip.on{background:var(--chip-on-bg);border-color:var(--chip-on-bg);color:#fff}
 .chip:hover{border-color:var(--accent)}
 .chiprow{margin:6px 0}
+/* P4-4 双轨时间线（主题工作台）：上轨讨论流 + 下轨产物流 同屏两列，
+   打磨带/反转点候选挂两轨下方（点开看自带的两轮原文对比，不二次请求） */
+.dt-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0}
+@media (max-width:900px){.dt-grid{grid-template-columns:1fr}}
+.dt-track{border:1px solid var(--line);border-radius:8px;padding:8px;
+  max-height:420px;overflow:auto}
+.dt-track h4{margin:0 0 6px;font-size:13px}
+.dt-up{border:1px solid var(--line);border-radius:6px;padding:4px 8px;
+  margin:4px 0;font-size:12px;word-break:break-word}
+.dt-up:hover{border-color:var(--accent)}
+.dt-file{border:1px solid var(--line);border-radius:6px;padding:4px 8px;
+  margin:4px 0;font-size:12px}
+.dt-band{display:flex;flex-wrap:wrap;gap:6px}
+.dt-cand{border:1px solid var(--line);border-radius:6px;padding:4px 8px;
+  margin:4px 0;font-size:12px;min-width:260px}
+.dt-cmp{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.dt-pre{white-space:pre-wrap;word-break:break-word;font-size:11px;
+  color:var(--ink2);background:var(--bg);border-radius:6px;
+  padding:6px 8px;margin:4px 0;max-height:220px;overflow:auto}
 </style>
 </head>
 <body>
@@ -475,6 +494,8 @@ h3.sec{font-size:14px;margin:18px 0 6px}
         title="复制到剪贴板，请自行开终端粘贴执行（本视图绝不执行命令）">复制命令</button>
       <button id="btn-topic-gocmd" class="xbtn" disabled
         title="跳到命令台并预填 topic pack 参数，在那里核对后执行">去命令台</button>
+      <button id="btn-topic-dual" class="xbtn" disabled
+        title="A 档动作 dualtrack：上轨讨论流+下轨产物流+打磨带/反转点候选；大主题约 90s，作业后台跑">双轨时间线</button>
     </div>
     <div id="topics-timeline"><div class="empty">← 选择左侧主题</div></div>
   </div>
@@ -1933,11 +1954,11 @@ function topicPackCmd(id,level,sid){
 }
 function updateTopicCmd(){
   const cur=state.topicCur;
-  if(!cur){ $("btn-topic-cmd").disabled=true;
-    $("btn-topic-gocmd").disabled=true; return; }
-  $("btn-topic-cmd").disabled=false;
-  $("btn-topic-gocmd").disabled=false;
-  $("btn-topic-cmd").dataset.cmd=
+  const off=!cur;
+  $("btn-topic-cmd").disabled=off;
+  $("btn-topic-gocmd").disabled=off;
+  $("btn-topic-dual").disabled=off;
+  if(cur)$("btn-topic-cmd").dataset.cmd=
     topicPackCmd(cur.id,$("topic-level").value);
 }
 /* 主题页 → 命令台直跳（2026-10-13 用户要求：分层选完不用手抄命令）。
@@ -1955,6 +1976,156 @@ async function topicGoCmd(){
   renderCmdCards();renderCmdActions();renderCmdParams();updateCmdPreview();
   if(state.act.loaded)state.loaded.cmd=true;   /* 防 switchTab 再拉一遍 */
   switchTab("cmd");
+}
+
+/* ---------- P4-4 双轨时间线（主题工作台） ----------
+   上轨=讨论流（timeline coarse/mid，随层选择器；fine/artifact 为按需档
+   不在双轨范围，选择器不在 coarse/mid 时默认 coarse 并提示）；
+   下轨=产物流（artifacts 版本序列）；打磨带/反转点候选消费 P4-3，
+   **两轮原文对比随候选自带**（前端不二次请求）。
+   执行走 A 档动作通道：POST /api/actions/run（action_id=dualtrack）入队
+   + 轮询——大主题 timeline 实测 ~90s（FTS 虚表逐会话查询），同步 GET
+   会吊死页面（铁律 6.5）。本页只渲染作业结果，执行器只认冻结注册表。 */
+function dualtrackLevel(){
+  const lv=$("topic-level").value;
+  return (lv==="coarse"||lv==="mid")?lv:"coarse";
+}
+async function runDualtrack(){
+  const cur=state.topicCur;
+  if(!cur){showBanner("warn","先在左侧选一个主题");return;}
+  const out=$("topics-timeline");
+  const selLv=$("topic-level").value;
+  const level=dualtrackLevel();
+  const note=(selLv!=="coarse"&&selLv!=="mid")
+    ?"分层选择器当前是 "+selLv+"，不在双轨范围（coarse/mid）——已按 coarse 跑。"
+    :"";
+  out.innerHTML="<div class='empty'>双轨时间线入队中（A 档动作 dualtrack"+
+    "）…大主题（数百成员）实测 ~90s，可切页签，回来重开主题可再查。</div>";
+  const r=await actJson("/api/actions/run",{action_id:"dualtrack",
+    params:{id:cur.id,level:level},view_actions_api:1});
+  if(r.__err){out.innerHTML=errorBox("双轨动作入队失败："+r.__err);return;}
+  state.dualJob={id:r.job_id,t0:Date.now(),est:r.est_sec,note:note};
+  pollDualJob(r.job_id);
+}
+async function pollDualJob(jid){
+  const job=await actApi("/api/actions/job/"+jid);
+  const out=$("topics-timeline");
+  if(job.__err){out.innerHTML=errorBox("作业查询失败："+job.__err);return;}
+  if(job.status==="queued"||job.status==="running"){
+    const secs=((Date.now()-((state.dualJob||{}).t0||Date.now()))/1000)
+      .toFixed(1);
+    out.innerHTML="<div class='empty'>双轨时间线计算中… 已用 "+secs+
+      "s（预估 ~"+esc(String((state.dualJob||{}).est||30))+
+      "s）——页面可关，作业在服务端继续</div>";
+    setTimeout(()=>pollDualJob(jid),800); return;
+  }
+  if(job.status==="failed"){
+    out.innerHTML=errorBox("双轨动作失败："+(job.error||""));
+    showBanner("err","双轨动作失败："+(job.error||""));
+    return;
+  }
+  renderDualtrack(job.result||{},out);
+}
+function renderDualtrack(d,out){
+  const a=d.account||{};
+  const tl=d.timeline||{};
+  const rows=tl.rows||[];
+  const coarse=tl.level==="coarse";
+  const band=(d.revisions&&d.revisions.band)||[];
+  const hits=(d.revisions&&d.revisions.turn_hits)||[];
+  const art=d.artifacts||{};
+  const th=(d.revisions&&d.revisions.thresholds)||{};
+  let h="<div class='toolbar'><h3 class='sec' style='margin:0'>双轨时间线 · "+
+    esc((d.topic&&d.topic.name)||d.topic_id||"主题")+"</h3>"+
+    "<button class='xbtn' data-dt-back>返回 chain 视图</button></div>";
+  /* 数字皆门：主题内候选数 + 全库口径并列（对账断了页面上看得见） */
+  h+="<div class='sub2'>成员 "+esc(String(a.members||d.members||0))+
+    "｜打磨带候选 "+esc(String(a.band||0))+"（全库 "+esc(String(a.band_all||0))+
+    "）｜反转点候选 "+esc(String(a.turn_hits||0))+"（全库 "+
+    esc(String(a.turn_hits_all||0))+"）｜产物 "+esc(String(a.artifact_files||0))+
+    " 文件 / "+esc(String(a.artifact_versions||0))+" 版本｜讨论流 "+
+    esc(tl.level||"?")+" "+rows.length+(coarse?" 会话":" 条 user 消息")+"</div>";
+  if((state.dualJob||{}).note)
+    h+="<div class='sub2'>"+esc(state.dualJob.note)+"</div>";
+  h+="<div class='sub2'>"+esc((d.revisions&&d.revisions.honest)||"")+
+    (art.honest?"｜"+esc(art.honest):"")+"</div>";
+  /* 双轨同屏：上轨（左）讨论流 + 下轨（右）产物流 */
+  h+="<div class='dt-grid'><div class='dt-track'><h4>上轨 · 讨论流</h4>";
+  if(coarse){
+    h+=rows.map(r=>"<div class='dt-up' data-dt-sid=\""+esc(r.sid)+
+      "\" title=\"点击跳到该会话\"><span class='anchor'>"+esc(r.sid)+
+      "</span> "+esc(r.title||"")+
+      "<div class='sub2'>首问："+
+      esc(String(r.first_user||"").slice(0,140))+"</div></div>").join("");
+  }else{
+    h+=rows.map(r=>"<div class='dt-up' data-dt-sid=\""+esc(r.sid)+
+      "\" title=\"点击跳到该会话\"><span class='sub2'>"+
+      esc(String(r.ts||"").slice(0,19))+"</span> "+
+      esc(String(r.text||"").slice(0,160))+"</div>").join("");
+  }
+  if(!rows.length)h+="<div class='empty'>讨论流为空</div>";
+  h+="</div><div class='dt-track'><h4>下轨 · 产物流（"+
+    esc(String(art.n_files||0))+" 文件 / "+esc(String(art.n_versions||0))+
+    " 版本）</h4>";
+  if(art.configured===false||!(art.files||[]).length){
+    h+="<div class='empty'>"+
+      esc(art.hint||"该主题成员暂无产物记录——单会话产物先由人跑 "+
+          "`python -m harvester artifacts extract --sid <sid>` 登记"+
+          "（本视图绝不代跑）")+"</div>";
+  }else{
+    for(const f of art.files||[]){
+      h+="<div class='dt-file'><b>"+esc(f.file_path)+"</b> <span class='sub2'>"+
+        esc(f.sid)+" · "+f.n_versions+" 版</span>";
+      for(const v of f.versions)
+        h+="<details class='dt-ver'><summary>#"+esc(String(v.seq))+" "+
+          esc(v.tool)+" "+esc(String(v.ts||"").slice(0,19))+
+          "（old "+v.old_len+" → new "+v.new_len+" 字符）</summary>"+
+          "<pre class='dt-pre'>— old —\n"+esc(v.old_preview||"")+
+          "\n— new —\n"+esc(v.new_preview||"")+"</pre></details>";
+      h+="</div>";
+    }
+  }
+  h+="</div></div>";
+  /* 打磨带（P4-3 重复改写候选）：点开 a/b 两轮原文对比（自带预览） */
+  h+="<h4 class='sec'>打磨带 · 重复改写候选 "+band.length+
+    "（阈值 "+esc(JSON.stringify(th.band||th))+"）</h4>";
+  h+=band.length
+    ?("<div class='dt-band'>"+band.map((p,i)=>
+      "<details class='dt-cand'><summary>#"+(i+1)+" "+esc(p.sid)+
+      " <span class='sub2'>jaccard="+esc(String(p.jaccard))+"</span></summary>"+
+      "<div class='dt-cmp'><div><b>前轮</b><pre class='dt-pre'>"+
+      esc((p.a&&p.a.preview)||"")+"</pre></div><div><b>后轮</b>"+
+      "<pre class='dt-pre'>"+esc((p.b&&p.b.preview)||"")+
+      "</pre></div></div></details>").join("")+"</div>")
+    :"<div class='empty'>无打磨带候选</div>";
+  /* 反转点候选（P4-3 turn_hits）：点开 cur vs prev 两轮原文对比 */
+  h+="<h4 class='sec'>反转点候选 "+hits.length+"</h4>";
+  h+=hits.length
+    ?(hits.map((x,i)=>
+      "<details class='dt-cand'><summary>#"+(i+1)+" "+esc(x.sid)+
+      " <span class='sub2'>「"+esc(x.word)+"」"+esc(x.head||"")+
+      "</span></summary><div class='dt-cmp'><div><b>前轮</b><pre class='dt-pre'>"+
+      esc((x.prev&&x.prev.preview)||"（同会话无更早 user 轮）")+
+      "</pre></div><div><b>本轮</b><pre class='dt-pre'>"+
+      esc((x.cur&&x.cur.preview)||"")+"</pre></div></div></details>").join(""))
+    :"<div class='empty'>无反转点候选</div>";
+  h+="<details><summary>原始 JSON</summary><pre style='max-height:260px;"+
+    "overflow:auto;font-size:11px'>"+esc(JSON.stringify(d,null,1)
+      .slice(0,20000))+"</pre></details>";
+  out.innerHTML=h;
+  for(const b of out.querySelectorAll("[data-dt-back]"))
+    b.onclick=()=>openTopic(d.topic_id);
+  for(const el of out.querySelectorAll("[data-dt-sid]"))
+    el.onclick=async()=>{
+      const run=++state.anchorRun;
+      switchTab("sessions");
+      try{
+        if(await openSession(el.dataset.dtSid)===null)return;
+      }catch(e){
+        if(run===state.anchorRun)
+          showBanner("err","跳转会话失败："+e.message);
+      }
+    };
 }
 
 /* ---------- Tab 4: 中台 ---------- */
@@ -3298,6 +3469,8 @@ $("btn-agg-facets").onclick=()=>loadAggFacets().catch(()=>{});
 $("btn-topics-refresh").onclick=()=>loadTopics().catch(()=>{});
 $("topic-level").onchange=()=>updateTopicCmd();
 $("btn-topic-gocmd").onclick=()=>topicGoCmd();
+$("btn-topic-dual").onclick=()=>runDualtrack()
+  .catch(e=>showBanner("err","双轨时间线失败："+e.message));
 $("btn-topic-cmd").onclick=e=>{
   const b=e.currentTarget;
   if(b.dataset.cmd)copyText(b.dataset.cmd,b);};

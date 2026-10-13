@@ -315,6 +315,30 @@ def _action_regress(cfg: Config, params: dict) -> dict:
             "summary": r.get("summary")}
 
 
+def _action_dualtrack(cfg: Config, params: dict) -> dict:
+    """A 档：主题双轨时间线（P4-4）。上轨讨论流（timeline）+ 下轨产物流
+    （artifacts）+ 打磨带/反转点候选（消费 P4-3，两轮原文对比自带）。
+
+    为什么它是 A 档且走作业通道：全程只读三库（harvester.db / topics_meta /
+    artifacts_meta），产物返回页面不落盘；但**大主题的 timeline 是逐会话
+    查询**（FTS 虚表 sid UNINDEXED → N 次全表扫，实测 411 成员 ~86s），
+    同步 GET 会把请求吊死在 timeline 计算上——故页面点按钮走
+    POST /api/actions/run 入队 + 轮询（铁律 6.5：长任务不阻塞页面）。
+    小主题/脚本可用同步 GET /api/topic/<id>/dualtrack。"""
+    from . import dualtrack
+    topic_id = str(params.get("id") or "").strip()
+    level = str(params.get("level") or "coarse")
+    if not topic_id:
+        raise _BadRequest("缺主题 id（--id）——回主题页选一个主题")
+    if level not in dualtrack.LEVELS:
+        raise _BadRequest("level=%r 不在 %s（fine/artifact 为按需档，"
+                          "不在双轨范围）" % (level, list(dualtrack.LEVELS)))
+    if cfg.topics_meta is None:
+        raise RuntimeError("未配置 topics_meta（起服时加 --topics-meta）")
+    tl = topic_timeline(cfg, topic_id, level, None)
+    return dualtrack.build(cfg, topic_id, level, tl)
+
+
 #: A 档动作白名单。**冻结**：执行器只认这张表（SOP §5.3 红线——新增的不是
 #: 任意执行，而是一张冻结的动作注册表）。
 ACTIONS: dict[str, dict] = {
@@ -390,6 +414,23 @@ ACTIONS: dict[str, dict] = {
         "reversible": "幂等（全程临时目录，跑完即删）",
         "writes": "",
         "handler": _action_regress,
+    },
+    "dualtrack": {
+        "tier": "A",
+        "label": "主题双轨时间线（讨论流+产物流）",
+        "desc": "上轨讨论流（timeline）+ 下轨产物版本（artifacts）+ "
+                "打磨带/反转点候选（消费 P4-3，点击看两轮原文对比）。"
+                "大主题（数百成员）实测 ~90s，作业后台跑、页面轮询。",
+        "params": {"id": {"type": "topic_id", "src": "topics_api",
+                           "default": None, "label": "主题 id"},
+                   "level": {"type": "level", "src": "chips",
+                             "default": "coarse",
+                             "choices": ["coarse", "mid"],
+                             "label": "讨论流分层"}},
+        "est_sec": 30,
+        "reversible": "幂等（只读三库，产物返回页面不落盘）",
+        "writes": "",
+        "handler": _action_dualtrack,
     },
 }
 
@@ -840,6 +881,10 @@ def make_handler(cfg: Config):
                 if m:
                     self._timeline(unquote(m.group(1)), qs)
                     return
+                m = re.fullmatch(r"/api/topic/(.+)/dualtrack", path)
+                if m:
+                    self._dualtrack(unquote(m.group(1)), qs)
+                    return
                 if path == "/api/pattern-sessions":
                     self._pattern(qs)
                     return
@@ -863,6 +908,7 @@ def make_handler(cfg: Config):
                             "POST /api/actions/run",
                             "/api/actions/job/<id>",
                             "/api/topic/<id>/timeline?level=",
+                            "/api/topic/<id>/dualtrack?level=coarse|mid",
                             "/api/pattern-sessions?pattern=&days=",
                             "/api/overview",
                             "/api/workitems?target=",
@@ -1169,6 +1215,22 @@ def make_handler(cfg: Config):
                 self._json({"error": str(e)}, 400)
             except _NotFound as e:
                 self._json({"error": str(e)}, 404)
+
+        def _dualtrack(self, topic_id: str, qs: dict):
+            """P4-4 双轨时间线（主题工作台）：上轨讨论流（复用 topic_timeline，
+            已含库指纹/库龄叠加）+ 下轨产物流 + 打磨带/反转点候选（消费 P4-3，
+            两轮原文对比随候选自带）。level 只认 coarse/mid（fine/artifact
+            是按需档；title 与 chain 视图重复）。"""
+            from . import dualtrack
+            level = str(qs.get("level") or "coarse")
+            if level not in dualtrack.LEVELS:
+                raise _BadRequest("level=%r 不在 %s（fine/artifact 为按需档，"
+                                  "不在双轨范围）" % (level,
+                                                  list(dualtrack.LEVELS)))
+            if cfg.topics_meta is None:
+                raise RuntimeError("未配置 topics_meta（起服时加 --topics-meta）")
+            tl = topic_timeline(cfg, topic_id, level, None)
+            self._json(dualtrack.build(cfg, topic_id, level, tl))
 
         def _pattern(self, qs: dict):
             pattern = qs.get("pattern")

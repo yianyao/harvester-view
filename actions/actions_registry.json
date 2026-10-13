@@ -121,6 +121,12 @@
  ],
  "read_actions": [
   {
+   "action_id": "dualtrack",
+   "tier": "A",
+   "cmd": null,
+   "est_sec": null
+  },
+  {
    "action_id": "regress",
    "tier": "A",
    "cmd": "regress",
@@ -639,7 +645,7 @@
  ],
  "counts": {
   "cards": 13,
-  "read_actions": 5,
+  "read_actions": 6,
   "write_actions": 11,
   "write_reversible": 8,
   "write_destructive": 3

@@ -39,12 +39,16 @@ OUT = HERE / "actions_registry.json"
 #: 本表是给人看的契约）。测试会比对两者，防"注册表说能做、代码里没有"。
 #: 聚合命令（如 topic）的子动作级动作写 `(cmd, subaction)` 二元组——
 #: 生成时会校验该子动作在真 CLI 里存在且为 A 档（写子动作绝不进这张表）。
+#: **视图侧分析动作（P4-4 起）写 `None`**：它没有对应 CLI（不是 harvester
+#: 子命令，而是 actions-serve 内部只读分析），执行器照样只认注册表，
+#: `cmd` 字段如实为 null（页面不进命令分组，只进动作清单）。
 READ_ACTIONS: dict[str, object] = {
     "report_tools": "report-tools",
     "report_errors": "report-errors",
     "topic_list": "topic",
     "topic_pack": ("topic", "pack"),
     "regress": "regress",
+    "dualtrack": None,
 }
 
 #: 参数的 src 取值里，"路径类、页面不暴露"的那一类：B 档动作的这类参数
@@ -168,6 +172,10 @@ def build() -> dict:
     read_actions = []
     for aid, tgt in sorted(READ_ACTIONS.items()):
         sub: str | None = None
+        if tgt is None:   # 视图侧分析动作：无对应 CLI，cmd 如实为 null
+            read_actions.append({"action_id": aid, "tier": "A",
+                                 "cmd": None, "est_sec": None})
+            continue
         if isinstance(tgt, tuple):
             cmdname, sub = tgt
         else:

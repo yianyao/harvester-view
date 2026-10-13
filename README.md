@@ -289,6 +289,17 @@ python view.py                          # 默认 127.0.0.1:8088
 - 版本协商：上游 200 响应携带 `api_version` 且 major ≠ 1 时明确报错，
   不做静默猜测。
 
+### 本机路径处理（2026-10-12 用户要求）
+
+**展示面一律不印本机绝对路径**：页面上出现目录/文件位置时，用 `~` 缩写用户目录
+（`C:\Users\<你>\.workbuddy\knowledge\cards` → `~/.workbuddy/knowledge/cards`），
+完整路径放进元素的 `title`（悬停可见）。前端由 `displayPath()` 统一处理，
+缩写的真源是 `/api/health.home`（服务端只报"用户目录是哪个"，不报凭据）。
+
+**台账/执行面保留真实路径**：`actions_meta.db` 的 `target_path` 记的是真实绝对路径
+——那是**本机审计**（"这次写的是哪个文件"）需要的，且只落本机 sqlite 文件、
+不进版本库。两类面的区别是**给谁看**：给人看的板子要能分享，给机器审计的账要精确。
+
 ## FAQ
 
 **Q：提示"api-serve 未配置 --cards-root"？**

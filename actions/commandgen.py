@@ -95,6 +95,8 @@ COMMAND_CARD: dict[str, str] = {
     # 且同属"仓内副本"的进出。
     "suppress list": "collect", "suppress add": "collect",
     "suppress remove": "collect", "suppress prune-exports": "collect",
+    # v0.52 候选清单（只读）：抑制的去 sid 化入口，同属"仓内副本"进出
+    "suppress candidates": "collect",
     "adapters": "browse", "scan": "browse", "search": "browse",
     "read": "browse", "index": "browse",
     "export": "export", "aggregate": "export", "pack": "export",
@@ -133,7 +135,8 @@ TIER_OVERRIDE: dict[str, str] = {
     "mcp-serve": "C", "api-serve": "C",
     # v0.49 会话抑制：查抑制表是只读 → A；其余三个写库/删副本 → B
     # （卡默认就是 B，这里显式写出来是为了让"这条为什么能写"有据可查）。
-    "suppress list": "A",
+    # v0.52 候选清单同为只读 → A。
+    "suppress list": "A", "suppress candidates": "A",
     "suppress add": "B", "suppress remove": "B",
     "suppress prune-exports": "B",
     "weblogin check": "C", "weblogin init-config": "C",

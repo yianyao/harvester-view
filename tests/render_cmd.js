@@ -256,6 +256,25 @@ check("三跳：调用 gotoAnchor 且原样带 seq/error",
   hopCalls.length === 1 && hopCalls[0][0] === "s1" && hopCalls[0][1] === 7 &&
   hopCalls[0][2] === "E1");
 
+/* ⑧ 端点地址静态断言（**P1 的真缺陷回归门**）
+ *
+ * 页面在 8088，而 /view/cards 与 /view/glossary 在 8766（动作面）。
+ * P1 把这两处写成相对路径 `fetch("/view/glossary")` → 打到 8088 的
+ * view.py（只服务 / 与 /u/<n>/api/*）→ **实测 404**，于是 glossary 与
+ * 卡片本体在浏览器里根本没数据，**而 P1 的门全绿**（门只 extract 渲染
+ * 函数、只调 8766 端点，没人盯"页面用的 URL 在它自己的 origin 上存在吗"）。
+ *
+ * 这条门不出网、只读源码：页面里调 /view/* 的地方必须走 ACT_BASE
+ * （唯一例外 /view/upstreams —— 那是 view.py 自己的端点，8088 上确实有）。
+ */
+const bareViewFetches = (html.match(/fetch\("\/view\/[a-z]+"/g) || []);
+check("页面不再用相对路径打 /view/*（P1 真缺陷回归）",
+  bareViewFetches.every(s => s.includes("/view/upstreams")) &&
+  (html.match(/fetch\(ACT_BASE\+"\/view\/[a-z]+"/g) || []).length >= 2);
+check("glossary 与卡片本体都走动作面地址",
+  html.includes('fetch(ACT_BASE+"/view/glossary")') &&
+  html.includes('fetch(ACT_BASE+"/view/cards")'));
+
 console.log(failed ? ("\n" + failed + " CHECK(S) FAILED") :
   "\nALL COMMAND-PALETTE CHECKS PASSED");
 process.exit(failed ? 1 : 0);

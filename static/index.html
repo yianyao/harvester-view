@@ -423,7 +423,9 @@ function errorBox(msg){return "<div class='empty'>"+esc(msg)+"</div>";}
 const glossary = {loaded:false, data:null};
 async function loadGlossary(){
   if(glossary.loaded)return glossary.data;
-  const res=await fetch("/view/glossary");
+  /* 端点在动作面（8766），不是本页 origin（8088）——相对路径会 404。
+     见 docs/reports/patch-p2-fix-view-fetch.py 与 tests/render_cmd.js 的门。 */
+  const res=await fetch(ACT_BASE+"/view/glossary");
   if(!res.ok)throw new Error("glossary 服务不可用（HTTP "+res.status+"）");
   glossary.data=await res.json();
   glossary.loaded=true;
@@ -1001,7 +1003,7 @@ function triageConcl(d){
     sub:"机械事实：由 /api/triage 现算；机器只排队，判断与 evidence 由人补全。"});
 }
 async function fetchCardsBodies(){
-  const res=await fetch("/view/cards");
+  const res=await fetch(ACT_BASE+"/view/cards");
   if(!res.ok)
     throw new Error("HTTP "+res.status);
   const d=await res.json();

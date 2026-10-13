@@ -5,6 +5,7 @@ tests/_tmp/
 actions/actions_meta.db*
 # 一次性产物（补丁脚本/中间报告）。**结论必须回写已提交的文档**——
 # 与后端仓库同款纪律：docs/reports/ 只放一次性产物。
-docs/reports/
+docs/
 .DS_Store
 .playwright-cli/
+

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import json
 import re
 import sqlite3
 import sys
@@ -182,12 +183,153 @@ def render_markdown(res: dict) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# P4-2 归宿产物（nags → 建议池第二输入源）
+# ---------------------------------------------------------------------------
+
+#: 归宿两桶。owner 三值沿 agent_suggest v0.19 冻结定义：
+#:   harness=上游平台能力（自动重试/记忆注入等）；tool=工具实现本身；
+#:   workflow=使用方（agent/人）改用法即可消。
+DEST_RULE = "rule"     # 班规条目（AGENTS.md / 记忆候选）
+DEST_ISSUE = "issue"   # harness/tool 问题清单（能力缺口，用法改不掉）
+
+#: curated 判据（TODO P4-2 点名的判定示例 + 功能诉求类）：
+#: (样本文本子串, dest, owner, 理由)。机器判定仅建议，采纳靠人——
+#: 判据表本身也随产物输出，保证"为什么归这桶"可追溯。
+_CURATED: tuple[tuple[str, str, str, str], ...] = (
+    ("上下文空间", DEST_RULE, "workflow",
+     "叮嘱的是 Agent 主动报告上下文水位并先落盘留痕——改用法即可消，落班规条目。"),
+    ("跨会话", DEST_ISSUE, "harness",
+     "叮嘱的是平台缺跨会话记忆注入（如「DSH 跨会话就忘」）——用法改不掉，"
+     "需 harness 能力补齐，进问题清单。"),
+    ("能不能", DEST_ISSUE, "tool",
+     "「能不能加/做 X」是功能诉求而非行为叮嘱——落问题清单（owner=tool，"
+     "平台侧缺口则由人改判 harness）。"),
+)
+
+
+def classify_destination(preview: str) -> tuple[str, str, str]:
+    """归宿判定（机器建议）：返回 (dest, owner, reason)。
+
+    保守默认 = workflow / 班规条目：反复叮嘱的绝大多数是行为提醒，
+    改用法即可消；只有 curated 判据显式命中才升级问题清单。
+    人随时可以改判——产物里的 status_cmd 与留痕列就是为此存在的。
+    """
+    for sub, dest, owner, reason in _CURATED:
+        if sub in preview:
+            return dest, owner, reason
+    return (DEST_RULE, "workflow",
+            "保守默认：行为叮嘱改用法即可消，落班规条目（机器保守判定，采纳靠人）。")
+
+
+def _pool_key(preview: str) -> str:
+    """稳定 key：文本派生（与 sid/次数/rowid 无关），接 suggestion_status 表。
+
+    key 约定对齐 suggestmeta：entries 用 title（跨运行稳定）——这里用
+    归一样本前 60 字的 sha1 截断，样本同文即同 key。
+    """
+    import hashlib
+    return "nags:" + hashlib.sha1(preview.encode("utf-8")).hexdigest()[:12]
+
+
+def build_pool(res: dict) -> dict:
+    """把 nags.collect 的候选组标注归宿 → 建议池第二输入源（纯函数，只读）。
+
+    每条产出：稳定 key + owner 三值 + 判定理由 + 证据锚点 + 复制就绪的
+    `harvester suggest-status` 命令（本模块**绝不执行**该命令——红线：
+    采纳/驳回由人复制到终端，或走 view 命令台两段提交）。
+    """
+    rule_entries, issue_entries = [], []
+    for g in res["groups"]:
+        preview = g["sample"]["preview"]
+        dest, owner, reason = classify_destination(preview)
+        entry = {
+            "key": _pool_key(preview),
+            "dest": dest, "owner": owner, "reason": reason,
+            "title": preview,
+            "n": g["n"], "n_sids": len(g["sids"]),
+            "evidence": [{"sid": m["sid"], "rowid": m["rowid"]}
+                         for m in g["members"][:3]],
+            "status_cmd": ('python -m harvester suggest-status '
+                           '--meta suggestions_meta.db --key "%s" '
+                           '--status pending' % _pool_key(preview)),
+        }
+        (rule_entries if dest == DEST_RULE else issue_entries).append(entry)
+    return {
+        "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
+        "source": "actions/analysis/nags.py build_pool（P4-2）",
+        "dest_rule": DEST_RULE, "dest_issue": DEST_ISSUE,
+        "curated": [{"match": m, "dest": d, "owner": o, "reason": r}
+                    for m, d, o, r in _CURATED],
+        "rule_entries": rule_entries,
+        "issue_entries": issue_entries,
+        "account": res["account"],
+    }
+
+
+def render_pool_md(pool: dict) -> str:
+    """建议池 markdown：两桶分列 + 判定理由 + 复制就绪命令 + 人工裁决留痕列。"""
+    lines = [
+        "# P4-2 反复叮嘱归宿建议池（nags 第二输入源）",
+        "",
+        "生成：%s　|　来源：%s" % (pool["generated_at"], pool["source"]),
+        "",
+        "**机器判定仅建议，采纳靠人**：每条的归宿/owner 都可改判；裁决用"
+        "条目内复制就绪的 `suggest-status` 命令落台账（suggestions_meta.db，"
+        "pending/adopted/rejected），或直接在本文件的「人工裁决」列留痕。",
+        "",
+        "## 一、班规条目候选（dest=rule，owner=workflow）",
+        "",
+    ]
+    if not pool["rule_entries"]:
+        lines.append("（无——本库当前没有归入班规的非模板叮嘱。）")
+    for e in pool["rule_entries"]:
+        lines += [
+            "### 「%s」" % e["title"],
+            "- key：`%s`（%d 会话 × %d 次；owner=%s）"
+            % (e["key"], e["n_sids"], e["n"], e["owner"]),
+            "- 判定：%s" % e["reason"],
+            "- 证据：%s"
+            % "、".join("%s#row%s" % (m["sid"][:40], m["rowid"])
+                        for m in e["evidence"]),
+            "- 裁决命令（复制执行；本视图不代跑）：%s" % e["status_cmd"],
+            "- 人工裁决：（待定 ▢ 采纳 ☐ 驳回 ☐）",
+            "",
+        ]
+    lines += ["## 二、harness/tool 问题清单候选（dest=issue）", ""]
+    if not pool["issue_entries"]:
+        lines.append("（无——本库当前没有归入问题清单的候选。）")
+    for e in pool["issue_entries"]:
+        lines += [
+            "### 「%s」" % e["title"],
+            "- key：`%s`（%d 会话 × %d 次；owner=%s）"
+            % (e["key"], e["n_sids"], e["n"], e["owner"]),
+            "- 判定：%s" % e["reason"],
+            "- 证据：%s"
+            % "、".join("%s#row%s" % (m["sid"][:40], m["rowid"])
+                        for m in e["evidence"]),
+            "- 裁决命令（复制执行；本视图不代跑）：%s" % e["status_cmd"],
+            "- 人工裁决：（待定 ▢ 采纳 ☐ 驳回 ☐）",
+            "",
+        ]
+    lines += ["## 附：curated 判据（可追溯）", ""]
+    for c in pool["curated"]:
+        lines.append("- 命中「%s」→ %s（owner=%s）：%s"
+                     % (c["match"], c["dest"], c["owner"], c["reason"]))
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
         prog="python -m actions.analysis.nags",
-        description="P4-1 反复叮嘱候选（只读 harvester.db）")
+        description="P4-1 反复叮嘱候选 + P4-2 归宿建议池（只读 harvester.db）")
     ap.add_argument("--db", default="harvester.db", help="索引库路径")
     ap.add_argument("--out", help="markdown 输出路径（缺省打印 stdout）")
+    ap.add_argument("--pool-out",
+                    help="P4-2 建议池输出前缀：写 <前缀>.md 与 <前缀>.json")
+    ap.add_argument("--meta", default="suggestions_meta.db",
+                    help="台账 meta 库（仅用于生成 suggest-status 命令文案）")
     args = ap.parse_args(argv)
     con = sqlite3.connect("file:%s?mode=ro"
                           % Path(args.db).resolve().as_posix(), uri=True)
@@ -203,6 +345,22 @@ def main(argv=None) -> int:
               % (args.out, res["account"]["n_groups"]))
     else:
         sys.stdout.write(md)
+    if args.pool_out:
+        pool = build_pool(res)
+        for e in pool["rule_entries"] + pool["issue_entries"]:
+            # --meta 只影响命令文案（给人复制），key 不变
+            e["status_cmd"] = ('python -m harvester suggest-status '
+                               '--meta %s --key "%s" --status pending'
+                               % (args.meta, e["key"]))
+        pj = Path(args.pool_out + ".json")
+        pm = Path(args.pool_out + ".md")
+        pj.parent.mkdir(parents=True, exist_ok=True)
+        pj.write_text(json.dumps(pool, ensure_ascii=False, indent=1),
+                      encoding="utf-8", newline="\n")
+        pm.write_text(render_pool_md(pool), encoding="utf-8", newline="\n")
+        print("[nags] P4-2 建议池已写：%s / %s（班规 %d 条 / 问题清单 %d 条）"
+              % (pm, pj, len(pool["rule_entries"]),
+                 len(pool["issue_entries"])))
     return 0
 
 

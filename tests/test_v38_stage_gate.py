@@ -97,10 +97,17 @@ class CardByCardWalkthrough(unittest.TestCase):
                                  % (a["action_id"], p["name"]))
 
     def test_destructive_actions_state_what_is_lost(self):
+        """破坏性动作清单**钉死**：一变就必须回来显式复核。
+
+        2026-10-13（v0.49）显式复核结论：新增 `session_suppress`（会话抑制）。
+        它是破坏性的**理由**：会真删库内 sessions/messages/steps 行与 exports
+        副本，且**没有一键恢复**（恢复要靠下次 sync 重新导出，前提是语料还在）。
+        它**不该被误当成"只是标记"**——这正是本条清单要拦的那种误判。
+        """
         destr = [a for a in self.reg["write_actions"]
                  if a["risk"] == "destructive"]
         self.assertEqual(sorted(a["action_id"] for a in destr),
-                         ["topic_delete", "topic_merge"],
+                         ["session_suppress", "topic_delete", "topic_merge"],
                          "破坏性动作清单变了：必须显式复核（它们会丢信息）")
         for a in destr:
             d = a.get("detail") or ""
@@ -110,6 +117,23 @@ class CardByCardWalkthrough(unittest.TestCase):
                 any(k in d for k in ("删", "丢", "找不回", "没了")),
                 "%s 的 detail 必须写明会丢什么（不许含糊成「有风险」）"
                 % a["action_id"])
+
+    def test_suppress_detail_is_honest_about_scope_and_recovery(self):
+        """会话抑制的口径必须**逐字**写对（用户批准的清单 ③ 与 ⑧）。
+
+        ③ 删的是**仓内副本，不是采集源**；⑧ **不设**"可恢复"时限，
+        且必须说清"能不能恢复只取决于语料是否还在"。
+        这几句是用户裁决的落地形态，写含糊了页面上就会误导人，
+        故这里按原话钉住（铁律 6.6：用户判据原话是规格）。
+        """
+        spec = {a["action_id"]: a for a in self.reg["write_actions"]}
+        for aid in ("session_suppress", "session_unsuppress"):
+            d = spec[aid].get("detail") or ""
+            self.assertIn("仓内副本", d, aid)
+            self.assertIn("不删采集源", d, aid)
+            self.assertIn("语料是否还在", d, aid)
+            self.assertIn("不设恢复时限", d, aid)
+            self.assertNotIn("可恢复", d.replace("不恢复", ""), aid)
 
     def test_destructive_write_keeps_snapshot(self):
         """破坏性动作的预演必须给快照——那是"可回滚"承诺的唯一凭据。

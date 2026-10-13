@@ -134,10 +134,17 @@ class RegistryTest(unittest.TestCase):
                          "C 档命令不许出现在可执行动作里（红线 3）")
 
     def test_destructive_actions_are_marked(self):
+        """破坏性清单**钉死**；一变就必须回来显式复核。
+
+        2026-10-13（v0.49）复核结论：新增 `session_suppress`——它真删库内
+        sessions/messages/steps 行与 exports 副本，且**没有一键恢复**
+        （恢复靠下次 sync 重导出，前提是语料还在），故必须标 destructive。
+        """
         reg = RG.build()
         destr = {a["action_id"] for a in reg["write_actions"]
                  if a["risk"] == "destructive"}
-        self.assertEqual(destr, {"topic_merge", "topic_delete"},
+        self.assertEqual(destr, {"topic_merge", "topic_delete",
+                                 "session_suppress"},
                          "破坏性动作清单变了：必须显式复核（它们会丢信息）")
 
     def test_registrygen_rejects_undeclared_param(self):
@@ -418,7 +425,8 @@ class WriteHttpTest(_Fixture):
         tiers = {a["tier"] for a in d["actions"]}
         self.assertEqual(tiers, {"A", "B"})
         b = [a for a in d["actions"] if a["tier"] == "B"]
-        self.assertEqual(len(b), 9)
+        # 9 → 11（v0.49 会话抑制加两个：session_suppress + session_unsuppress）
+        self.assertEqual(len(b), 11)
         for a in b:
             self.assertIn(a["risk"], ("reversible", "destructive"))
 

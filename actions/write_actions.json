@@ -4,6 +4,36 @@
   "hint": "本文件是人写的**判断层**：哪些写动作可写、写哪个 meta 库、风险等级、确认页怎么说人话。命令名/参数名/参数类型/src 一律从 actions/commands.json（真解析器生成）合并，不在此重复。allow = 该子动作**真正消费**的字段（照 cli.py 抄；含服务端已定的 meta 路径），registrygen 会双向校验：声明了不消费的参数 → 失败（填了不生效却看起来能写）；漏声明 → 失败。server 只认这张表，表外动作一律 403。",
   "actions": [
     {
+      "action_id": "session_suppress",
+      "cmd": "suppress add",
+      "risk": "destructive",
+      "target": "topics_meta",
+      "summary": "把会话 {sids} 从**仓内副本**里抑制掉（库内三表行 + exports 副本）",
+      "detail": "删的是**仓内副本**（库内 sessions/messages/steps 行 + exports 下的 .json/.md 与 manifest 条目），**不删采集源**（DSH/WorkBuddy 自己的会话文件一字节不动）。此后 sync/update 会在导出步拦住它、不再入库。取消抑制**不会恢复**已删的行与副本——能不能恢复**只取决于语料是否还在**；**本工具不设恢复时限**。",
+      "allow": ["cmd", "meta", "sids", "reason", "created_by", "db", "exports"],
+      "params": {
+        "sids": {"map": "sids", "required": true,
+                 "label": "要抑制的会话 sid（库口径 `source:session_id`；多个用逗号分隔）"},
+        "reason": {"map": "reason", "required": true,
+                   "label": "为什么抑制（写进抑制表，供日后复查）"},
+        "created_by": {"map": "created_by",
+                       "label": "谁做的（写进抑制表；缺省留空，不猜身份）"}
+      }
+    },
+    {
+      "action_id": "session_unsuppress",
+      "cmd": "suppress remove",
+      "risk": "reversible",
+      "target": "topics_meta",
+      "summary": "取消对会话 {sids} 的抑制（只删抑制表行）",
+      "detail": "只删抑制表行。抑制只作用于**仓内副本**（库内三表行 + exports 副本），**不删采集源**（DSH/WorkBuddy 自己的会话文件一字节不动）。**取消抑制不恢复数据**：已删的库内行与 exports 副本不会回来。能不能恢复**只取决于语料是否还在**——语料还在则下次 sync/update 会重新导出并入库；语料没了就真没了。本工具**不设恢复时限**。",
+      "allow": ["cmd", "meta", "sids"],
+      "params": {
+        "sids": {"map": "sids", "required": true,
+                 "label": "要取消抑制的 sid（库口径；多个用逗号分隔）"}
+      }
+    },
+    {
       "action_id": "suggest_status",
       "cmd": "suggest-status",
       "risk": "reversible",

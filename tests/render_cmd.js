@@ -129,6 +129,8 @@ for (const [n, sig] of [
   /* P3：B 档接线与版本握手 */
   ["actionSpec", "aid"], ["writeActionsForCard", "cardId"],
   ["currentWriteSpec", ""], ["renderVersionBar", ""], ["writeDisabled", ""],
+  /* v0.49：会话抑制的 view 侧（「已抑制」清单 + 恢复） */
+  ["loadSuppressed", "manual"], ["renderSuppressed", "d"],
 ]) {
   eval(extract(n, sig));
 }
@@ -341,6 +343,91 @@ state.act.health = { version_ok: true };
 renderVersionBar();
 check("恢复匹配后黄条消失", verEl.style.display === "none");
 
-console.log(failed ? ("\n" + failed + " CHECK(S) FAILED") :
-  "\nALL COMMAND-PALETTE CHECKS PASSED");
-process.exit(failed ? 1 : 0);
+/* ---------- v0.49 会话抑制：已抑制清单与「恢复」 ----------
+ * 用户 2026-10-13 批准清单 ①–⑦、⑧ 不做。本段钉住 view 侧三条：
+ *  ① 「已抑制」是**服务端全量清单**（`/api/suppressed`），不是对当前页做筛选
+ *     ——在只有一页的表格上筛选，看起来像「全部就这些」（§七 20 那类静默骗人）；
+ *  ② 口径必须写在页面上（仓内副本 / 不删采集源 / 只取决于语料是否还在 / 不设时限）；
+ *  ③ 「恢复」把 `session_unsuppress` 装到命令台（**走现成的两段提交，不新造写路径**）。
+ */
+const unsuppressCalls = [];
+openInCmd = function (aid, params) {
+  unsuppressCalls.push([aid, params]);
+  return Promise.resolve(true);
+};
+cssShortId = s => String(s || "").slice(0, 12) + "…";
+
+const SUP = {
+  view_suppress_api: 1, configured: true, meta: "topics_meta.db",
+  meta_exists: true, count: 2,
+  rows: [
+    { sid: "dsh:aaa-bbb", reason: "太水了", created: "2026-10-13 10:00:00",
+      created_by: "web-ui" },
+    { sid: "dsh:ccc-ddd", reason: "", created: "2026-10-13 11:00:00",
+      created_by: "" },
+  ],
+};
+
+renderSuppressed(SUP);
+const sup = $("suppressed-panel").innerHTML;
+check("已抑制清单渲染条数", sup.includes("已抑制会话（2 条）"));
+check("每条都渲染出 sid / 何时 / 谁 / 为什么",
+  sup.includes("2026-10-13 10:00:00") && sup.includes("web-ui") &&
+  sup.includes("太水了"));
+check("缺理由与缺执行人都如实标注（不静默留空）", sup.includes("（未写）"));
+check("每条都有「恢复」按钮",
+  (sup.match(/data-unsuppress=/g) || []).length === 2);
+check("口径逐条写在页面上（用户批准的 ③ 与 ⑧）",
+  sup.includes("仓内副本") && sup.includes("不删采集源") &&
+  sup.includes("只取决于语料是否还在") && sup.includes("不设恢复时限"));
+check("不许出现「可恢复」式承诺",
+  !sup.replace(/不恢复/g, "").includes("可恢复"));
+
+/* 「恢复」= 把 session_unsuppress 装到命令台（不新造写路径）。
+   门里的 `$()` 桩 `querySelectorAll` 返回空数组，故这里**给它一批假按钮**，
+   让 renderSuppressed 真的绑上 onclick，再手动点一次——不这样验，就等于
+   只查了 HTML 字符串（抓不到"按钮绑错动作"这种执行路径上的缺陷）。 */
+const fakeBtns = [{ dataset: { unsuppress: "dsh:aaa-bbb" }, onclick: null }];
+const supPanel = $("suppressed-panel");
+const origQSA = supPanel.querySelectorAll;
+supPanel.querySelectorAll = sel =>
+  (sel === "[data-unsuppress]" ? fakeBtns : []);
+renderSuppressed(SUP);
+check("恢复按钮被真的绑上 onclick", typeof fakeBtns[0].onclick === "function");
+unsuppressCalls.length = 0;
+if (fakeBtns[0].onclick) fakeBtns[0].onclick();
+check("恢复按钮把 session_unsuppress 交给命令台（含该 sid）",
+  unsuppressCalls.length === 1 &&
+  unsuppressCalls[0][0] === "session_unsuppress" &&
+  unsuppressCalls[0][1].sids === "dsh:aaa-bbb");
+supPanel.querySelectorAll = origQSA;
+
+/* 空清单明说「没有」，不装成有内容 */
+renderSuppressed({ view_suppress_api: 1, configured: true, rows: [] });
+check("空清单写「没有已抑制的会话」",
+  $("suppressed-panel").innerHTML.includes("没有已抑制的会话"));
+/* 未配置 topics_meta 时如实说，不假装 0 条 */
+renderSuppressed({ view_suppress_api: 1, configured: false, rows: [] });
+check("未配置时标注「无处可查」（不是假 0）",
+  $("suppressed-panel").innerHTML.includes("无处可查"));
+
+/* 勾选后表格与分页必须让位（清单是另一份数据，不能并排看着像同一批） */
+$("f-suppressed").checked = true;
+const supApiCalls = [];
+actApi = u => { supApiCalls.push(u); return Promise.resolve(SUP); };
+(async () => {
+  await loadSuppressed(false);
+  check("勾「已抑制」走的是一次性全量端点（不是对当前页筛选）",
+    supApiCalls.length === 1 && supApiCalls[0].includes("/api/suppressed"));
+  check("会话表格让位隐藏", $("sess-table").style.display === "none");
+  check("分页也让位隐藏", $("pager").style.display === "none");
+  check("清单面板显示出来", $("suppressed-panel").style.display === "");
+  $("f-suppressed").checked = false;
+  await loadSuppressed(false);
+  check("取消勾选后表格与分页恢复",
+    $("sess-table").style.display === "" && $("pager").style.display === "");
+
+  console.log(failed ? ("\n" + failed + " CHECK(S) FAILED") :
+    "\nALL COMMAND-PALETTE CHECKS PASSED");
+  process.exit(failed ? 1 : 0);
+})();

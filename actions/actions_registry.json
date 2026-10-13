@@ -187,6 +187,86 @@
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
   {
+   "action_id": "session_suppress",
+   "tier": "B",
+   "cmd": "suppress add",
+   "subaction": null,
+   "risk": "destructive",
+   "target": "topics_meta",
+   "summary": "把会话 {sids} 从**仓内副本**里抑制掉（库内三表行 + exports 副本）",
+   "detail": "删的是**仓内副本**（库内 sessions/messages/steps 行 + exports 下的 .json/.md 与 manifest 条目），**不删采集源**（DSH/WorkBuddy 自己的会话文件一字节不动）。此后 sync/update 会在导出步拦住它、不再入库。取消抑制**不会恢复**已删的行与副本——能不能恢复**只取决于语料是否还在**；**本工具不设恢复时限**。",
+   "params": [
+    {
+     "name": "sids",
+     "dest": "sids",
+     "arg": "--sid",
+     "kind": "str",
+     "src": "sessions_api",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "要抑制的会话 sid（库口径 `source:session_id`；多个用逗号分隔）"
+    },
+    {
+     "name": "reason",
+     "dest": "reason",
+     "arg": "--reason",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": "",
+     "note": null,
+     "label": "为什么抑制（写进抑制表，供日后复查）"
+    },
+    {
+     "name": "created_by",
+     "dest": "created_by",
+     "arg": "--by",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": "",
+     "note": null,
+     "label": "谁做的（写进抑制表；缺省留空，不猜身份）"
+    }
+   ],
+   "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "会丢信息（源主题行/历史 run 删除后页面上找不回）"
+  },
+  {
+   "action_id": "session_unsuppress",
+   "tier": "B",
+   "cmd": "suppress remove",
+   "subaction": null,
+   "risk": "reversible",
+   "target": "topics_meta",
+   "summary": "取消对会话 {sids} 的抑制（只删抑制表行）",
+   "detail": "只删抑制表行。抑制只作用于**仓内副本**（库内三表行 + exports 副本），**不删采集源**（DSH/WorkBuddy 自己的会话文件一字节不动）。**取消抑制不恢复数据**：已删的库内行与 exports 副本不会回来。能不能恢复**只取决于语料是否还在**——语料还在则下次 sync/update 会重新导出并入库；语料没了就真没了。本工具**不设恢复时限**。",
+   "params": [
+    {
+     "name": "sids",
+     "dest": "sids",
+     "arg": "--sid",
+     "kind": "str",
+     "src": "sessions_api",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "要取消抑制的 sid（库口径；多个用逗号分隔）"
+    }
+   ],
+   "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  },
+  {
    "action_id": "suggest_status",
    "tier": "B",
    "cmd": "suggest-status",
@@ -553,8 +633,8 @@
  "counts": {
   "cards": 13,
   "read_actions": 4,
-  "write_actions": 9,
-  "write_reversible": 7,
-  "write_destructive": 2
+  "write_actions": 11,
+  "write_reversible": 8,
+  "write_destructive": 3
  }
 }

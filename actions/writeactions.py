@@ -524,9 +524,197 @@ def _exec_keywords_gc(p: dict, cfg) -> dict:
                           before / 1048576, after / 1048576)}
 
 
+# ---------- 会话抑制（v0.49，用户批准的提案 §2.5 / 清单 ⑥：不新造机制）----------
+#
+# 纪律：
+# - 抑制表**放现有的 topics_meta.db**（用户批准 ①：不新建 meta 库）；
+# - 预演走上游的**只读**入口（`suppress.db_row_counts` +
+#   `exporter.prune_suppressed(dry_run=True)`），故"预演零副作用"是上游保证的，
+#   本模块不自己算行数（自己算就是两套算法）；
+# - `execute` 调上游 `suppress.suppress(...)`——**它是唯一会写采集库的函数**，
+#   本模块不直接 DELETE 任何表；
+# - 口径照抄上游 docstring：删的是**仓内副本**，**不删采集源**；取消抑制
+#   **不恢复**数据，能不能恢复只取决于语料是否还在；**不设恢复时限**。
+
+def _suppress_meta(cfg) -> Path:
+    """抑制表所在库 = `topics_meta`（**故意复用**，用户批准 ①）。
+
+    写成"另起一个库"会让抑制表建到没人看的地方，且与清单 ① 相悖；
+    故这里有测试钉住"注册表 target=topics_meta"与实现一致。
+    """
+    if not cfg.topics_meta:
+        raise WriteError("未配置 topics_meta（起服时加 --topics-meta）")
+    return Path(cfg.topics_meta)
+
+
+def _exports_dir(cfg) -> Path | None:
+    """导出产物目录（清旧副本用）。起服时没配就是 None——那时**不猜路径**，
+    预演里如实写明"不清 exports 副本"。"""
+    return Path(cfg.exports_root) if cfg.exports_root else None
+
+
+def _split_sids(value) -> list[str]:
+    """`sids` 既接列表也接逗号分隔的字符串（命令台给的是文本框）。"""
+    if isinstance(value, (list, tuple, set)):
+        items = [str(v) for v in value]
+    else:
+        items = str(value or "").split(",")
+    return sorted({s.strip() for s in items if s.strip()})
+
+
+def _row_counts(db: Path, sids: list[str]) -> dict:
+    from harvester.suppress import db_row_counts
+    return db_row_counts(db, sids)
+
+
+def _prune_preview(exports: Path | None, sids: list[str]) -> dict:
+    if not exports or not Path(exports).is_dir():
+        return {"scanned": 0, "deleted": [], "unreadable": [],
+                "manifest_removed": 0, "dry_run": True}
+    from harvester.exporter import prune_suppressed
+    return prune_suppressed(exports, set(sids), dry_run=True)
+
+
+def _plan_session_suppress(p: dict, cfg) -> dict:
+    from harvester.suppress import list_suppressed
+    meta = _suppress_meta(cfg)
+    sids = _split_sids(p.get("sids"))
+    if not sids:
+        raise WriteError("sids 不能为空（库口径 `source:session_id`，即 search 输出的 [sid]）")
+    reason = (p.get("reason") or "").strip()
+    if not reason:
+        raise WriteError("reason 不能为空——日后复查要看得懂为什么把它移出去")
+    created_by = (p.get("created_by") or "").strip()
+    db = Path(cfg.db)
+    counts = _row_counts(db, sids)
+    exports = _exports_dir(cfg)
+    prune = _prune_preview(exports, sids)
+    have = {r["sid"] for r in list_suppressed(meta)}
+    already = [s for s in sids if s in have]
+    absent = [s for s in sids if not counts[s]["found"] and s not in have]
+
+    human = ["动作：把 %d 个会话从**仓内副本**里抑制掉" % len(sids)]
+    for s in sids:
+        c = counts[s]
+        human.append("· %s%s — 会话行 %d / 消息 %d / 步骤 %d%s"
+                     % ((c["title"][:60] + "　") if c["title"] else "", s,
+                        c["sessions"], c["messages"], c["steps"],
+                        "" if c["found"] else "（库里已经没有这些行）"))
+    if exports:
+        human.append("将删的 exports 副本：%d 个（扫了 %d 个 json）"
+                     % (len(prune.get("deleted") or []), prune.get("scanned", 0)))
+        if prune.get("unreadable"):
+            human.append("⚠ %d 个 json 读不出 sid，**不会被删**（要看一眼才知道是不是它）"
+                         % len(prune["unreadable"]))
+    else:
+        human.append("⚠ 起服时没配 `--exports-root` → 本次**不清 exports 副本**；"
+                     "旧副本还在的话，下次索引仍可能把它收回来（要清请配好再跑）")
+    if already:
+        human.append("已经抑制过（幂等：只更新理由，不重复计数）：%s"
+                     % "、".join(already))
+    if absent:
+        human.append("⚠ 这些 sid 在库与抑制表里都没有：%s——写下去只会记一条抑制行"
+                     % "、".join(absent))
+    human.append("**删的是仓内副本，不删采集源**（DSH/WorkBuddy 自己的会话文件"
+                 "一字节不动）。此后 sync/update 会在导出步拦住它、不再入库。")
+    human.append("恢复：取消抑制**不恢复**已删的行与副本——能不能恢复**只取决于"
+                 "语料是否还在**；本工具**不设恢复时限**。")
+
+    row_snapshot = {s: {k: counts[s][k]
+                        for k in ("sessions", "messages", "steps")}
+                    for s in sids}
+    return {
+        "target_path": str(meta),
+        "before": {"suppressed": sorted(have & set(sids)), "rows": row_snapshot},
+        "after": {"suppressed": sorted(have | set(sids))},
+        # destructive 必须给"删除前快照"——那是"可回滚"承诺的唯一凭据。
+        # **只存数量与标题，不存正文**：正文要能从语料恢复才叫可逆。
+        "snapshot": {"sids": sids,
+                     "titles": {s: counts[s]["title"] for s in sids},
+                     "row_counts": row_snapshot,
+                     "exports_to_delete": prune.get("deleted") or [],
+                     "note": "只存数量与标题，**不存正文**——正文能否恢复取决于语料是否还在"},
+        "limits": [
+            "预演报的是「当前状态 + 本动作会做的操作」，不是「执行后保证的结果」",
+            "exports 副本的清理只覆盖 exports 目录下的 .json/.md 与 manifest 条目；"
+            "目录外的副本本工具看不到",
+            "抑制**不影响采集源**：DSH/WorkBuddy 的会话文件不在本工具管辖内，"
+            "本工具也不去探测它们还在不在",
+        ],
+        "human": human,
+        "noop": False,
+    }
+
+
+def _exec_session_suppress(p: dict, cfg) -> dict:
+    from harvester.suppress import suppress
+    meta = _suppress_meta(cfg)
+    sids = _split_sids(p.get("sids"))
+    r = suppress(meta, Path(cfg.db), sids,
+                 reason=(p.get("reason") or "").strip(),
+                 created_by=(p.get("created_by") or "").strip(),
+                 exports_dir=_exports_dir(cfg))
+    purged = r.get("purged") or {}
+    pruned = r.get("pruned") or {}
+    return {
+        "summary": ("抑制 %d 个会话：库内删 会话 %d / 消息 %d / 步骤 %d 行；"
+                    "exports 副本删 %d 个"
+                    % (len(r["sids"]),
+                       sum(v.get("sessions", 0) for v in purged.values()),
+                       sum(v.get("messages", 0) for v in purged.values()),
+                       sum(v.get("steps", 0) for v in purged.values()),
+                       len(pruned.get("deleted") or []))),
+        "sids": r["sids"], "added": r["added"], "purged": purged, "pruned": pruned,
+    }
+
+
+def _plan_session_unsuppress(p: dict, cfg) -> dict:
+    from harvester.suppress import list_suppressed
+    meta = _suppress_meta(cfg)
+    sids = _split_sids(p.get("sids"))
+    if not sids:
+        raise WriteError("sids 不能为空")
+    have = {r["sid"]: r for r in list_suppressed(meta)}
+    hit = sorted(s for s in sids if s in have)
+    human = ["动作：取消 %d 个 sid 的抑制（**只删抑制表行**）" % len(sids)]
+    for s in sids:
+        r = have.get(s)
+        if r:
+            human.append("· %s — 抑制于 %s%s" % (
+                s, r.get("created") or "—",
+                ("，理由：" + r["reason"]) if r.get("reason") else "（未写理由）"))
+        else:
+            human.append("· %s — **不在抑制表里**（这条取消无效果）" % s)
+    human.append("**取消抑制不恢复数据**：已删的库内行与 exports 副本不会回来。"
+                 "能不能恢复**只取决于语料是否还在**——语料还在则下次 sync/update "
+                 "会重新导出并入库；语料没了就真没了。本工具**不设恢复时限**。")
+    return {
+        "target_path": str(meta),
+        "before": {"suppressed": hit},
+        "after": {"suppressed": sorted(set(have) - set(sids))},
+        "snapshot": None,     # 非 destructive：after 可由 before 推出，无需快照
+        "limits": ["取消抑制不恢复数据——这是上游语义，不是本仓的限制"],
+        "human": human,
+        "noop": not hit,
+    }
+
+
+def _exec_session_unsuppress(p: dict, cfg) -> dict:
+    from harvester.suppress import unsuppress
+    meta = _suppress_meta(cfg)
+    sids = _split_sids(p.get("sids"))
+    n = unsuppress(meta, sids)
+    return {"summary": "取消抑制 %d 行（sid=%s）" % (n, "、".join(sids)),
+            "removed": n, "sids": sids}
+
+
 #: action_id → (plan, execute)。**这张表就是 B 档的"实现白名单"**：
 #: `actions_registry.json` 声明了什么，这里必须一一对上（有测试比对）。
 WRITE_ACTIONS: dict[str, dict] = {
+    "session_suppress": {"plan": _plan_session_suppress,
+                         "execute": _exec_session_suppress},
+    "session_unsuppress": {"plan": _plan_session_unsuppress,
+                           "execute": _exec_session_unsuppress},
     "suggest_status": {"plan": _plan_suggest_status,
                        "execute": _exec_suggest_status},
     "topic_register": {"plan": _plan_topic_register,

@@ -783,6 +783,9 @@ def make_handler(cfg: Config):
                 if path == "/api/overview":
                     self._overview()
                     return
+                if path == "/api/suppressed":
+                    self._suppressed()
+                    return
                 if path == "/api/workitems":
                     self._workitems(qs)
                     return
@@ -799,7 +802,8 @@ def make_handler(cfg: Config):
                             "/api/topic/<id>/timeline?level=",
                             "/api/pattern-sessions?pattern=&days=",
                             "/api/overview",
-                            "/api/workitems?target="]})
+                            "/api/workitems?target=",
+                            "/api/suppressed"]})
                     return
                 self._json({"error": "未知路由 %s" % path}, 404)
             except _BadRequest as e:
@@ -1102,6 +1106,30 @@ def make_handler(cfg: Config):
             pattern = qs.get("pattern")
             days = _num(qs.get("days"))
             self._json(pattern_sessions(cfg, pattern, days))
+
+        def _suppressed(self):
+            """已抑制会话清单（v0.49，**只读**）。UI 的「已抑制」页签与「恢复」用。
+
+            纪律：走上游 `suppress.list_suppressed`（默认 `create=False`，**不建表**
+            ——读一下就顺手建表会让只读消费方产生副作用）。缺配置/缺库/缺表一律
+            返回空表 + `configured` 说明，**不报错也不猜**（与 timeline 的
+            `stale:null` 同款：不知道就说不知道）。
+            """
+            from harvester.suppress import list_suppressed
+            if not cfg.topics_meta:
+                self._json({"view_suppress_api": 1, "configured": False,
+                            "meta": None, "count": 0, "rows": [],
+                            "hint": "起服时未配 --topics-meta，抑制表无处可查"})
+                return
+            meta = Path(cfg.topics_meta)
+            rows = list_suppressed(meta)
+            self._json({"view_suppress_api": 1, "configured": True,
+                        "meta": str(meta), "meta_exists": meta.is_file(),
+                        "count": len(rows), "rows": rows,
+                        "honest": ("抑制只作用于**仓内副本**（库内三表行 + exports "
+                                   "副本），**不删采集源**；取消抑制本身不恢复数据"
+                                   "——能不能恢复只取决于语料是否还在，"
+                                   "**不设恢复时限**")})
 
         def _overview(self):
             """今日工作台数据面（P3-3）：四队列 + 三环，每个数字带口径与真源。"""

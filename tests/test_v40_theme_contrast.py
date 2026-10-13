@@ -123,7 +123,7 @@ class ColorContrastGateTest(unittest.TestCase):
         dark = _var_map(self.css, self.dark)
         for name in ("--bg", "--panel", "--ink", "--ink2", "--line",
                      "--warn-bg", "--warn-ink", "--err-bg", "--err-ink",
-                     "--ok-bg", "--ok-ink"):
+                     "--ok-bg", "--ok-ink", "--chip-on-bg"):
             self.assertIn(name, light, "浅色主题缺变量 %s" % name)
             self.assertIn(name, dark, "深色主题缺变量 %s" % name)
         # 关键前提：字色在深色模式下**确实翻成了浅色**
@@ -211,30 +211,43 @@ class ColorContrastGateTest(unittest.TestCase):
                         % (mode, fg, bg, r))
 
 
-    def test_known_dark_mode_contrast_weakness_is_tracked(self):
-        """**已知弱项，显式记账**（不是遗忘，也不是本门查得出来）。
+    def test_selected_chip_passes_in_both_modes(self):
+        """选中态 chip 的白字必须**两种模式都** ≥4.5:1。
 
-        `.chip.on{background:var(--accent);color:#fff}`：白字落在 `--accent` 上。
-        浅色模式 `--accent:#2563eb` → 约 4.8:1（达标）；**深色模式
-        `--accent:#5b8def`（为深底调亮的浅蓝）→ 约 3.2:1，低于正文 4.5:1**。
+        历史（2026-10-13）：`.chip.on` 原来是 `background:var(--accent); color:#fff`
+        ——浅色模式 4.8:1 达标，**深色模式只有 3.2:1**（深色的 `--accent` 是为深底
+        刻意调亮的浅蓝 `#5b8def`）。用户裁决「**不改深色，改其他的**」，故给它一个
+        专用底 `--chip-on-bg`（浅 `#2563eb` / 深 `#1d4ed8`），`--accent` 一个字节
+        没动（链接/描边/选中态仍用它）。
 
-        本门在结构上查不出它：底色是**变量**，不解析级联就拿不到定值。故改为
-        **把数值钉住**——谁哪天调深 `--accent` 或给 chip 换深底，这条会红，
-        提醒回来复核这个已知弱项（而不是让它静默漂移）。
-
-        为什么本会话不改：`--accent` 是全站强调色（链接/描边/选中态都用它），
-        在会话末段改它会牵动全站视觉，风险大于收益 → 登记待裁决。
+        本条替换掉先前那条"已知弱项登记"断言——**弱项已修，登记改为真判据**。
         """
         light = _var_map(
             self.css, re.search(r":root\s*\{([^}]*)\}", self.css).group(1))
         dark = _var_map(self.css, self.dark)
-        self.assertEqual(light["--accent"], "#2563eb")
-        self.assertEqual(dark["--accent"], "#5b8def")
-        self.assertGreaterEqual(contrast("#ffffff", light["--accent"]), 4.5,
-                                "浅色模式的白字落在 --accent 上已达标")
-        self.assertLess(contrast("#ffffff", dark["--accent"]), 4.5,
-                        "深色模式的白字落在 --accent 上**不达标**——"
-                        "这条就是登记在案的弱项；若已修好，请更新本条与交接文档")
+        self.assertIn("--chip-on-bg", light, "浅色主题缺 --chip-on-bg")
+        self.assertIn("--chip-on-bg", dark, "深色主题缺 --chip-on-bg")
+        # 反面对照：这条断言存在的理由（若哪天深色 accent 变成深蓝，注释与它都该复核）
+        self.assertEqual(dark["--accent"], "#5b8def",
+                         "深色 --accent 变了 → 请复核本条与 chip 专用底的取色依据")
+        for mode, vm in (("light", light), ("dark", dark)):
+            ratio = contrast("#ffffff", vm["--chip-on-bg"])
+            self.assertGreaterEqual(
+                ratio, MIN_RATIO,
+                "%s 模式：选中 chip 的白字落在 --chip-on-bg(%s) 上只有 %.2f:1"
+                % (mode, vm["--chip-on-bg"], ratio))
+
+    def test_chip_on_does_not_use_the_global_accent_as_its_surface(self):
+        """用户裁决的落地形态：chip 用**自己的**底，不拿 `--accent` 当底。
+
+        为什么单列一条：修法很容易被"顺手改回 var(--accent) 更省事"覆盖掉，
+        而那样在深色模式下会**悄悄退回 3.2:1**（视觉上只是"有点糊"，不会报错）。
+        """
+        rule = [b for s, b in self.rules
+                if s.split(",")[0].strip() == ".chip.on"]
+        self.assertTrue(rule, "找不到 .chip.on 规则")
+        self.assertIn("var(--chip-on-bg)", rule[0])
+        self.assertNotIn("var(--accent)", rule[0])
 
 
 if __name__ == "__main__":

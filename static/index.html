@@ -1909,8 +1909,9 @@ async function openTopic(id){
     updateTopicCmd();
     $("topics-right").style.display="none";
     $("topics-timeline").innerHTML=errorBox(
-      "该主题尚无 chain 长文——用上方「复制命令」取蒸馏包（pack），"+
-      "由 Agent 消费创作 chain-*.md 放入 knowledge/topics/ 后刷新即见。");
+      "该主题尚无 chain 长文——点上方「去命令台」（已预填 topic pack 参数），"
+      +"核对后执行取蒸馏包（A 档动作，选参数→执行）；"
+      +"由 Agent 消费创作 chain-*.md 放入 knowledge/topics/ 后刷新即见。");
     return;
   }
   if(!res.ok){ await failApi(res); return; }
@@ -1974,7 +1975,8 @@ function renderChain(d,out,idx){
     "<h3 class='sec'>演进时间线（"+stages.length+" 阶段 / "+
     nNodes+" 锚点）</h3>"+
     "<p class='sub2'>点节点跳回原会话对应回合（任一节点一键回原文）；"+
-    "深挖分层用上方「复制命令」，由 CLI 生成蒸馏包——本视图绝不执行。</p>";
+    "深挖分层用上方「去命令台」——选好参数在命令台执行（A 档动作 topic pack），"
+    +"本视图绝不自行执行。</p>";
   for(const st of stages){
     h+="<div class='tl-stage'><h4>"+esc(st.stage||"")+
       (st.span?" <span class='sub2'>"+esc(st.span)+"</span>":"")+"</h4>";
@@ -2814,7 +2816,7 @@ function updateCmdPreview(){
     const why=c.tier==="C"
       ? "C 档：要占端口常驻／要人亲手登录——只生成命令（红线 3）"
       : (c.tier==="B"
-         ? "B 档：会写库，需两段提交确认（P3-2 才提供）"
+         ? "B 档：会写库，需两段提交确认（预演 → 你确认 → 才写）"
          : "A 档，但动作面的白名单里还没有这条（现有 "+
            Object.keys(A_ACTIONS()).length+" 个）");
     $("cmd-est").textContent=why+"｜请复制下方命令自行执行";
@@ -2953,7 +2955,7 @@ function showConfirmDialog(r){
     "<button data-cfm='yes'>确认执行</button>"+
     "<button data-cfm='no'>取消（不写）</button></div>"+
     "<div class='sub2'>参数或库状态在两段之间变了 → 服务端会拒绝并要求"
-    +"重新预览（不会照写）。</div></div>";
+    +"重新预演（不会照写）。</div></div>";
   $("job-out").innerHTML=html;
   const box=$("job-out");
   for(const b of box.querySelectorAll("[data-cfm]"))
@@ -2976,8 +2978,8 @@ async function confirmWrite(){
     const retry=r.__status===409;
     showBanner("err","执行被拒："+r.__err);
     $("job-out").innerHTML=errorBox("执行被拒："+r.__err)+
-      (retry?"<div class='sub2'>需要重新预览（参数或库已变）——"+
-        "点「执行」会重新预演一次</div>":"");
+      (retry?"<div class='sub2'>需要重新预演（参数或库已变）——"+
+        "点「预演」重新走一遍两段提交</div>":"");
     return;
   }
   $("job-out").innerHTML="<div class='sub2'>已写：run_id="+esc(r.run_id||"")+
@@ -3783,3 +3785,5 @@ initUpstreams().then(()=>{
 </script>
 </body>
 </html>
+
+/* ===== P5-3 空态与确认流统一 ===== */

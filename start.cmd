@@ -7,7 +7,7 @@ rem  Keep this file PURE ASCII + CRLF. Echo lines: no double quotes.
 rem ============================================================
 setlocal
 set "SRV=%~dp0..\session-harvester"
-set "BUNDLED=C:\Users\yianyao\.workbuddy\binaries\python\versions\3.13.12\python.exe"
+set "BUNDLED=%USERPROFILE%\.workbuddy\binaries\python\versions\3.13.12\python.exe"
 
 rem --- find a python >= 3.10: py launcher, then python, then uv-managed ---
 set "PY="

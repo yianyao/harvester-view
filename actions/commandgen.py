@@ -358,7 +358,30 @@ def _arg_kind(act) -> str:
 
 def _jsonable(v):
     if v is None or isinstance(v, (bool, int, float, str)):
+        # 字符串也可能已经是 import 期 str(Path.home()/...) 的产物
+        # （如 cli.py report-traces/kb-* 的 default）——同样归一成 ~ 形式。
+        if isinstance(v, str):
+            try:
+                home = str(Path.home())
+                if v.startswith(home):
+                    rest = v[len(home):].lstrip("\\/").replace("\\", "/")
+                    return "~/" + rest if rest else "~"
+            except Exception:
+                pass
         return v
+    # 可移植性（用户 2026-10-13 三问①）：argparse 的 default 是 import 期
+    # 求值的 Path.home()/... 绝对路径——直接 str() 会把"本机用户名"烤进
+    # 生成物（commands.json 曾出现 C:\Users\<某人>\...，换机即错）。
+    # 宿主目录下的路径一律序列化成 "~" 前缀的机器无关形式；
+    # 前端预填会跳过 "~" 开头的 default（留空 → argparse 的 home 相对
+    # default 在运行端自行解析，显示层用 ~ 形式保证可读）。
+    if isinstance(v, Path):
+        try:
+            home = Path.home()
+            r = v.expanduser().resolve().relative_to(home)
+            return "~/" + r.as_posix()
+        except ValueError:
+            pass
     return str(v)
 
 

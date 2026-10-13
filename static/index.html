@@ -2318,12 +2318,17 @@ function selectCmdCommand(name){
   const c=cmdCommands().find(x=>x.cmd===name);
   const spec=actionSpec(name);
   for(const a of (c&&c.args)||[]){
-    if(a.src==="chips"&&a.default!==null&&a.default!==undefined)
+    // "~" 前缀的 default 是机器无关显示形式（commandgen 生成）：
+    // 不预填——留空让运行端 argparse 的 home 相对 default 自己解析，
+    // 否则复制到任何机器都会带着错误字面量路径。
+    if(a.src==="chips"&&a.default!==null&&a.default!==undefined
+       &&!String(a.default).startsWith("~"))
       state.cmdParams[a.dest]=a.default;
   }
   for(const k of Object.keys((spec&&spec.params)||{})){
     const p=spec.params[k];
-    if(p&&p.default!==null&&p.default!==undefined&&!p.server)
+    if(p&&p.default!==null&&p.default!==undefined&&!p.server
+       &&!String(p.default).startsWith("~"))
       state.cmdParams[k]=p.default;
   }
   renderCmdActions();renderCmdParams();

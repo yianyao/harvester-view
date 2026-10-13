@@ -161,6 +161,35 @@ h3.sec{font-size:14px;margin:18px 0 6px}
   background:#f6f8fa;border:1px solid var(--line);border-radius:4px;
   padding:5px 7px;word-break:break-all;white-space:pre-wrap}
 #job-out{max-height:380px;overflow:auto}
+/* ---- P3-3 今日工作台 ---- */
+#tab-home main{display:block;padding:10px 14px}
+.queue-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+  gap:10px;margin:8px 0}
+.qcard{border:1px solid var(--line);border-radius:7px;padding:9px 11px;background:#fff}
+.qcard.zero{opacity:.62}
+.qcard .qh{display:flex;justify-content:space-between;align-items:baseline}
+.qcard .qn{font-size:26px;font-weight:700;line-height:1}
+.qcard .ql{font-weight:600}
+.qcard .qq{font-size:12px;color:var(--sub);margin:3px 0 6px}
+.qcard .qd{font-size:11px;color:var(--sub);border-top:1px dashed var(--line);
+  margin-top:6px;padding-top:5px}
+.qcard .qs{font-size:10px;color:#8a8a8a;font-family:ui-monospace,Consolas,monospace;
+  word-break:break-all}
+.ring{border:1px solid var(--line);border-radius:7px;padding:8px 11px;margin:6px 0;
+  background:#fff}
+.ring .rt{font-weight:600}
+.ring .rd{font-size:11px;color:var(--sub)}
+.arms{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.arm{border:1px solid var(--line);border-radius:6px;padding:4px 8px;min-width:130px;
+  background:#fafbfc}
+.arm.warn{border-color:#d9a400;background:#fffbe8}
+.arm.bad{border-color:#a40e26;background:#fff5f6}
+.arm .av{font-size:19px;font-weight:700;line-height:1.1}
+.arm .au{font-size:11px;color:var(--sub);font-weight:400}
+.arm .ad{font-size:10.5px;color:var(--sub);margin-top:2px}
+.arm .as{font-size:10px;color:#8a8a8a;
+  font-family:ui-monospace,Consolas,monospace;word-break:break-all;margin-top:2px}
+.legend{font-size:11px;color:var(--sub);margin:4px 0 0}
 #ledger-out{max-height:300px;overflow:auto;font-size:12px}
 #verbar{margin:8px 14px 0;padding:7px 10px;border-radius:5px}
 .confirm-box{border:1px solid var(--accent);border-radius:6px;padding:9px 11px;
@@ -204,7 +233,8 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 <header>
   <h1>harvester-view</h1>
   <nav id="tabs">
-    <button data-tab="sessions" class="on">会话检索</button>
+    <button data-tab="home" class="on">今日工作台</button>
+    <button data-tab="sessions">会话检索</button>
     <button data-tab="triage">蒸馏队列</button>
     <button data-tab="reports">报告</button>
     <button data-tab="agg">中台</button>
@@ -215,6 +245,26 @@ h3.sec{font-size:14px;margin:18px 0 6px}
   <span class="meta" id="meta"></span>
 </header>
 <div id="banner"></div>
+
+<!-- ============ Tab 0: 今日工作台（P3-3） ============
+  数据源：/api/overview（服务端算好四队列 + 三环；**每个数字带 source 与
+  definition**）。本视图只渲染，不二次聚合、不自己编数。 -->
+<section class="tab" id="tab-home">
+  <main>
+    <div id="home-intro"></div>
+    <div id="home-banner" class="sub2"></div>
+    <h3 class="sec">四队列（点数字去处理）</h3>
+    <div id="home-queues" class="queue-grid"><div class="empty">加载中…</div></div>
+    <div id="home-qdetail"></div>
+    <h3 class="sec">闭环健康（积压量 = 卡在哪一段）</h3>
+    <p class="legend">每根环三段：<b>有料</b>（数据是否在位）→ <b>已行动</b>／
+      <b>待鉴定</b>（裁决与行动是否发生）→ <b>待验证</b>／<b>待确认</b>
+      （效果与产物是否验收）。数字旁的灰字是**口径**，等宽字是**真源**
+      （哪个上游函数算的）——口径有争议时以真源那一处为准。</p>
+    <div id="home-rings"><div class="empty">加载中…</div></div>
+    <div id="home-foot" class="sub2"></div>
+  </main>
+</section>
 
 <!-- ============ Tab 1: 会话检索 ============ -->
 <section class="tab" id="tab-sessions">
@@ -395,7 +445,9 @@ const state = {no:0, offset:0, limit:50, total:0, q:"", sid:null,
                   当前选择；job=轮询句柄与产物） */
                act:{loaded:false,actions:[],commands:null,error:null},
                cmdCard:null, actionId:null, cmdParams:{}, job:null,
-               chain:[], chainSilent:false};
+               chain:[], chainSilent:false,
+               /* P3-3：今日工作台（overview 原样缓存，页面不改造数字） */
+               ov:null};
 
 /* ---------- 工具 ---------- */
 function esc(s){return String(s??"").replace(/[&<>"']/g,
@@ -652,6 +704,7 @@ function switchTab(name){
     sec.style.display=sec.id==="tab-"+name?"":"none";
   if(!state.loaded[name]){
     state.loaded[name]=true;
+    if(name==="home") loadOverview().catch(()=>{});
     if(name==="sessions") loadAll().catch(()=>{});
     if(name==="triage") loadTriage().catch(()=>{});
     if(name==="reports") loadReport().catch(()=>{});
@@ -2578,6 +2631,108 @@ function renderCmdBrowsable(){
   };
 }
 
+/* ---------- Tab 0: 今日工作台（P3-3） ----------
+   纪律：**只渲染服务端给的四队列与三环**，不在这里做任何二次聚合
+   （页面自己算一遍，就会有两套数字；口径冲突时没人说得清哪个对）。 */
+async function loadOverview(){
+  const out=$("home-queues");
+  out.innerHTML="<div class='empty'>正在现算四队列与三环（约 2–4 秒）…</div>";
+  $("home-rings").innerHTML="";
+  try{ await loadGlossary(); }catch(e){}
+  $("home-intro").innerHTML=panelIntro("home");
+  if(glossary.loaded)applyTermTooltips($("home-intro"));
+  const d=await actApi("/api/overview");
+  if(d.__err){
+    out.innerHTML=errorBox("工作台数据不可用："+d.__err+
+      "（需要动作面在 8766 运行）");
+    $("home-banner").innerHTML="<span class='errline'>动作面不可达</span> —— "+
+      "工作台的四队列与三环由本仓动作面现算（/api/overview）。";
+    return;
+  }
+  state.ov=d;
+  renderQueues(d);
+  renderQueueDetail(d);
+  renderRings(d);
+  const fp=d.db_fingerprint||{};
+  $("home-foot").innerHTML="库快照："+(fp.sessions||"?")+" 会话 / "+
+    (fp.steps||"?")+" 步骤 / "+(fp.errors||"?")+" 错误 @ "+
+    esc(fp.db_mtime||"—")+
+    (fp.stale===true?"　<span class='errline'>⚠ STALE 语料比库新</span>":"")+
+    "　（本页数字全部现算，非缓存）";
+  if(glossary.loaded)applyTermTooltips(out);
+}
+function renderQueues(d){
+  const box=$("home-queues");
+  const qs=d.queues||[];
+  if(!qs.length){box.innerHTML="<div class='empty'>无队列数据</div>";return;}
+  box.innerHTML=qs.map(q=>{
+    const zero=q.count===0;
+    return "<div class='qcard"+(zero?" zero":"")+"'>"+
+      "<div class='qh'><span class='ql'>"+esc(q.label)+"</span>"+
+      "<span class='qn'>"+q.count+"</span></div>"+
+      "<div class='qq'>"+esc(q.question)+"</div>"+
+      "<button class='xbtn' data-qgo=\""+esc(q.queue_id)+"\">去处理：</button>"+
+      "<span class='sub2'>"+esc(q.where||"")+"</span>"+
+      "<div class='qd'>口径："+esc(q.definition||"")+"</div>"+
+      "<div class='qs'>"+esc(q.source||"")+"</div></div>";
+  }).join("");
+  for(const b of box.querySelectorAll("[data-qgo]"))
+    b.onclick=()=>goQueue(b.dataset.qgo);
+}
+/* 队列 → 对应页签（深链是"数字皆门"的第一跳：数字必须点得动） */
+function goQueue(qid){
+  if(qid==="decide"||qid==="repair"){
+    switchTab("reports");
+    const sel=$("rep-kind");
+    if(sel)sel.value="agents";
+    loadReport(true).catch(()=>{});
+    showBanner("warn","已跳到建议条目（G2 建议池）——按口径处理"+qid);
+    return;
+  }
+  if(qid==="distill"){ switchTab("triage"); return; }
+  if(qid==="verify"){
+    switchTab("reports");
+    const sel=$("rep-kind");
+    if(sel)sel.value="errors";
+    loadReport(true).catch(()=>{});
+    showBanner("warn","已跳到 G2 错误报告（效果验证要对照 harvest-eval 判定）");
+    return;
+  }
+}
+function renderQueueDetail(d){
+  const det=d.queue_details||{};
+  let h="<details><summary>队列明细（每项都标口径与真源）</summary>";
+  for(const q of d.queues||[]){
+    const arms=det[q.queue_id]||[];
+    if(!arms.length)continue;
+    h+="<div class='sub2' style='margin-top:6px'><b>"+esc(q.label)+"</b> 的拆解：</div>";
+    h+="<div class='arms'>"+arms.map(a=>armHtml(a)).join("")+"</div>";
+  }
+  h+="</details>";
+  $("home-qdetail").innerHTML=h;
+}
+function armHtml(a){
+  const lv=a.level||"";
+  return "<div class='arm "+esc(lv)+"'>"+
+    "<div class='av'>"+a.value+"<span class='au'> "+esc(a.unit||"")+"</span></div>"+
+    "<div class='ad'>"+esc(a.definition||"")+"</div>"+
+    "<div class='as'>"+esc(a.source||"")+"</div>"+
+    (a.where?"<div class='ad'>去："+esc(a.where)+"</div>":"")+"</div>";
+}
+function renderRings(d){
+  const box=$("home-rings");
+  const rs=d.rings||[];
+  if(!rs.length){box.innerHTML="<div class='empty'>无环数据</div>";return;}
+  box.innerHTML=rs.map(r=>{
+    const blocked=(r.arms||[]).filter(a=>a.value>0).length;
+    return "<div class='ring'><div class='rt'>"+esc(r.title)+
+      "　<span class='sub2'>"+(blocked?
+        ("有 "+blocked+" 段有积压"):"无积压")+"</span></div>"+
+      "<div class='rd'>"+esc(r.definition||"")+"</div>"+
+      "<div class='arms'>"+(r.arms||[]).map(armHtml).join("")+"</div></div>";
+  }).join("");
+}
+
 /* ---------- 事件绑定 ---------- */
 $("btn-search").onclick=()=>{state.q=$("f-q").value.trim();state.offset=0;
   loadSessions().catch(()=>{});};
@@ -2674,7 +2829,11 @@ $("btn-cmd-run").onclick=()=>runCmdAction()
 
 initUpstreams().then(()=>{
   state.no=Number($("upstream").value||0);
-  loadAll();
+  /* P3-3：默认落地页 = 今日工作台。**不做 loadAll()**——会话列表由用户
+     点「会话检索」时按需加载（原实现是启动就拉一趟会话，改成工作台落地后
+     那趟请求是白花的；`state.loaded.home` 置真以免 switchTab 重复拉）。 */
+  state.loaded.home=true;
+  switchTab("home");
 }).catch(e=>showBanner("err","初始化失败: "+e));
 </script>
 </body>

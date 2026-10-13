@@ -777,6 +777,9 @@ def make_handler(cfg: Config):
                 if path == "/api/pattern-sessions":
                     self._pattern(qs)
                     return
+                if path == "/api/overview":
+                    self._overview()
+                    return
                 if path == "/":
                     self._json({
                         "service": "harvester-view 动作面 + 本地只读数据面",
@@ -788,7 +791,8 @@ def make_handler(cfg: Config):
                             "POST /api/actions/run",
                             "/api/actions/job/<id>",
                             "/api/topic/<id>/timeline?level=",
-                            "/api/pattern-sessions?pattern=&days="]})
+                            "/api/pattern-sessions?pattern=&days=",
+                            "/api/overview"]})
                     return
                 self._json({"error": "未知路由 %s" % path}, 404)
             except _BadRequest as e:
@@ -1091,6 +1095,16 @@ def make_handler(cfg: Config):
             pattern = qs.get("pattern")
             days = _num(qs.get("days"))
             self._json(pattern_sessions(cfg, pattern, days))
+
+        def _overview(self):
+            """今日工作台数据面（P3-3）：四队列 + 三环，每个数字带口径与真源。"""
+            from . import overview as _ov
+            try:
+                self._json(_ov.build_overview(cfg))
+            except RuntimeError as e:
+                self._json({"error": str(e)}, 503)
+            except sqlite3.DatabaseError as e:
+                self._json({"error": "数据库错误: %s" % e}, 500)
 
     return ActionsHandler
 

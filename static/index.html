@@ -417,6 +417,28 @@ function bindAnchors(root){
 }
 function errorBox(msg){return "<div class='empty'>"+esc(msg)+"</div>";}
 
+/* ---------- 动作面客户端（8766；P2） ----------
+   必须定义在**使用点之前**：P1 的 loadGlossary/fetchCardsBodies 也走这里
+   （它们的端点在 8766，相对路径会打到 8088 并 404）。`const` 有暂时性
+   死区，放在文件后半段会在"启动时预热"这类改动下变成 ReferenceError。 */
+/* 动作面（8766）直连：CORS 已在服务端放行；服务没起时黄条 + null，
+   命令台据此把动作标成"暂不可执行"（诚实降级，不假装能跑）。 */
+const ACT_BASE="http://127.0.0.1:8766";
+async function actApi(path,opt){
+  try{
+    const res=await fetch(ACT_BASE+path,opt);
+    const body=await res.json().catch(()=>({}));
+    if(!res.ok)return {__err:body.error||("HTTP "+res.status),__status:res.status};
+    return body;
+  }catch(e){
+    return {__err:"动作面不可达（请确认 actionsserve 在 8766 运行）",__net:1};
+  }
+}
+async function actJson(path,obj){
+  return actApi(path,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(obj)});
+}
+
 /* ---------- P1 解释层：glossary 加载 / 术语悬停 / 面板导语 / 结论卡 ---------- */
 /* 数据源：view 仓本地只读服务 viewserver.py（端口 8766，决策 D9）。
    服务未启动时解释层静默降级：页面照常，只是没有导语/悬停/人话。 */
@@ -596,23 +618,6 @@ async function exportAnalysis(kind,fmt){
       await apiText("/api/export-analysis?"+q.toString()));
   }
   showBanner("warn","已导出 "+kind+"（"+fmt+"，浏览器下载）");
-}
-/* 动作面（8766）直连：CORS 已在服务端放行；服务没起时黄条 + null，
-   命令台据此把动作标成"暂不可执行"（诚实降级，不假装能跑）。 */
-const ACT_BASE="http://127.0.0.1:8766";
-async function actApi(path,opt){
-  try{
-    const res=await fetch(ACT_BASE+path,opt);
-    const body=await res.json().catch(()=>({}));
-    if(!res.ok)return {__err:body.error||("HTTP "+res.status),__status:res.status};
-    return body;
-  }catch(e){
-    return {__err:"动作面不可达（请确认 actionsserve 在 8766 运行）",__net:1};
-  }
-}
-async function actJson(path,obj){
-  return actApi(path,{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify(obj)});
 }
 async function failApi(res){
   let body={}; try{ body=await res.json(); }catch(e){}

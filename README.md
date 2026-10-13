@@ -43,9 +43,11 @@
   - `GET /api/health`：自检 + **版本握手**（上报 `harvester.__version__`
     与 `commands.json.adapter_version`，不匹配 → 命令台黄条 + 禁 B 档）；
   - `GET /api/commands`：静态命令注册表（43 命令 / 13 动词卡 / 参数数据源）；
-  - `GET /api/actions`：**A 档冻结白名单**（现有 4 个动作）；
-  - `POST /api/actions/run` → `202 {job_id}`，`GET /api/actions/job/<id>`
-    轮询；**进程内线程调 harvester 函数，非 shell**；长任务不阻塞页面；
+  - `GET /api/actions`：动作注册表（**A 档 4 + B 档 9**，见下节 v0.36）；
+  - `POST /api/actions/run` → A 档 `202 {job_id}`（`GET /api/actions/job/<id>`
+    轮询），B 档 `200 {status:"needs_confirm", confirm_token, preview}`；
+    **进程内线程调 harvester 函数，非 shell**；长任务不阻塞页面；
+  - `GET /api/actions/ledger`：动作台账（P3-2；含写记录与破坏性快照）；
   - `GET /api/topic/<id>/timeline?level=`：五档时间线透出（title/coarse/
     mid 直接给；fine/artifact 需 sid）；
   - `GET /api/pattern-sessions?pattern=&days=`：错误模式 → 命中会话清单
@@ -55,7 +57,8 @@
 - **命令台（Tab「命令台」）**：13 张动词卡 → 命令 chips → 参数选择器
   （`src=chips` 预设、`src=topics_api/sessions_api` 从库里选、路径类参数
   **不暴露**）→ 命令行预演 → 执行 → 结果抽屉（数字可点，原始 JSON 可展开）。
-  A 档直接执行；B/C 档只给命令行（红线：命令台不是万能 shell）。
+  A 档直接执行；**B 档两段提交**（预演 → 确认框 → 才写，见 v0.36）；
+  C 档只给命令行（红线：命令台不是万能 shell）。
 - **数字皆门三跳**：错误模式（可点的次数）→ 命中会话清单（逐会话次数/
   未解决/工具，**逐会话之和与模式总数显式对账**）→ 回合原文
   （复用既有 `gotoAnchor`，按错误原文逐字定位并高亮）。
@@ -66,6 +69,33 @@
 
 一键启动（含三个进程）：`start-viewv2.cmd`（api-serve 8765 +
 actions-serve 8766 + view 8088）。
+
+## v0.36 新增（P3 裁决层，2026-10-12）
+
+- **动作注册表冻结**（`actions/actions_registry.json`）：**A 档 4 / B 档 9
+  （可逆 7、破坏性 2）/ 13 动词卡**。由 `python -m actions.registrygen` 从
+  「`commands.json`（真解析器生成的事实）+ `actions/write_actions.json`（人写的
+  判断）」合并生成，**双向检查**：引用了不存在的命令/参数 → 失败；动作声明了它
+  **不消费**的参数 → 失败（用户以为填了会生效，是最危险的一类）。执行器只认
+  这张表：**表外动作 403**。
+- **B 档两段提交**：写动作分两段——① 只**预演**（服务端跑只读预演，返回
+  「将写什么」人话 + 目标库 + 风险 + `confirm_token`）；② 带**同一份 params
+  + token** 才真写。token 一次性、5 分钟过期，并绑定 `action_id` / 参数指纹 /
+  预览指纹：**参数被改、库在两段之间被改、token 复用或过期、串动作 —— 一律
+  409 拒绝并要求重新预览**，不会照写。预演**零副作用**（有测试比对字节不变）。
+- **动作台账 `actions/actions_meta.db`**（已 gitignore）：`action_runs`
+  （**预演也记一行**）/ `write_records`（before/after；**destructive 必带
+  删除前快照**——快照是"可回滚"承诺的唯一凭据）/ `confirms`。只读端点
+  `GET /api/actions/ledger`。诚实边界：本服务绑 127.0.0.1 且**无鉴权**，
+  请求里的 `client` 是调用方**自报**标签（默认 `web-ui`），**不是身份认证**；
+  token 是**意图确认**凭据，不是权限凭据。
+- **命令台接 B 档**：写动作按 `action_id` 出现在动词卡里（`topic register` /
+  `topic delete` …），点开先看参数 → 点「预演」→ 弹**确认框**（逐行渲染服务端
+  给的「将写什么」+ 目标库绝对路径 + 风险；破坏性动作红框警告并写明会丢信息）
+  → 点「确认执行」才写。破坏性动作的 chips 与可逆动作视觉分开。
+- **版本握手黄条（P3-5）**：`/api/health.version_ok === false`（harvester 版本
+  ≠ `commands.json.adapter_version`）→ 命令台顶部黄条 + **B 档禁用**，
+  **A 档只读不受影响**。判据只有服务端那一处，页面不自己比版本号。
 
 ## 快速开始
 

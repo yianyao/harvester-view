@@ -126,6 +126,9 @@ for (const [n, sig] of [
   ["jobResultHtml", "job"],
   ["bindPatternDrill", "root"], ["renderPatternSessions", "d,out,backTo"],
   ["startThreeHop", "sid,seq,errText"], ["renderErrors", "d,out"],
+  /* P3：B 档接线与版本握手 */
+  ["actionSpec", "aid"], ["writeActionsForCard", "cardId"],
+  ["currentWriteSpec", ""], ["renderVersionBar", ""], ["writeDisabled", ""],
 ]) {
   eval(extract(n, sig));
 }
@@ -210,8 +213,7 @@ check("结果渲染模式行", jHtml.includes("FS_STALE_VERSION"));
 check("模式次数是可点的门", jHtml.includes("data-pat="));
 check("原始 JSON 可展开（机器口径不丢）", jHtml.includes("原始 JSON"));
 
-/* ⑦ P2-5 数字皆门：三跳接线 + 逐级数字对账 */
-const ERR = { meta: { error_count: 3, total_steps: 20, sessions: 2 },
+/* ⑦ P2-5 数字皆门：三跳接线 + 逐级数字对账 */const ERR = { meta: { error_count: 3, total_steps: 20, sessions: 2 },
   by_class: { tool_interface: 3 }, by_bucket: {}, by_source: {},
   patterns: [{ pattern: "FS_STALE_VERSION", "class": "tool_interface",
     count: 3, tools: ["edit"],
@@ -274,6 +276,70 @@ check("页面不再用相对路径打 /view/*（P1 真缺陷回归）",
 check("glossary 与卡片本体都走动作面地址",
   html.includes('fetch(ACT_BASE+"/view/glossary")') &&
   html.includes('fetch(ACT_BASE+"/view/cards")'));
+
+/* ⑨ P3：B 档接线 + 版本握手（P3-5 验收：不匹配 → 黄条 + B 档禁用，A 档不受影响）
+ *
+ * 这一节的门是**真缺陷驱动**的：B 档动作 id（如 topic_register）不是命令名，
+ * 若页面仍按"命令名 → 动作"去找，点下去会静默什么都不做（首版就差点这样）。
+ */
+ACT_RESP["/api/actions"].actions.push(
+  { action_id: "topic_register", tier: "B", risk: "reversible",
+    target: "topics_meta", target_path: "X:/topics_meta.db", cmd: "topic",
+    subaction: "register", reversible: "幂等/可回到原状（仍有台账留痕）",
+    label: "注册一个新主题「{name}」", desc: "同名主题已存在时幂等返回旧 id。",
+    params: { name: { type: "str", src: "none", required: true,
+                      label: "主题名" } } },
+  { action_id: "topic_delete", tier: "B", risk: "destructive",
+    target: "topics_meta", target_path: "X:/topics_meta.db", cmd: "topic",
+    subaction: "delete", reversible: "会丢信息",
+    label: "删除主题行 {id_}",
+    params: { topic_id: { type: "str", src: "topics_api", required: true,
+                          label: "要删除的主题" } } });
+state.act.health = { version_ok: true, harvester_version: "0.46.0",
+  commands_adapter_version: "0.46.0" };
+state.act.versionOk = true;
+state.cmdCard = "errors";
+renderCmdActions();
+check("写动作按 action_id 出现在命令卡里（不是命令名）",
+  $("cmd-actions").innerHTML.includes("data-cmd=\"topic_register\""));
+check("破坏性动作在 chips 上有区分标记",
+  $("cmd-actions").innerHTML.includes("破坏性"));
+check("actionSpec 能按 id 取到注册表条目（B 档确认框要用）",
+  actionSpec("topic_delete").risk === "destructive");
+/* 选中写动作 → 参数来自注册表、路径类不渲染输入框、按钮改成"预演" */
+selectCmdCommand("topic_register");
+const wHtml = $("cmd-params").innerHTML;
+check("写动作参数渲染（主题名）", wHtml.includes("主题名"));
+check("写动作不渲染路径类参数", !wHtml.includes("data-p=\"target\""));
+check("写动作按钮是「预演」而不是「执行」",
+  $("btn-cmd-run").textContent.includes("预演"));
+check("写动作面板写明风险与两段提交",
+  $("cmd-est").textContent.includes("两段提交") ||
+  $("cmd-est").textContent.includes("可逆"));
+
+/* 版本不匹配 → B 档禁用（A 档仍可用）*/
+state.act.versionOk = false;
+state.act.health = { version_ok: false, harvester_version: "0.99.0",
+  commands_adapter_version: "0.46.0" };
+const verEl = mkEl();
+els["verbar"] = verEl;
+renderVersionBar();
+check("版本不匹配 → 黄条出现且说明 B 档禁用",
+  verEl.style.display === "block" && verEl.innerHTML.includes("B 档写动作已禁用") &&
+  verEl.innerHTML.includes("0.99.0"));
+check("版本不匹配 → writeDisabled() 为真", writeDisabled() === true);
+selectCmdCommand("topic_register");
+check("版本不匹配时写动作按钮禁用",
+  $("btn-cmd-run").disabled === true &&
+  $("btn-cmd-run").textContent.includes("已禁用"));
+/* A 档不受影响：仍可执行 */
+selectCmdCommand("report-errors");
+check("A 档不受版本不匹配影响（仍可执行）",
+  $("btn-cmd-run").disabled === false);
+state.act.versionOk = true;
+state.act.health = { version_ok: true };
+renderVersionBar();
+check("恢复匹配后黄条消失", verEl.style.display === "none");
 
 console.log(failed ? ("\n" + failed + " CHECK(S) FAILED") :
   "\nALL COMMAND-PALETTE CHECKS PASSED");

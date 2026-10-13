@@ -207,6 +207,42 @@ class SuppressPlanTest(unittest.TestCase):
         # 预演必须自陈边界（不是"执行后保证的结果"）
         self.assertTrue(prev["limits"])
 
+    def test_plan_warns_when_exports_root_is_not_configured(self):
+        """起服时没配 `--exports-root` → 预演必须**响亮警告**"本次不清副本"。
+
+        这是本轮发现的一个**真实配置缺口**：`start-viewv2.cmd` 原来没传
+        `--exports-root`，于是运行中的服务 `cfg.exports_root=None` —— 抑制会写表、
+        会删库内行，但**清不掉 exports 旧副本**，而旧副本还在就说明
+        **下次 sync/update 会把它重新索引回来**（抑制看起来"没生效"）。
+        两件事都做了：① 启动脚本补上该参数；② 这条断言保证"没配时必须明说"，
+        让缺口不会再安静地回来。
+        """
+        cfg = AS.Config(db=self.db, cards_root=self.cfg.cards_root,
+                        glossary=self.cfg.glossary, topics_meta=self.meta,
+                        exports_root=None)
+        prev = WA.plan("session_suppress", self.specs["session_suppress"],
+                       {"sids": "dsh:s1", "reason": "x"}, cfg)
+        human = "\n".join(prev["human"])
+        self.assertIn("没配", human)
+        self.assertIn("不清 exports 副本", human)
+        self.assertEqual(prev["snapshot"]["exports_to_delete"], [])
+
+    def test_start_script_passes_exports_root(self):
+        """启动脚本必须传 `--exports-root`（否则上面那个缺口会在真机上复发）。
+
+        门读的是**真脚本文本**：这是"配置正确"唯一能被测试钉住的地方——
+        服务的行为对，但没人给它正确的参数，等于功能没接通。
+        """
+        script = ROOT / "start-viewv2.cmd"
+        self.assertTrue(script.is_file(), "找不到 start-viewv2.cmd")
+        text = script.read_text(encoding="utf-8", errors="replace")
+        line = [ln for ln in text.splitlines()
+                if "actions.actionsserve" in ln and ln.strip().startswith("start")]
+        self.assertEqual(len(line), 1, "期望恰好一行启动 actions-serve")
+        self.assertIn("--exports-root", line[0],
+                      "actions-serve 没传 --exports-root → 抑制清不掉 exports 旧副本"
+                      "（下次 sync 会把会话收回来）")
+
     def test_plan_lists_export_copies_to_delete(self):
         """`deleted` 是**逐文件一条记录**（sid + json + md），不是裸文件名。
 

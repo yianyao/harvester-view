@@ -215,6 +215,44 @@ def _action_topic_list(cfg: Config, params: dict) -> dict:
     return {"view_actions_api": VIEW_ACTIONS_API, "topics": topics}
 
 
+def _action_topic_pack(cfg: Config, params: dict) -> dict:
+    """A 档：主题蒸馏包（`topic pack` 的进程内版，2026-10-13 用户要求：
+    主题页分层选择后直接跳命令台执行，不用手抄命令）。
+
+    只读口径：`build_topic_packet` 只读 harvester.db / topics_meta.db /
+    artifacts_meta.db，产物**返回给页面**（不落盘、不给 --out）——
+    与 regress 同款「重活也是只读」的 A 档判据。参数校验对齐
+    `topic_timeline`（400=调用姿势 / 503=环境缺配，两类不混淆）。"""
+    if _htopics is None:
+        raise RuntimeError(_HARVESTER_IMPORT_ERROR or "上游 harvester 不可用")
+    topic_id = str(params.get("id") or "").strip()
+    level = str(params.get("level") or "title")
+    sid = str(params.get("sid") or "").strip() or None
+    max_chars = params.get("max_chars")
+    if not topic_id:
+        raise _BadRequest("缺主题 id（--id）——回主题页点一个主题再跳过来")
+    if level not in _htopics.LEVELS:
+        raise _BadRequest("level=%r 不在 %s" % (level, list(_htopics.LEVELS)))
+    if level in ("fine", "artifact") and not sid:
+        raise _BadRequest("level=%s 为按需档：必须给 sid（成员会话 id）"
+                          % level)
+    if cfg.topics_meta is None:
+        raise RuntimeError("未配置 topics_meta（起服时加 --topics-meta）")
+    if level == "artifact" and not cfg.artifacts_meta:
+        raise _BadRequest("level=artifact 需要 --artifacts-meta"
+                          "（先跑 artifacts extract --sid <sid>）")
+    try:
+        packet = _htopics.build_topic_packet(
+            cfg.db, cfg.topics_meta, topic_id, level=level, sid=sid,
+            artifacts_db=cfg.artifacts_meta,
+            max_chars=int(max_chars) if max_chars else None)
+    except KeyError as e:  # show_topic 未命中 → 主题不存在
+        raise _NotFound("主题 %s 不存在（KeyError %s）" % (topic_id, e))
+    return {"view_actions_api": VIEW_ACTIONS_API, "topic_id": topic_id,
+            "level": level, "sid": sid, "chars": len(packet),
+            "packet": packet}
+
+
 #: `regress` 允许的语料变体（冻结：与上游 `regress.CORPUS_VARIANTS` 同集合，
 #: 见 `_action_regress` 的用法）。写在这里是为了让"允许值"在本仓可见可测。
 _REGRESS_CORPORA = frozenset({"default", "drift"})
@@ -311,6 +349,31 @@ ACTIONS: dict[str, dict] = {
         "reversible": "幂等（只读 topics_meta.db）",
         "writes": "",
         "handler": _action_topic_list,
+    },
+    "topic_pack": {
+        "tier": "A",
+        "cmd": "topic",
+        "subaction": "pack",
+        "label": "主题蒸馏包（topic pack）",
+        "desc": "按分层档生成主题蒸馏包（title/coarse/mid/fine/artifact），"
+                "进程内只读生成、不落盘。fine/artifact 档需给成员 sid。",
+        "params": {"id": {"type": "topic_id", "src": "topics_api",
+                          "default": None, "label": "主题 id"},
+                   "level": {"type": "level", "src": "chips",
+                             "default": "title",
+                             "choices": ["title", "coarse", "mid", "fine",
+                                         "artifact"],
+                             "label": "分层"},
+                   "sid": {"type": "sid", "src": "sessions_api",
+                           "default": None,
+                           "label": "成员 sid（fine/artifact 档必填）"},
+                   "max_chars": {"type": "int", "src": "chips",
+                                 "default": None,
+                                 "label": "覆盖字符预算（可选）"}},
+        "est_sec": 3,
+        "reversible": "幂等（只读三库，产物返回页面不落盘）",
+        "writes": "",
+        "handler": _action_topic_pack,
     },
     "regress": {
         "tier": "A",
@@ -932,7 +995,12 @@ def make_handler(cfg: Config):
                               "est_sec": spec.get("est_sec"),
                               "reversible": spec.get("reversible"),
                               "writes": spec.get("writes") or "",
-                              "risk": None})
+                              "risk": None,
+                              # 2026-10-13 additive：A 档也带命令映射（
+                              # topic_pack 这类子动作级动作靠它上页面映射表；
+                              # 旧字段一个不少，旧前端多收两键无害）。
+                              "cmd": spec.get("cmd"),
+                              "subaction": spec.get("subaction")})
             b_out = [{"action_id": a["action_id"], "tier": a.get("tier", "B"),
                       "label": a.get("summary"), "desc": a.get("detail"),
                       "cmd": a.get("cmd"), "subaction": a.get("subaction"),

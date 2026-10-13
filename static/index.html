@@ -466,6 +466,8 @@ h3.sec{font-size:14px;margin:18px 0 6px}
       </select></label>
       <button id="btn-topic-cmd" class="xbtn" disabled
         title="复制到剪贴板，请自行开终端粘贴执行（本视图绝不执行命令）">复制命令</button>
+      <button id="btn-topic-gocmd" class="xbtn" disabled
+        title="跳到命令台并预填 topic pack 参数，在那里核对后执行">去命令台</button>
     </div>
     <div id="topics-timeline"><div class="empty">← 选择左侧主题</div></div>
   </div>
@@ -1866,10 +1868,28 @@ function topicPackCmd(id,level,sid){
 }
 function updateTopicCmd(){
   const cur=state.topicCur;
-  if(!cur){ $("btn-topic-cmd").disabled=true; return; }
+  if(!cur){ $("btn-topic-cmd").disabled=true;
+    $("btn-topic-gocmd").disabled=true; return; }
   $("btn-topic-cmd").disabled=false;
+  $("btn-topic-gocmd").disabled=false;
   $("btn-topic-cmd").dataset.cmd=
     topicPackCmd(cur.id,$("topic-level").value);
+}
+/* 主题页 → 命令台直跳（2026-10-13 用户要求：分层选完不用手抄命令）。
+   红线不变：这里只是**预填参数跳页**，执行仍发生在命令台的 A 档动作
+   通道（与手工点选同一条路）；「复制命令」保留作动作面不可达时的兜底。
+   预填同时给 id / id_ 两形态（动作参数键 vs CLI dest）。 */
+async function topicGoCmd(){
+  const cur=state.topicCur;
+  if(!cur){showBanner("warn","先在左侧选一个主题");return;}
+  state.cmdCard="topic";state.actionId="topic";
+  state.cmdParams={cmd:"pack",id:cur.id,id_:cur.id,
+    level:$("topic-level").value};
+  /* 动作面没就绪先拉齐（抢先于 switchTab 的自动加载，避免重复拉取） */
+  if(!state.act.loaded)await loadCmdData().catch(()=>{});
+  renderCmdCards();renderCmdActions();renderCmdParams();updateCmdPreview();
+  if(state.act.loaded)state.loaded.cmd=true;   /* 防 switchTab 再拉一遍 */
+  switchTab("cmd");
 }
 
 /* ---------- Tab 4: 中台 ---------- */
@@ -2297,7 +2317,21 @@ function renderCmdParams(){
     return;
   }
   const vis=(cur.args||[]).filter(a=>a.src!=="server"&&a.kind!=="switch");
-  let h=vis.length?"<h3 class='sec'>参数（"+esc(cur.cmd)+"）</h3>":"";
+  /* 子动作选择器（2026-10-13）：聚合命令（topic 等）子动作档位各不相同，
+     下拉写进 state.cmdParams.cmd——updateCmdPreview / runCmdAction 都按它
+     判档（A 档子动作直连动作面；B 档子动作走两段提交）。不选=维持旧行为。
+     注意 option 必须显式给 value（否则浏览器拿文案当值）。 */
+  let h="";
+  if(cur.subactions&&cur.subactions.length){
+    h+="<h3 class='sec'>子动作</h3><div class='prow'>"+
+      "<span class='pn'>（位置参数）</span><select data-p=\"cmd\">"+
+      "<option value=''>（未选子动作）</option>"+
+      cur.subactions.map(s=>"<option value=\""+esc(s.name)+"\""+
+        (state.cmdParams.cmd===s.name?" selected":"")+">"+esc(s.name)+
+        "（"+esc(s.tier)+" 档）</option>").join("")+"</select>"+
+      "<span class='sub2'>A 档子动作可在本页直接执行；B 档走两段提交。</span></div>";
+  }
+  h+=vis.length?"<h3 class='sec'>参数（"+esc(cur.cmd)+"）</h3>":"";
   for(const a of vis){
     const val=state.cmdParams[a.dest];
     h+="<div class='prow'><span class='pn'>"+esc(a.name)+"</span>";
@@ -2341,6 +2375,9 @@ function renderCmdParams(){
 /* 预演命令行：与真实 CLI 同形（页面不执行它，只是让人核对参数对不对）。 */
 function cmdLine(c,params){
   let s="python -m harvester "+c.cmd;
+  /* 聚合命令（topic 等）的子动作是位置参数：选了就带进预演行，
+     否则预演与真实 CLI 不同形（topic pack 会少个 pack）。 */
+  if(c.subactions&&c.subactions.length&&params.cmd)s+=" "+params.cmd;
   for(const a of c.args||[]){
     if(a.src==="server")continue;
     const v=params[a.dest];
@@ -2376,8 +2413,16 @@ function updateCmdPreview(){
   }
   /* 分支**必须**按"有没有可执行动作"来分，不能只按档位：A 档也有尚未
      实现动作的命令（白名单 3 个 vs 注册表 43 条），直接读 act.est_sec
-     会整页抛错（2026-10-12 由 tests/render_cmd.js 实测抓出）。 */
-  const act=A_ACTIONS()[actionForCommand(c.cmd)];
+     会整页抛错（2026-10-12 由 tests/render_cmd.js 实测抓出）。
+     2026-10-13 增：子动作感知——topic+pack 走 topic_pack（A 档），即便
+     命令级 tier 是 B（聚合命令按最严子动作定档）；B 档子动作不在此直连
+     （仍走动作卡列表），故可执行=act 为 A 且（命令本身 A 或子动作 A）。 */
+  const subKey=(c&&c.subactions&&state.cmdParams.cmd)?
+    (c.cmd+" "+state.cmdParams.cmd):null;
+  const subAid=subKey?cmdActionMap()[subKey]:null;
+  const subAct=subAid?A_ACTIONS()[subAid]:null;
+  const act=(subAct&&subAct.tier==="A")?subAct:A_ACTIONS()[actionForCommand(c.cmd)];
+  const canRun=!!act&&act.tier==="A"&&(c.tier==="A"||(subAct&&subAct.tier==="A"));
   const cmdHtml="<div class='cmd-cli'>"+esc(cmdLine(c,state.cmdParams))+
     "</div>";
   bar.style.display="";
@@ -2390,7 +2435,10 @@ function updateCmdPreview(){
     $("btn-cmd-run").disabled=true;
     $("btn-cmd-run").textContent="版本不匹配：B 档已禁用";
     $("cmd-est").textContent="harvester 版本 ≠ 命令注册表适配版本";
-  }else if(act&&c.tier==="A"){
+  /* 分支判据用 canRun（=有 A 档动作且命令或所选子动作确为 A）：
+     topic 这类聚合命令命令级 tier 是 B，但子动作 pack 是 A——
+     只看 c.tier 会把可执行的子动作错判成"不可执行"。 */
+  }else if(canRun){
     $("btn-cmd-run").disabled=false;
     $("btn-cmd-run").textContent="执行（进程内调用 harvester，非 shell）";
     $("cmd-est").textContent="预估 ~"+act.est_sec+"s｜"+act.reversible+
@@ -2464,15 +2512,29 @@ function A_ACTIONS(){
 
 async function runCmdAction(){
   const c=cmdCommands().find(x=>x.cmd===state.actionId);
-  const aid=actionForCommand(c&&c.cmd);
+  /* 2026-10-13：子动作感知（用户要求主题页分层直接跳命令台跑 pack）。
+     聚合命令（topic）的子动作在动作注册表里是独立条目（"topic pack"→
+     topic_pack）；state.cmdParams.cmd 是位置子动作选择器。只对 **A 档**
+     子动作启用这条直连——B 档写动作仍走动作卡列表（参数名空间不同，
+     命令参数直接套会张冠李戴）。 */
+  const subKey=(c&&c.subactions&&state.cmdParams.cmd)?
+    (c.cmd+" "+state.cmdParams.cmd):null;
+  const subAid=subKey?cmdActionMap()[subKey]:null;
+  const subSpec=subAid?actionSpec(subAid):null;
+  const aid=(subSpec&&subSpec.tier==="A")?subAid:actionForCommand(c&&c.cmd);
   const spec=aid?actionSpec(aid):null;
   if(!c||!aid){showBanner("warn","这条命令没有已实现的动作");return;}
   if(spec&&spec.tier==="B"){await runWriteAction(spec,c);return;}
   const act=A_ACTIONS()[aid]||spec;
   if(!act){showBanner("warn","动作面没有这条动作的实现");return;}
   const params={};
-  for(const k of Object.keys(act.params||{}))
-    if(state.cmdParams[k]!==undefined)params[k]=state.cmdParams[k];
+  for(const k of Object.keys(act.params||{})){
+    /* CLI 参数 dest 与动作参数键可能有尾下划线差（--id→id_，python 关键字
+       别名所致）；任一命中即收——主题页直跳预填的就是 id_ 形态。 */
+    let v=state.cmdParams[k];
+    if(v===undefined)v=state.cmdParams[k+"_"];
+    if(v!==undefined)params[k]=v;
+  }
   $("job-out").innerHTML="<div class='empty'>已入队，等待结果…</div>";
   const started=Date.now();
   const r=await actJson("/api/actions/run",{action_id:aid,params:params,
@@ -2827,8 +2889,14 @@ function goQueue(qid){
    否则守卫会挡掉加载函数；这里由 switchTab 自己置位并调 loadWork()。 */
 function openWork(target){
   state.workTarget=target;
-  if(state.loaded.work)loadWork(target).catch(()=>{});
-  else switchTab("work");
+  /* 2026-10-13 修（用户实测：回工作台后点其他项无法跳转）：**切 tab 必须
+     无条件执行**。旧写法在 state.loaded.work 已真时只调 loadWork 不切页——
+     数据渲染进了隐藏的处理单页，人却留在工作台。switchTab 的守卫只管
+     「是否重复加载数据」，不管「要不要显示」；首跳走 switchTab 内置的
+     loadWork()（state.workTarget 已置位，两路拿到的是同一份 target）。 */
+  const first=!state.loaded.work;
+  switchTab("work");
+  if(!first)loadWork(target).catch(()=>{});
   return target;
 }
 /* 处理单里的「去处理」按钮/环段绑定（数据与队列卡同一套 target） */
@@ -3159,6 +3227,7 @@ $("agg-q").addEventListener("keydown",e=>{
 $("btn-agg-facets").onclick=()=>loadAggFacets().catch(()=>{});
 $("btn-topics-refresh").onclick=()=>loadTopics().catch(()=>{});
 $("topic-level").onchange=()=>updateTopicCmd();
+$("btn-topic-gocmd").onclick=()=>topicGoCmd();
 $("btn-topic-cmd").onclick=e=>{
   const b=e.currentTarget;
   if(b.dataset.cmd)copyText(b.dataset.cmd,b);};

@@ -37,10 +37,13 @@ OUT = HERE / "actions_registry.json"
 #: A 档（只读直执）动作 id → 对应 CLI 命令。与 `actionsserve.ACTIONS` 同集合，
 #: 但**这里只记录映射**（谁是真源？`actionsserve.ACTIONS` 是可执行的实现，
 #: 本表是给人看的契约）。测试会比对两者，防"注册表说能做、代码里没有"。
-READ_ACTIONS: dict[str, str] = {
+#: 聚合命令（如 topic）的子动作级动作写 `(cmd, subaction)` 二元组——
+#: 生成时会校验该子动作在真 CLI 里存在且为 A 档（写子动作绝不进这张表）。
+READ_ACTIONS: dict[str, object] = {
     "report_tools": "report-tools",
     "report_errors": "report-errors",
     "topic_list": "topic",
+    "topic_pack": ("topic", "pack"),
     "regress": "regress",
 }
 
@@ -163,13 +166,26 @@ def build() -> dict:
     actions.sort(key=lambda a: a["action_id"])
 
     read_actions = []
-    for aid, cmdname in sorted(READ_ACTIONS.items()):
+    for aid, tgt in sorted(READ_ACTIONS.items()):
+        sub: str | None = None
+        if isinstance(tgt, tuple):
+            cmdname, sub = tgt
+        else:
+            cmdname = tgt
         cmd = cmds.get(cmdname)
         if cmd is None:
             raise SystemExit("[registrygen] A 档动作 %s 引用了不存在的命令 %r"
                              % (aid, cmdname))
-        read_actions.append({"action_id": aid, "tier": "A", "cmd": cmdname,
-                             "est_sec": None})
+        if sub is not None:
+            if _subaction_tier(cmd, sub) != "A":
+                raise SystemExit("[registrygen] A 档动作 %s 指向的子动作 "
+                                 "%s %s 不是 A 档（写子动作绝不进 READ_ACTIONS）"
+                                 % (aid, cmdname, sub))
+        entry: dict = {"action_id": aid, "tier": "A", "cmd": cmdname,
+                       "est_sec": None}
+        if sub is not None:
+            entry["subaction"] = sub
+        read_actions.append(entry)
 
     cards = _load(COMMANDS, "commands.json")["cards"]
     return {

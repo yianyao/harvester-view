@@ -143,6 +143,13 @@
    "tier": "A",
    "cmd": "topic",
    "est_sec": null
+  },
+  {
+   "action_id": "topic_pack",
+   "tier": "A",
+   "cmd": "topic",
+   "est_sec": null,
+   "subaction": "pack"
   }
  ],
  "write_actions": [
@@ -632,7 +639,7 @@
  ],
  "counts": {
   "cards": 13,
-  "read_actions": 4,
+  "read_actions": 5,
   "write_actions": 11,
   "write_reversible": 8,
   "write_destructive": 3

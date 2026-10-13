@@ -221,9 +221,14 @@ class CardByCardWalkthrough(unittest.TestCase):
                                                 "index.html").resolve()
         html = src.read_text(encoding="utf-8")
         self.assertIn('if(act&&act.tier==="B"&&!writeDisabled()){', html)
-        self.assertIn('}else if(act&&c.tier==="A"){', html)
+        # 第二个 enable 分支走 canRun（2026-10-13：聚合命令子动作感知——
+        # topic 的 pack 子动作是 A 档，命令级 tier 却是 B；只看 c.tier 会
+        # 把可执行子动作错禁）。canRun 定义里仍有 !!act，"没动作也能点"
+        # 依旧不可能——钉住这条不变式本身，不钉写法。
+        self.assertIn('const canRun=!!act&&act.tier==="A"&&', html)
+        self.assertIn("}else if(canRun){", html)
         # 两个 enable 分支之外的那个 else 必须禁用（否则就是"没动作也能点"）
-        tail = html.split("else if(act&&c.tier===\"A\"){")[1][:900]
+        tail = html.split("}else if(canRun){")[1][:900]
         self.assertIn("$(\"btn-cmd-run\").disabled=true;", tail,
                       "没有动作的命令必须禁用执行按钮（不许静默无操作）")
         # ③ 命令本身都在注册表里（不要求有动作，只要求"页面会如实说明"）

@@ -10,8 +10,8 @@
    "label": "采集更新",
    "tier": "B",
    "order": 1,
-   "desc": "把新会话收进库：日常用 update（增量），sync 是全量对账（重活）。",
-   "writes": "harvester.db（采集库，钦定写入路径）"
+   "desc": "把新会话收进库：日常用 update（增量），sync 是全量对账（重活）。反过来的动作也在这里：suppress 把没营养的会话从**仓内副本**里抑制掉（不删采集源）。",
+   "writes": "harvester.db（采集库，钦定写入路径）+ topics_meta.db 的抑制表"
   },
   {
    "card_id": "browse",
@@ -2477,6 +2477,214 @@
    "nested": false
   },
   {
+   "cmd": "suppress add",
+   "card_id": "collect",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--sid",
+     "dest": "sids",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "sessions_api",
+     "negates": null,
+     "help": "库口径 sid（`source:session_id`，即 search 输出的 [sid]）；可重复给多个",
+     "note": null
+    },
+    {
+     "name": "--reason",
+     "dest": "reason",
+     "kind": "str",
+     "default": "",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "为什么抑制（写进抑制表，供日后复查）",
+     "note": null
+    },
+    {
+     "name": "--by",
+     "dest": "created_by",
+     "kind": "str",
+     "default": "",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "谁做的（写进抑制表；缺省留空，不猜身份）",
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    },
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "抑制表所在 meta 库（默认 topics_meta.db）",
+     "note": null
+    },
+    {
+     "name": "--exports",
+     "dest": "exports",
+     "kind": "str",
+     "default": "exports",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "导出产物目录（清该 sid 的旧 .json/.md 副本）",
+     "note": null
+    },
+    {
+     "name": "--apply",
+     "dest": "apply",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "真的写（缺省只预演：库内行数 / 将删的副本）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "suppress list",
+   "card_id": "collect",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "抑制表所在 meta 库（默认 topics_meta.db）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "suppress prune-exports",
+   "card_id": "collect",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "抑制表所在 meta 库（默认 topics_meta.db）",
+     "note": null
+    },
+    {
+     "name": "--exports",
+     "dest": "exports",
+     "kind": "str",
+     "default": "exports",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "导出产物目录",
+     "note": null
+    },
+    {
+     "name": "--apply",
+     "dest": "apply",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "真的删（缺省只列出将删的文件）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "suppress remove",
+   "card_id": "collect",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--sid",
+     "dest": "sids",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "sessions_api",
+     "negates": null,
+     "help": "要取消抑制的 sid；可重复",
+     "note": null
+    },
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "抑制表所在 meta 库（默认 topics_meta.db）",
+     "note": null
+    },
+    {
+     "name": "--apply",
+     "dest": "apply",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "真的删抑制表行（缺省只打印）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
    "cmd": "sync",
    "card_id": "collect",
    "tier": "B",
@@ -2587,6 +2795,30 @@
      "src": "none",
      "negates": "--no-prune-keywords",
      "help": "关闭 sync 收尾的 keywords GC（默认开：keyword_stats 是累积表，靠人记得手动跑 keywords-gc = 库会一直涨）",
+     "note": null
+    },
+    {
+     "name": "--suppress-meta",
+     "dest": "suppress_meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "抑制表所在 meta 库（相对 root，默认 topics_meta.db）；sync 按它拦下被抑制的会话（导出拦 + 清旧副本 + 索引兜底）",
+     "note": null
+    },
+    {
+     "name": "--no-suppress",
+     "dest": "no_suppress",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": "--no-suppress",
+     "help": "关闭抑制拦截（默认开：抑制是「此后不许在」的持续声明，不拦住的话下次 sync 就会把它建回来）",
      "note": null
     },
     {
@@ -3400,6 +3632,30 @@
      "src": "none",
      "negates": "--no-notes",
      "help": "导出时排除 note 角色（默认包含，理由同 sync）",
+     "note": null
+    },
+    {
+     "name": "--suppress-meta",
+     "dest": "suppress_meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "抑制表所在 meta 库（相对 root，默认 topics_meta.db）",
+     "note": null
+    },
+    {
+     "name": "--no-suppress",
+     "dest": "no_suppress",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": "--no-suppress",
+     "help": "关闭抑制拦截（默认开，理由同 sync）",
      "note": null
     },
     {

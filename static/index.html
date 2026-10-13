@@ -136,65 +136,103 @@ h3.sec{font-size:14px;margin:18px 0 6px}
   gap:12px;padding:10px 14px;align-items:start}
 #cmd-cards{display:flex;flex-direction:column;gap:4px}
 .cmd-card{border:1px solid var(--line);border-radius:6px;padding:6px 9px;
-  cursor:pointer;background:#fff;text-align:left}
+  cursor:pointer;background:var(--panel);text-align:left}
 .cmd-card:hover{border-color:var(--accent)}
-.cmd-card.on{border-color:var(--accent);background:#eef4ff}
+.cmd-card.on{border-color:var(--accent);background:var(--bg)}
 .cmd-card .t{font-weight:600}
-.cmd-card .n{font-size:11px;color:var(--sub)}
+.cmd-card .n{font-size:11px;color:var(--ink2)}
 .tierbadge{display:inline-block;font-size:10px;border-radius:9px;
-  padding:1px 6px;margin-left:4px;border:1px solid var(--line);color:var(--sub)}
+  padding:1px 6px;margin-left:4px;border:1px solid var(--line);color:var(--ink2)}
 .tierbadge.A{color:#1a7f37;border-color:#1a7f37}
 .tierbadge.B{color:#9a6700;border-color:#9a6700}
 .tierbadge.C{color:#a40e26;border-color:#a40e26}
-#cmd-params label{display:block;margin:6px 0 2px;font-size:12px;color:var(--sub)}
+#cmd-params label{display:block;margin:6px 0 2px;font-size:12px;color:var(--ink2)}
 #cmd-actions{display:flex;flex-direction:column;gap:6px}
 .cmd-act{border:1px solid var(--line);border-radius:6px;padding:7px 9px}
-.cmd-act.on{border-color:var(--accent);background:#f7faff}
-.cmd-act .d{font-size:11px;color:var(--sub)}
+.cmd-act.on{border-color:var(--accent);background:var(--bg)}
+.cmd-act .d{font-size:11px;color:var(--ink2)}
 .meta-badges{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0;font-size:11px}
 .riskchip{border:1px solid var(--line);border-radius:9px;padding:1px 7px;
-  color:var(--sub)}
+  color:var(--ink2)}
 .riskchip.no{color:#a40e26;border-color:#a40e26}
 #cmd-params .prow{display:flex;align-items:center;gap:6px;margin:5px 0}
-#cmd-params .prow .pn{font-size:12px;color:var(--sub);min-width:74px}
+#cmd-params .prow .pn{font-size:12px;color:var(--ink2);min-width:74px}
 .cmd-cli{font-family:ui-monospace,Consolas,monospace;font-size:11px;
-  background:#f6f8fa;border:1px solid var(--line);border-radius:4px;
+  background:var(--bg);border:1px solid var(--line);border-radius:4px;
   padding:5px 7px;word-break:break-all;white-space:pre-wrap}
 #job-out{max-height:380px;overflow:auto}
-/* ---- P3-3 今日工作台 ---- */
+/* ---- P3-3 今日工作台 ----
+   配色纪律（2026-10-13 用户实测报「今日工作台浅底浅色，看得眼花」后定死）：
+   **组件底色一律用主题变量（var(--panel)/var(--bg)/var(--warn-bg)/var(--err-bg)），
+   不许再写死 #fff 之类的浅色。** 根因是本页有 `prefers-color-scheme: dark`：
+   深色模式下 `--ink` 会翻成浅色字（#e6e9ef），而写死的 #fff 卡片底不跟着翻
+   → 浅字浅底，对比度约 1.1:1（等于看不见）。同理，**禁止使用不存在的变量**
+   （历史上 13 处写了 `var(--sub)`，而 `--sub` 从未定义 → 那些「口径/真源」小字
+   根本没被置灰，整块糊成一片）。这条由 `tests/test_v40_theme_contrast.py` 真算
+   对比度钉住：底与字都在同一套主题变量里，两种模式都必须 ≥4.5:1。 */
 #tab-home main{display:block;padding:10px 14px}
 .queue-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
   gap:10px;margin:8px 0}
-.qcard{border:1px solid var(--line);border-radius:7px;padding:9px 11px;background:#fff}
+.qcard{border:1px solid var(--line);border-radius:7px;padding:9px 11px;
+  background:var(--panel)}
 .qcard.zero{opacity:.62}
 .qcard .qh{display:flex;justify-content:space-between;align-items:baseline}
 .qcard .qn{font-size:26px;font-weight:700;line-height:1}
 .qcard .ql{font-weight:600}
-.qcard .qq{font-size:12px;color:var(--sub);margin:3px 0 6px}
-.qcard .qd{font-size:11px;color:var(--sub);border-top:1px dashed var(--line);
+.qcard .qq{font-size:12px;color:var(--ink2);margin:3px 0 6px}
+.qcard .qd{font-size:11px;color:var(--ink2);border-top:1px dashed var(--line);
   margin-top:6px;padding-top:5px}
-.qcard .qs{font-size:10px;color:#8a8a8a;font-family:ui-monospace,Consolas,monospace;
+.qcard .qs{font-size:10px;color:var(--ink2);font-family:ui-monospace,Consolas,monospace;
   word-break:break-all}
 .ring{border:1px solid var(--line);border-radius:7px;padding:8px 11px;margin:6px 0;
-  background:#fff}
+  background:var(--panel)}
 .ring .rt{font-weight:600}
-.ring .rd{font-size:11px;color:var(--sub)}
+.ring .rd{font-size:11px;color:var(--ink2)}
 .arms{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
 .arm{border:1px solid var(--line);border-radius:6px;padding:4px 8px;min-width:130px;
-  background:#fafbfc}
-.arm.warn{border-color:#d9a400;background:#fffbe8}
-.arm.bad{border-color:#a40e26;background:#fff5f6}
+  background:var(--bg)}
+.arm.warn{border-color:var(--warn-ink);background:var(--warn-bg)}
+.arm.bad{border-color:var(--err-ink);background:var(--err-bg)}
 .arm .av{font-size:19px;font-weight:700;line-height:1.1}
-.arm .au{font-size:11px;color:var(--sub);font-weight:400}
-.arm .ad{font-size:10.5px;color:var(--sub);margin-top:2px}
-.arm .as{font-size:10px;color:#8a8a8a;
+.arm .au{font-size:11px;color:var(--ink2);font-weight:400}
+.arm .ad{font-size:10.5px;color:var(--ink2);margin-top:2px}
+.arm .as{font-size:10px;color:var(--ink2);
   font-family:ui-monospace,Consolas,monospace;word-break:break-all;margin-top:2px}
-.legend{font-size:11px;color:var(--sub);margin:4px 0 0}
+.legend{font-size:11px;color:var(--ink2);margin:4px 0 0}
+/* ---- v0.49 处理单（work items）----
+   配色同上：全部走主题变量，两种模式都要能读（不许写死浅色）。 */
+#tab-work main{display:block;padding:10px 14px}
+.wi-head{border:1px solid var(--line);border-left:4px solid var(--accent);
+  border-radius:8px;padding:9px 12px;background:var(--panel);margin:8px 0}
+.wi-head .wt{font-weight:600;font-size:15px}
+.wi-head .wn{font-size:26px;font-weight:700;margin-right:4px}
+.wi-sug{background:var(--bg);border:1px dashed var(--line);border-radius:7px;
+  padding:7px 10px;margin:8px 0;font-size:13px}
+.wi-item{border:1px solid var(--line);border-left:3px solid var(--line);
+  border-radius:7px;padding:8px 11px;margin:7px 0;background:var(--panel)}
+.wi-item.bad{border-left-color:var(--err-ink)}
+.wi-item.warn{border-left-color:var(--warn-ink)}
+.wi-item.ok{border-left-color:var(--ok-ink)}
+.wi-item h4{margin:0 0 4px;font-size:13.5px;display:flex;gap:8px;
+  align-items:baseline;flex-wrap:wrap}
+.wi-facts{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0;font-size:11.5px}
+.wi-facts span{border:1px solid var(--line);border-radius:9px;padding:1px 7px;
+  color:var(--ink2)}
+.wi-item .wd{font-size:12.5px;color:var(--ink2);margin:3px 0}
+.wi-cmd{font-family:ui-monospace,Consolas,monospace;font-size:12px;
+  background:var(--bg);border:1px solid var(--line);border-radius:5px;
+  padding:6px 8px;word-break:break-all;white-space:pre-wrap;margin:4px 0}
+.wi-recon{font-size:11.5px;color:var(--ink2);margin-top:6px}
+.wi-recon.bad{color:var(--err-ink);font-weight:600}
+.wi-tools{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.qcard{cursor:pointer}
+.qcard:hover{border-color:var(--accent)}
+.qcard .qgo{color:var(--accent);font-size:12px}
 #ledger-out{max-height:300px;overflow:auto;font-size:12px}
 #verbar{margin:8px 14px 0;padding:7px 10px;border-radius:5px}
 .confirm-box{border:1px solid var(--accent);border-radius:6px;padding:9px 11px;
-  background:#f7faff}
-.confirm-box.danger{border-color:#a40e26;background:#fff5f6}
+  background:var(--bg)}
+.confirm-box.danger{border-color:var(--err-ink);background:var(--err-bg)}
 .confirm-box h4{margin:0 0 6px}
 .confirm-box .c-actions{margin-top:8px}
 /* ---- v0.34 P1：解释层（结论卡/卡片本体/导语/悬停卡/chips） ---- */
@@ -251,6 +289,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
   <h1>harvester-view</h1>
   <nav id="tabs">
     <button data-tab="home" class="on">今日工作台</button>
+    <button data-tab="work">处理单</button>
     <button data-tab="sessions">会话检索</button>
     <button data-tab="triage">蒸馏队列</button>
     <button data-tab="reports">报告</button>
@@ -280,6 +319,22 @@ h3.sec{font-size:14px;margin:18px 0 6px}
       （哪个上游函数算的）——口径有争议时以真源那一处为准。</p>
     <div id="home-rings"><div class="empty">加载中…</div></div>
     <div id="home-foot" class="sub2"></div>
+  </main>
+</section>
+
+<!-- ============ Tab: 处理单（v0.49） ============
+  用户 2026-10-13 新需求：「跳转到的页面希望**只显示需处理的记录**，并有处理
+  建议，能打包处理命令且可直接跳转到命令台」+「闭环健康项也希望能如上述队列
+  一样需求」。
+  纪律：本页**只渲染服务端算好的同一批记录**（/api/workitems?target=…），
+  不在这里再筛一遍、也不再算一遍数字——再算一次就是"明细对不上"的老毛病。 -->
+<section class="tab" id="tab-work" style="display:none">
+  <main>
+    <div id="work-intro"></div>
+    <div id="work-head"><div class="empty">从「今日工作台」点任意数字进入。</div></div>
+    <div id="work-pkg"></div>
+    <div id="work-items"></div>
+    <div id="work-foot" class="sub2"></div>
   </main>
 </section>
 
@@ -452,7 +507,9 @@ const $ = id => document.getElementById(id);
 const state = {no:0, offset:0, limit:50, total:0, q:"", sid:null,
                tab:"sessions", repKind:"tools", sel:new Set(),
                loaded:{sessions:false, triage:false, reports:false,
-                       agg:false, topics:false},
+                       agg:false, topics:false, work:false},
+               /* v0.49：处理单状态（workTarget=当前 target id；work=最近一次响应） */
+               workTarget:null, work:null,
                /* v0.34 P1：解释层与筛选状态（errChip=报告页模式类别，
                   sessChip=会话页类别；errChipRep=全库 errors 报告缓存；
                   sessClsMap=sid→类别集合缓存；cardsBodies=卡片本体缓存） */
@@ -738,6 +795,7 @@ function switchTab(name){
   if(!state.loaded[name]){
     state.loaded[name]=true;
     if(name==="home") loadOverview().catch(()=>{});
+    if(name==="work") loadWork().catch(()=>{});
     if(name==="sessions") loadAll().catch(()=>{});
     if(name==="triage") loadTriage().catch(()=>{});
     if(name==="reports") loadReport().catch(()=>{});
@@ -2722,57 +2780,79 @@ function renderQueues(d){
   if(!qs.length){box.innerHTML="<div class='empty'>无队列数据</div>";return;}
   box.innerHTML=qs.map(q=>{
     const zero=q.count===0;
-    return "<div class='qcard"+(zero?" zero":"")+"'>"+
+    return "<div class='qcard"+(zero?" zero":"")+"' data-qgo=\""+
+      esc(q.queue_id)+"\" title=\"点这里看这 "+q.count+" 条的明细与处理建议\">"+
       "<div class='qh'><span class='ql'>"+esc(q.label)+"</span>"+
       "<span class='qn'>"+q.count+"</span></div>"+
       "<div class='qq'>"+esc(q.question)+"</div>"+
-      "<button class='xbtn' data-qgo=\""+esc(q.queue_id)+"\">去处理：</button>"+
+      "<div class='qgo'>去处理 →</div> "+
       "<span class='sub2'>"+esc(q.where||"")+"</span>"+
+      (q.suggestion?"<div class='qd'>建议："+esc(q.suggestion)+"</div>":"")+
       "<div class='qd'>口径："+esc(q.definition||"")+"</div>"+
-      "<div class='qs'>"+esc(q.source||"")+"</div></div>";
+      "<div class='qs'>"+esc(q.source||"")+"</div>"+
+      (q.reconcile_ok===false?
+        "<div class='qd' style='color:var(--err-ink)'>⚠ 对账断了（数字与明细对不上）</div>":"")+
+      "</div>";
   }).join("");
-  for(const b of box.querySelectorAll("[data-qgo]"))
-    b.onclick=()=>goQueue(b.dataset.qgo);
+  /* 整张卡都可点（含数字）：点哪儿都进「正好这一批」的处理单 */
+  for(const c of box.querySelectorAll("[data-qgo]"))
+    c.onclick=()=>goQueue(c.dataset.qgo);
 }
-/* 队列 → 对应页签（深链是"数字皆门"的第一跳：数字必须点得动） */
+/* 队列 → 处理单（v0.49）。
+   用户 2026-10-13 实测报的正是「点去处理跳过去以后**明细对不上**」：数字与明细
+   现在同源（/api/workitems?target=…），跳过去看到的就是正好这一批，且带处理建议
+   与命令包。参数既可是 queue_id（repair），也可是完整 target（queue:repair）。 */
 function goQueue(qid){
-  if(qid==="decide"||qid==="repair"){
-    switchTab("reports");
-    const sel=$("rep-kind");
-    if(sel)sel.value="agents";
-    loadReport(true).catch(()=>{});
-    showBanner("warn","已跳到建议条目（G2 建议池）——按口径处理"+qid);
-    return;
-  }
-  if(qid==="distill"){ switchTab("triage"); return; }
-  if(qid==="verify"){
-    switchTab("reports");
-    const sel=$("rep-kind");
-    if(sel)sel.value="errors";
-    loadReport(true).catch(()=>{});
-    showBanner("warn","已跳到 G2 错误报告（效果验证要对照 harvest-eval 判定）");
-    return;
-  }
+  const s=String(qid||"");
+  return openWork(s.indexOf(":")>=0?s:("queue:"+s));
+}
+/* 所有「数字皆门」的统一入口：设置 target 并按需加载处理单。
+   顺序纪律（SOP §5 第 1 条）：**不要**在 switchTab 之前置位 state.loaded，
+   否则守卫会挡掉加载函数；这里由 switchTab 自己置位并调 loadWork()。 */
+function openWork(target){
+  state.workTarget=target;
+  if(state.loaded.work)loadWork(target).catch(()=>{});
+  else switchTab("work");
+  return target;
+}
+/* 处理单里的「去处理」按钮/环段绑定（数据与队列卡同一套 target） */
+function bindWorkGo(root){
+  for(const b of root.querySelectorAll("[data-wgo]"))
+    b.onclick=()=>openWork(b.dataset.wgo);
 }
 function renderQueueDetail(d){
   const det=d.queue_details||{};
-  let h="<details><summary>队列明细（每项都标口径与真源）</summary>";
+  let h="<details open><summary>队列明细（每行数字都能点开**它自己**的明细）</summary>";
   for(const q of d.queues||[]){
     const arms=det[q.queue_id]||[];
     if(!arms.length)continue;
-    h+="<div class='sub2' style='margin-top:6px'><b>"+esc(q.label)+"</b> 的拆解：</div>";
+    h+="<div class='sub2' style='margin-top:6px'><b>"+esc(q.label)+"</b> 的拆解："+
+      "（同一批明细可有多条指标：条目数与次数和分开算，各自标注）</div>";
     h+="<div class='arms'>"+arms.map(a=>armHtml(a)).join("")+"</div>";
   }
   h+="</details>";
-  $("home-qdetail").innerHTML=h;
+  const box=$("home-qdetail");
+  box.innerHTML=h;
+  bindWorkGo(box);
 }
 function armHtml(a){
   const lv=a.level||"";
+  const ms=(a.metrics&&a.metrics.length>1)?
+    ("<div class='wi-facts'>"+a.metrics.map(m=>"<span>"+esc(m.label)+"："+
+      m.value+" "+esc(m.unit||"")+"</span>").join("")+"</div>"):"";
   return "<div class='arm "+esc(lv)+"'>"+
     "<div class='av'>"+a.value+"<span class='au'> "+esc(a.unit||"")+"</span></div>"+
     "<div class='ad'>"+esc(a.definition||"")+"</div>"+
+    ms+
     "<div class='as'>"+esc(a.source||"")+"</div>"+
-    (a.where?"<div class='ad'>去："+esc(a.where)+"</div>":"")+"</div>";
+    (a.where?"<div class='ad'>去："+esc(a.where)+"</div>":"")+
+    (a.aggregate?"<div class='ad'>聚合数（不派活）</div>":"")+
+    (a.target?("<button class='xbtn' data-wgo=\""+esc(a.target)+
+      "\">去处理</button>"):"")+
+    (a.suggestion?"<div class='ad'>建议："+esc(a.suggestion)+"</div>":"")+
+    (a.reconcile_ok===false?
+      "<div class='ad' style='color:var(--err-ink)'>⚠ 对账断了</div>":"")+
+    "</div>";
 }
 function renderRings(d){
   const box=$("home-rings");
@@ -2784,8 +2864,169 @@ function renderRings(d){
       "　<span class='sub2'>"+(blocked?
         ("有 "+blocked+" 段有积压"):"无积压")+"</span></div>"+
       "<div class='rd'>"+esc(r.definition||"")+"</div>"+
-      "<div class='arms'>"+(r.arms||[]).map(armHtml).join("")+"</div></div>";
+      "<div class='arms'>"+(r.arms||[]).map(a=>armHtml(a)).join("")+"</div></div>";
   }).join("");
+  /* 闭环健康的每一段与四队列走**同一条动线**（用户 2026-10-13：当前不能跳转、
+     也无建议）——每段都带 target 与 suggestion，于是都点得动。 */
+  bindWorkGo(box);
+}
+
+/* ---------- Tab: 处理单（v0.49） ----------
+   用户需求原文：「跳转到的页面希望**只显示需处理的记录**，并有处理建议，
+   能打包处理命令且可直接跳转到命令台。」
+   纪律：只渲染服务端给的 count 与 items，**不在这里再筛再算**
+   （再筛一次就是"明细对不上"的老毛病）。 */
+async function loadWork(target){
+  if(target)state.workTarget=target;
+  const head=$("work-head"),box=$("work-items");
+  if(!state.workTarget){
+    head.innerHTML="<div class='empty'>从「今日工作台」点任意数字进入。</div>";
+    box.innerHTML="";$("work-pkg").innerHTML="";$("work-foot").innerHTML="";
+    return;
+  }
+  head.innerHTML="<div class='empty'>正在取处理单（现算，约 2–4 秒）…</div>";
+  box.innerHTML="";$("work-pkg").innerHTML="";
+  try{ await loadGlossary(); }catch(e){}
+  $("work-intro").innerHTML=panelIntro("work");
+  const d=await actApi("/api/workitems?target="+encodeURIComponent(state.workTarget));
+  if(d.__err){
+    head.innerHTML=errorBox("处理单不可用："+d.__err+
+      "（需要动作面在 8766 运行；也可直接看命令行）");
+    return;
+  }
+  state.work=d;
+  renderWorkHead(d);
+  renderWorkPkg(d);
+  renderWorkItems(d);
+  $("work-foot").innerHTML="数据库指纹："+
+    esc(JSON.stringify((d.db_fingerprint||{}).sessions||"—"))+" 会话　"+
+    "（本页明细与工作台数字同源：/api/workitems，非缓存）";
+  if(glossary.loaded)applyTermTooltips(head);
+}
+function renderWorkHead(d){
+  const rc=(d.reconcile||[]).filter(r=>!r.ok);
+  const grp=d.group==="queue"?"四队列":(d.group==="detail"?"队列明细":"闭环健康");
+  const ms=(d.metrics||[]).map(m=>"<span>"+esc(m.label)+"："+m.value+" "+
+    esc(m.unit||d.unit||"")+"</span>").join("");
+  const by=(d.reconcile||[]).map(r=>r.metric+"="+r.by).join("；");
+  $("work-head").innerHTML=
+    "<div class='wi-head'><div class='wt'>"+esc(d.label)+
+    "　<span class='sub2'>"+esc(grp)+(d.where?"　落点："+esc(d.where):"")+
+    "</span></div>"+
+    "<div style='margin:5px 0'><span class='wn'>"+d.count+"</span>"+
+    "<span class='sub2'>"+esc(d.unit||"")+"</span>　"+
+    "<span class='sub2'>责任方："+esc(d.owner||"—")+"</span></div>"+
+    (ms?"<div class='wi-facts'>"+ms+"</div>":"")+
+    "<div class='wd'>口径："+esc(d.definition||"")+"</div>"+
+    "<div class='qs'>"+esc(d.source||"")+"</div>"+
+    "<div class='wi-recon"+(rc.length?" bad":"")+"'>"+
+      (rc.length?("⚠ **对账断了**：数字与明细对不上（"+esc(rc.map(r=>r.metric)
+        .join("、"))+"）——先别照着下面的清单派活，回头查 workitems。")
+        :("✓ 对账通过：下面 "+d.items.length+" 条就是这 "+d.count+" 的全部"
+          +"（"+esc(by)+"；两者由同一个函数派生，不是巧合）"))+
+    "</div></div>"+
+    "<div class='wi-sug'><b>处理建议：</b>"+esc(d.suggestion||"（这批还没写建议）")+
+    "</div>";
+}
+/* 把 target 的「命令包 + 每条明细自带的命令」摊平成一份可复制/可执行的清单。
+   纯函数（只读参数），故渲染门能单独 extract 执行。 */
+function workRows(d){
+  const rows=[];
+  for(const c of d.package||[])
+    rows.push({label:c.label,note:c.note,cli:c.cli,action_id:c.action_id,
+      params:c.params||{},tier:c.tier,src:""});
+  for(const i of d.items||[])
+    for(const c of (i.commands||[]))
+      rows.push({label:c.label,note:c.note,cli:c.cli,action_id:c.action_id,
+        params:c.params||{},tier:c.tier,src:i.title});
+  return rows;
+}
+function renderWorkPkg(d){
+  const box=$("work-pkg"),rows=workRows(d);
+  if(!rows.length){
+    box.innerHTML="<details><summary>处理命令包</summary>"+
+      "<div class='sub2'>这批没有可打包的命令（多为已完成的项或纯聚合数）。</div>"+
+      "</details>";
+    return;
+  }
+  const shown=rows.slice(0,60);
+  let h="<details open><summary>处理命令包（批量 "+rows.length+" 条命令）</summary>";
+  h+="<p class='sub2'>纪律：本视图**不代你执行**。命令行是给你核对后粘贴的"+
+     "（在 session-harvester 仓根目录执行）；带「在命令台打开」的能在命令台"+
+     "按两段提交执行——**先预演、你确认、才写**。</p>"+
+     "<div class='wi-tools'><button class='xbtn' id='work-copy'>"+
+     "复制全部命令</button></div>";
+  for(const r of shown){
+    h+="<div class='wi-item'><h4>"+esc(r.label||"命令")+
+      (r.tier?" <span class='tierbadge "+esc(r.tier)+"'>"+esc(r.tier)+" 档</span>":"")+
+      (r.action_id?" <span class='sub2'>可在命令台执行</span>":"")+"</h4>"+
+      (r.src?"<div class='wd'>针对："+esc(r.src)+"</div>":"")+
+      (r.note?"<div class='wd'>"+esc(r.note)+"</div>":"")+
+      "<div class='wi-cmd'>"+esc(r.cli||"（服务端未给命令行文本）")+"</div>"+
+      (r.action_id?("<button class='xbtn' data-wact=\""+esc(r.action_id)+
+        "\" data-wparams=\""+esc(JSON.stringify(r.params))+
+        "\">在命令台打开</button>"):"")+
+      "</div>";
+  }
+  if(rows.length>shown.length)
+    h+="<div class='sub2'>另有 "+(rows.length-shown.length)+
+       " 条未在此列出（下面每条明细都带着自己的命令）。</div>";
+  box.innerHTML=h+"</details>";
+  const cb=$("work-copy");
+  if(cb)cb.onclick=()=>copyText(rows.map(r=>r.cli||"").filter(Boolean).join("\n"),cb);
+  for(const b of box.querySelectorAll("[data-wact]"))
+    b.onclick=()=>{openInCmd(b.dataset.wact,JSON.parse(b.dataset.wparams||"{}"));};
+}
+function renderWorkItems(d){
+  const box=$("work-items"),items=d.items||[];
+  if(!items.length){
+    box.innerHTML="<h3 class='sec'>待处理记录</h3><div class='empty'>"+
+      (d.count===0?"这一队是空的——当前没有需要处理的记录。"
+                  :"（明细为空，且与数字对不上，见上方对账结论）")+"</div>";
+    return;
+  }
+  let h="<h3 class='sec'>待处理记录（"+items.length+" 条，与上面的数字同源）</h3>";
+  h+=items.map(it=>{
+    const facts=(it.facts||[]).map(f=>"<span>"+esc(f[0])+"："+esc(f[1])+
+      "</span>").join("");
+    const cmds=(it.commands||[]).map(c=>"<div class='wi-cmd'>"+
+      esc(c.cli||"")+"</div>").join("");
+    return "<div class='wi-item "+esc(it.level||"")+"'>"+
+      "<h4>"+esc(it.title)+
+      (it.owner?" <span class='sub2'>"+esc(it.owner)+"</span>":"")+"</h4>"+
+      (facts?"<div class='wi-facts'>"+facts+"</div>":"")+
+      (it.anchor?("<div class='wd'>证据锚点（点开回原文）："+
+        anchor(it.anchor.sid,it.anchor.seq,it.anchor.probe)+"</div>"):"")+
+      (it.detail?"<div class='wd'>"+esc(it.detail)+"</div>":"")+
+      (it.suggestion?"<div class='wd'><b>建议：</b>"+esc(it.suggestion)+"</div>":"")+
+      cmds+"</div>";
+  }).join("");
+  box.innerHTML=h;
+  bindAnchors(box);
+}
+/* 处理单 → 命令台：把 action_id 与参数带过去（用户点一下就到位，不用手抄 key）。
+   注意**不能**先置 state.loaded.cmd：那是 switchTab 的加载守卫（SOP §5 第 1 条）。
+   这里反过来——先 switchTab（它会按需调 loadCmdData），再填参数、再渲染。 */
+async function openInCmd(actionId,params){
+  switchTab("cmd");
+  if(!state.act.loaded){
+    try{ await loadCmdData(); }catch(e){}
+  }
+  const spec=actionSpec(actionId);
+  if(!spec){
+    showBanner("warn","动作面没有这条动作（不可达或版本握手不匹配）——"+
+      "命令行仍可复制后在仓根目录粘贴执行。");
+    return false;
+  }
+  const c=cmdCommands().find(x=>x.cmd===spec.cmd);
+  if(c)state.cmdCard=c.card_id;
+  state.actionId=actionId;
+  state.cmdParams=Object.assign({},params||{});
+  state.chain=[];
+  renderCmdCards();renderCmdActions();renderCmdParams();
+  showBanner("warn","已把动作装到命令台："+String(spec.summary||actionId)+
+    "　—— 点「预演」看清将写什么，确认后才写。");
+  return true;
 }
 
 /* ---------- 事件绑定 ---------- */

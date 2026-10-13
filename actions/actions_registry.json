@@ -19,8 +19,8 @@
    "label": "采集更新",
    "tier": "B",
    "order": 1,
-   "desc": "把新会话收进库：日常用 update（增量），sync 是全量对账（重活）。",
-   "writes": "harvester.db（采集库，钦定写入路径）"
+   "desc": "把新会话收进库：日常用 update（增量），sync 是全量对账（重活）。反过来的动作也在这里：suppress 把没营养的会话从**仓内副本**里抑制掉（不删采集源）。",
+   "writes": "harvester.db（采集库，钦定写入路径）+ topics_meta.db 的抑制表"
   },
   {
    "card_id": "browse",

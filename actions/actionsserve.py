@@ -783,6 +783,9 @@ def make_handler(cfg: Config):
                 if path == "/api/overview":
                     self._overview()
                     return
+                if path == "/api/workitems":
+                    self._workitems(qs)
+                    return
                 if path == "/":
                     self._json({
                         "service": "harvester-view 动作面 + 本地只读数据面",
@@ -795,7 +798,8 @@ def make_handler(cfg: Config):
                             "/api/actions/job/<id>",
                             "/api/topic/<id>/timeline?level=",
                             "/api/pattern-sessions?pattern=&days=",
-                            "/api/overview"]})
+                            "/api/overview",
+                            "/api/workitems?target="]})
                     return
                 self._json({"error": "未知路由 %s" % path}, 404)
             except _BadRequest as e:
@@ -1104,6 +1108,36 @@ def make_handler(cfg: Config):
             from . import overview as _ov
             try:
                 self._json(_ov.build_overview(cfg))
+            except RuntimeError as e:
+                self._json({"error": str(e)}, 503)
+            except sqlite3.DatabaseError as e:
+                self._json({"error": "数据库错误: %s" % e}, 500)
+
+        def _workitems(self, qs: dict):
+            """处理单（v0.49）：某个数字**正好那一批**待处理记录 + 处理建议 + 命令包。
+
+            参数 `target`：工作台上数字的 target id（如 `queue:repair`、
+            `ring:errors#0`）。缺参 → 400（**不猜**，猜出来的清单就是"对不上"的
+            那个毛病本身）；未知 target → 404 并把可选值列出来。
+            """
+            from . import workitems as _wi
+            tid = (qs.get("target") or "").strip()
+            if not tid:
+                try:
+                    g = _wi.collect(cfg)
+                    ids = _wi.target_ids(g)
+                except RuntimeError as e:
+                    self._json({"error": str(e)}, 503)
+                    return
+                self._json({"error": "缺参数 target",
+                            "available": ids}, 400)
+                return
+            try:
+                self._json(_wi.build_workitems(cfg, tid))
+            except KeyError:
+                g = _wi.collect(cfg)
+                self._json({"error": "未知 target：%s" % tid,
+                            "available": _wi.target_ids(g)}, 404)
             except RuntimeError as e:
                 self._json({"error": str(e)}, 503)
             except sqlite3.DatabaseError as e:

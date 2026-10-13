@@ -32,8 +32,10 @@ OUT = Path(__file__).resolve().parent / "commands.json"
 CARDS: list[dict] = [
     {"card_id": "collect", "label": "采集更新", "tier": "B",
      "order": 1,
-     "desc": "把新会话收进库：日常用 update（增量），sync 是全量对账（重活）。",
-     "writes": "harvester.db（采集库，钦定写入路径）"},
+     "desc": "把新会话收进库：日常用 update（增量），sync 是全量对账（重活）。"
+             "反过来的动作也在这里：suppress 把没营养的会话从**仓内副本**里"
+             "抑制掉（不删采集源）。",
+     "writes": "harvester.db（采集库，钦定写入路径）+ topics_meta.db 的抑制表"},
     {"card_id": "browse", "label": "浏览检索", "tier": "A",
      "order": 2,
      "desc": "看数据源状态、扫纲要、全文检索、按序号读会话。",
@@ -88,6 +90,11 @@ CARDS: list[dict] = [
 #: 嵌套子命令写成 `父 子`（如 `cards validate`）。
 COMMAND_CARD: dict[str, str] = {
     "update": "collect", "sync": "collect", "probe": "collect",
+    # v0.49 会话抑制（后端线，2026-10-13）：键名必须与真解析器的**叶子命令名**
+    # 逐字一致（`--check` 会红）。归到「采集更新」卡：它是采集的反向动作，
+    # 且同属"仓内副本"的进出。
+    "suppress list": "collect", "suppress add": "collect",
+    "suppress remove": "collect", "suppress prune-exports": "collect",
     "adapters": "browse", "scan": "browse", "search": "browse",
     "read": "browse", "index": "browse",
     "export": "export", "aggregate": "export", "pack": "export",
@@ -124,6 +131,11 @@ TIER_OVERRIDE: dict[str, str] = {
     "kb-init": "B", "cards new": "B",
     # 长驻/需人亲手登录 → C（永不执行）
     "mcp-serve": "C", "api-serve": "C",
+    # v0.49 会话抑制：查抑制表是只读 → A；其余三个写库/删副本 → B
+    # （卡默认就是 B，这里显式写出来是为了让"这条为什么能写"有据可查）。
+    "suppress list": "A",
+    "suppress add": "B", "suppress remove": "B",
+    "suppress prune-exports": "B",
     "weblogin check": "C", "weblogin init-config": "C",
     "weblogin prepare": "C",
     # service 卡里两个**不该被连坐**的例外：它们只是打印/在临时目录里造数据，

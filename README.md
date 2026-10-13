@@ -42,7 +42,9 @@
   新增：
   - `GET /api/health`：自检 + **版本握手**（上报 `harvester.__version__`
     与 `commands.json.adapter_version`，不匹配 → 命令台黄条 + 禁 B 档）；
-  - `GET /api/commands`：静态命令注册表（43 命令 / 13 动词卡 / 参数数据源）；
+  - `GET /api/commands`：静态命令注册表（43 命令 / 13 张按意图分组的
+    命令卡（旧称「动词卡」，本项目自定义待淘汰；官方对照与替换计划见
+    `session-harvester/docs/TERMINOLOGY.md` §3-§4）/ 参数数据源）；
   - `GET /api/actions`：动作注册表（**A 档 4 + B 档 9**，见下节 v0.36）；
   - `POST /api/actions/run` → A 档 `202 {job_id}`（`GET /api/actions/job/<id>`
     轮询），B 档 `200 {status:"needs_confirm", confirm_token, preview}`；
@@ -51,7 +53,15 @@
   - `GET /api/topic/<id>/timeline?level=`：五档时间线透出（title/coarse/
     mid 直接给；fine/artifact 需 sid）；
   - `GET /api/pattern-sessions?pattern=&days=`：错误模式 → 命中会话清单
-    （数字皆门第二跳，与 G2 报告同源同口径）。
+    （下钻第二跳；本页下钻的强约束 = 每个聚合数字可点、≤3 跳直达原始证据、
+    逐级显式对账——官方原则 details-on-demand/drill-down（Shneiderman 1996），
+    旧称「数字皆门」为本项目自定义待淘汰，见 `session-harvester/docs/TERMINOLOGY.md`
+    §3-§4。与 G2 报告同源同口径）。
+  - `GET /api/workitems?target=<id>`：**处理单**（v0.49）——某个数字**正好那一批**
+    待处理记录 + 逐条处理建议 + 命令包 + 逐指标对账。缺参 → `400`（附可选
+    target 清单）、未知 target → `404`（附清单）。target id 一律 URL 安全字符
+    （`[A-Za-z0-9._:-]`——**不许出现 `#`**，它是 URL 片段符，裸 URL 会被客户端
+    截断；本轮为此踩过一次，见 v0.49 一节）。
   - 参数 `--corpus-watermark` 开启后，timeline 会附带库龄判定
     （`stale`；缺省关，见该参数 help）。
 - **命令台（Tab「命令台」）**：13 张动词卡 → 命令 chips → 参数选择器
@@ -70,20 +80,102 @@
 一键启动（含三个进程）：`start-viewv2.cmd`（api-serve 8765 +
 actions-serve 8766 + view 8088）。
 
+## v0.49 新增（处理单 + 配色修复，2026-10-13）
+
+用户本轮实测反馈两条（原话见 `_eng/HANDOFF-view-v2-kickoff.md` §7 会话 6）：
+
+### 一、「队列明细对不上」→ 处理单（Tab「处理单」）
+
+**缺陷本体**：卡片上的数字与跳过去那个页面**各自算了一遍**——「待修补」卡显示 6
+（建议条目里 `unresolved_count>=1` 的条数），而跳到的 G2 建议页渲染**全部** 8 条；
+更极端的是「待验证 9」跳到了错误报告页（381）。两套人群、两套数字，用户没法对着
+手上的数字干活。
+
+**修法（唯一真源）**：新增 `actions/workitems.py`。一个 **target** 拥有一份明细
+`items` 与若干条**具名指标** `metrics`；指标值**只由明细派生**：
+
+| `mode` | 值怎么来 | 用在 |
+|---|---|---|
+| `items` | `len(items)`（**条目数**） | 待修补条目 6 / 已采纳 22 / 注册主题 13 |
+| `sum` | `sum(item.metrics[sum_field])`（**次数之和**） | 全库错误 381 / 未解决 31 / chain 3 |
+
+`/api/overview` 与 `/api/workitems` **都只消费这一份**，页面只渲染、不再聚合 →
+「数字 == 明细」是**构造保证**。响应里 `reconcile` 把派生过程写成机器可判定的形式
+（`{metric, mode, expected, actual, by, ok}`），`reconcile_ok=false` 时页面**响亮
+报警并劝阻派活**，不静默截断（超 `MAX_ITEMS` 会让 `ok=false`）。
+
+实测（2026-10-13 真库）：**17 个 target / 25 条指标全部对账通过**。队列明细行
+（已裁决 24 / 未解决次数 17 / 未解决模式数 16 / 未解决次数 31 / 旧坑重现 0 /
+skill 行为链 31 / 待做卡片 0 / 可评估 9 / 无变化 0）**每一行都指向一个可点 target**；
+只有两个数显式标为**聚合数（不派活）**：噪声登记 163、未评估 15——因为"未执行
+评估"与"评估了没变化"必须分得开（`$DSH_HOME/AGENTS.md` §五 16）。
+
+**跳转后只显示需处理的记录**（用户需求原文）：新 Tab「处理单」渲染该 target 的
+明细（**条数与数字同源**），每条记录带：事实字段、**证据锚点**（点开回原文，走既有
+`gotoAnchor` 三跳）、**处理建议**、以及它自己的命令。
+
+**打包处理命令 + 直达命令台**（用户需求原文）：`workRows()` 把「包级命令」与
+「每条明细自带的命令」摊平成一份清单：可**一键复制全部命令行**（在仓根目录粘贴
+执行），带 `action_id` 的给「**在命令台打开**」——切到命令台、选中那张命令卡、
+**预填参数**（不用手抄 `key`），然后照旧走两段提交（预演 → 你确认 → 才写）。
+诚实边界：**本视图不代你执行**，命令行是给你核对的。
+
+**闭环健康项同样待遇**（用户需求原文：「当前不能跳转，也无建议」）：三环的每一段
+都是 target，因此每一段都能点、都带 `suggestion` 与命令包——与四队列走**同一条
+动线、同一批渲染函数**。
+
+**发出去的命令必须真能跑**：新增一道门，把 `workitems` 生成的**每条 CLI** 交给
+`harvester.cli.build_parser()` 解析（照 AGENTS.md §四 14「让文档里的命令被测试
+真跑」），并要求每个 `action_id` 真在 `actions_registry.json` 里。这道门第一次跑
+就抓出两个我自己的错：`cards validate` 漏了 required 的 `--root`；注册表读错了键
+（动作分在 `read_actions`/`write_actions` 两张表里，没有 `actions` 这个键）。
+
+### 二、「今日工作台浅底浅色，看得眼花」→ 配色修复
+
+**实测根因（不是猜的）**：页面有 `@media (prefers-color-scheme: dark)`，深色模式下
+`--ink` 翻成**浅色字**（`#e6e9ef`）；而工作台组件把底色**写死**成浅色
+（`.qcard{background:#fff}`、`.ring{background:#fff}`、`.arm{background:#fafbfc}`
+等 11 处）→ 浅字浅底，对比度约 **1.1:1**（WCAG AA 正文要求 ≥4.5:1）。
+
+**同一个毛病还有第二类**：**用了不存在的变量**——13 处写 `var(--sub)`，而 `--sub`
+从未定义 → 那些「口径/真源」小字根本没被置灰，整块糊成一片。
+
+**修法**：工作台与命令台的组件底色一律改用主题变量
+（`var(--panel)`/`var(--bg)`/`var(--warn-bg)`/`var(--err-bg)`），两种模式都达标；
+13 处 `var(--sub)` 改成真实存在的 `var(--ink2)`。
+
+**门（`tests/test_v40_theme_contrast.py`，7 例，会红）**：① 断言页面确有 dark 覆盖
+（前提变了要显式裁决）；② `var(--x)` 的 `--x` 必须真被定义过；③ **写死浅底却不钉住
+前景**的规则一律红；④ 确实要写死浅底的（悬停卡已钉 `color-scheme:light`）
+真算对比度 ≥4.5:1；⑤ 四种字色 × 四种主题底、两种模式全算一遍。
+
+### 本轮自查（变异复核，可重跑）
+
+`docs/reports/mutation-check-v049.py` 把 5 个缺陷**故意放回去**，确认每道门真的会红、
+并原样还原：① 卡片底色写死回 `#fff`；② 写回未定义的 `var(--sub)`；③ 对外明细被
+悄悄截断一条（数字不变）；④ `sum` 模式忽略具名字段；⑤ target id 改回含 `#`。
+**5/5 全部被抓**（含一次自我纠错：首版变异"截断 MAX_ITEMS 条"其实抓不到，当时显示
+"变红"是基线本来有缺陷造成的假阳性，已改成真会被抓的形态）。
+
 ## v0.37 新增（P3-3 今日工作台 + P3-6 阶段门，2026-10-12）
 
 - **今日工作台（默认落地页）**：`GET /api/overview` 现算 **四队列**（待你裁决 /
-  待修补 / 待蒸馏 / 待验证）与**闭环健康三根环**（错误→班规→效果 /
-  skill→鉴定→修复 / 主题→chain→卡片）。**每个数字都带 `source`（哪个上游函数
+  待修补 / 待蒸馏 / 待验证）与**闭环健康面板**（三条反馈闭环（closed-loop
+  feedback，公开概念）的积压量：错误→班规→效果 / skill→鉴定→修复 /
+  主题→chain→卡片；旧称「闭环健康三根环」为本项目自定义待淘汰，
+  见 `session-harvester/docs/TERMINOLOGY.md` §3-§4）。**每个数字都带 `source`（哪个上游函数
   算的）与 `definition`（怎么算的）**，页面上逐条显示口径——这是"口径必须可见"
-  的验收要求；队列数字可点，深链到对应页签。
+  的验收要求；**每个数字（含闭环健康的每一段）都可点进「处理单」**，
+  看到正好那一批待处理记录与处理建议（v0.49 改；旧行为是"跳到另一个页面，
+  由那个页面自己再筛一遍"，因而明细对不上，用户 2026-10-13 实测报过）。
   - 实测口径（2026-10-12 真库，随语料变化）：待裁决 **0**（台账 24 条已全裁决）/
     待修补 **6** 条建议（17 次未解决）/ 待蒸馏 **30** 个新错误模式（+31 条 skill
     行为链）/ 待验证 **9** 条「不下结论」（样本不足，≠ 无效）。
   - `GET /api/overview` 实测约 **4.8 s**（现算：`collect_errors_from_db` +
-    `collect_triage` + `huarvest-eval`），页面会先提示"正在现算"。
+    `collect_triage` + `harvest-eval`），页面会先提示"正在现算"。
   - **页面只渲染服务端给的数，不二次聚合**（两处各算一遍就会出现两套数字）——
-    有渲染门钉住。
+    有渲染门钉住。（v0.49 起本页的数字**全部来自 `actions/workitems.py`**，
+    与处理单同源；点数字进处理单看**正好这一批**。）
 - **P3-6 阶段门的逐卡走查做成了测试**（`tests/test_v38_stage_gate.py`）：
   A 档必须只读且无写库声明；B 档必须有风险等级 / 目标库 / 两段提交声明 /
   必填参数人话 label，且 **destructive 的说明必须写明会丢什么**（实测清单 =
@@ -327,12 +419,18 @@ A：导出走浏览器下载（看下载栏）；复制依赖剪贴板权限，�
 ## 测试
 
 ```bash
-# 全套件（**62 例**；跑之前先设 PYTHONPATH 指向 session-harvester/scripts/sandbox）
+# 全套件（跑之前先设 PYTHONPATH 指向 session-harvester/scripts/sandbox）
 python -m unittest discover -s tests -v
 
-# 渲染门（两个，node；缺 node 时上面套件里转 skip，不是"通过"）
+# 渲染门（五个，node；缺 node 时上面套件里转 skip，不是"通过"）
 node tests/render_smoke.js      # P0-2/P0-3 报告渲染
 node tests/render_cmd.js        # P2 命令台 + 数字皆门三跳 + 端点地址静态门
+node tests/render_home.js       # P3-3 今日工作台（四队列 + 闭环健康）
+node tests/boot_sequence.js     # 启动序列真跑（"永远加载中"那个真缺陷的回归门）
+node tests/render_work.js       # v0.49 处理单（对账报警 + 建议 + 命令包 + 送命令台）
+
+# v0.49 自查：把 5 个缺陷故意放回去，确认每道门都会红（末行打印 5/5 被抓）
+python docs/reports/mutation-check-v049.py
 
 # 跨仓库真实载荷门（真库取数喂真渲染函数；**退出码 3 = 未执行，不是通过**）
 python tests/check_real_payload.py
@@ -344,7 +442,9 @@ python tests/check_real_payload.py
 卡片本体解析、本地服务三端点、**actions-serve（白名单 403 / 参数过滤 /
 契约版本 409 / 作业轮询 / timeline 五档 / pattern-sessions 数字对账 /
 regress 语料漂移必须变红）**、**命令注册表与真解析器逐参数比对（漂移即红）**、
-命令台渲染与三跳接线。
+命令台渲染与三跳接线、**v0.49 处理单（数字↔明细对账 / 每条记录带建议 /
+命令包摊平与可复制 / action_id 真在注册表里 / 生成的 CLI 真能被真解析器解析 /
+target id URL 安全）、配色对比度（写死浅底与未定义变量一律红）**。
 
 ### 跨仓库集成门：真实载荷渲染（`tests/render_real.js`）
 

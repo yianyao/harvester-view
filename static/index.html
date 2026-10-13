@@ -494,6 +494,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
     <button id="btn-rep-json" class="xbtn" title="导出机器可读 JSON（上游原始结构 + 归一模式去重说明），可直接交给 Agent 分析">导出 JSON</button>
     <span class="sub2" id="rep-meta"></span>
   </div>
+  <div id="rep-intro"></div>
   <div id="rep-concl"></div>
   <div class="report-box" id="rep-out"><div class="empty">尚未生成</div></div>
 </section>
@@ -555,6 +556,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 <section class="tab" id="tab-cmd" style="display:none">
   <div id="verbar" class="warn" style="display:none"></div>
   <main>
+  <div id="cmd-intro"></div>
   <div id="cmd-left">
     <div class="toolbar">
       <button id="btn-cmd-refresh">刷新注册表</button>
@@ -1448,6 +1450,9 @@ async function loadReport(manual){
           "——在 view 仓运行 viewserver.py 后刷新本页"); }
     }
     try{ await loadGlossary(); }catch(e){}
+    /* P5-4 小白第①问：按报告类别挂「怎么读」导语（glossary key=kind）——
+       结论卡 sub 承诺的「见怎么读」由此兑现。 */
+    $("rep-intro").innerHTML=panelIntro(kind);
     if(kind==="tools")renderTools(d,out);
     else if(kind==="errors")renderErrors(d,out);
     else if(kind==="skills")renderSkills(d,out);
@@ -2486,6 +2491,9 @@ function displayPath(p){
   return s;
 }
 async function loadCmdData(manual){
+  /* P5-4 小白第①问：命令台导语（档位话术与 tour/确认流同源） */
+  try{ await loadGlossary(); }catch(e){}
+  $("cmd-intro").innerHTML=panelIntro("cmd");
   const meta=$("cmd-meta");
   if(meta)meta.textContent="加载动作面…";
   const reg=await actApi("/api/actions");

@@ -254,11 +254,21 @@ def make_handler(cfg: dict, static_html: Path,
             path = u.path
             if path in ("/", "/index.html"):
                 try:
-                    self._send(200, static_html.read_bytes(), "text/html; "
-                               "charset=utf-8")
+                    body = static_html.read_bytes()
                 except OSError as e:
                     self._json({"error": f"前端页面缺失 "
                                          f"({static_html.name}): {e}"}, 500)
+                    return
+                # **不缓存**：本视图常改（补丁脚本落盘即生效），浏览器缓存会
+                # 让人看到旧页面却以为"改了没效果"——2026-10-12 用户实测踩到
+                # （悬停卡样式改了、页面上没变，先怀疑代码，实际是缓存）。
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store, must-revalidate")
+                self.send_header("Pragma", "no-cache")
+                self.end_headers()
+                self.wfile.write(body)
                 return
             if path == "/view/upstreams":
                 self._json([{"no": i, "name": up["name"]}

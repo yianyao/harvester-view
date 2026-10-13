@@ -210,13 +210,22 @@ h3.sec{font-size:14px;margin:18px 0 6px}
    在浅色页面上像一块异物、副文 #c9d4e3 落深底偏灰，"背景和文字太奇怪"。
    现改为与页面同一套色板（--panel/--ink/--ink2 + 强调色描边），对比度按
    WCAG AA 的正文要求（≥4.5:1）取色：底 #fffdf5 / 字 #1c2330 = 约 14:1。 */
-#gl-pop{position:fixed;z-index:30;max-width:380px;background:#fffdf5;
-  color:var(--ink);border:1px solid var(--accent);border-left:4px solid var(--accent);
-  border-radius:8px;padding:9px 12px;font-size:12.5px;
-  line-height:1.65;box-shadow:0 6px 20px rgba(20,30,50,.22);display:none}
-#gl-pop .t{font-weight:700;margin-bottom:3px;color:#12305e}
-#gl-pop .ex{color:var(--ink2);margin-top:5px;border-top:1px dashed var(--line);
-  padding-top:5px;font-family:ui-monospace,Consolas,monospace;font-size:11.5px;
+/* 术语悬停卡：**颜色写死不依赖变量**（2026-10-12 二次加固）。
+   历史：初版用 var(--ink) 当**底色**（深底）配 #fff；用户报"背景和文字太奇怪"。
+   改成浅底后用户**仍报不清楚** → 根因是前景用了 `var(--ink)`：一旦页面按
+   `prefers-color-scheme: dark` 渲染（或将来加深色主题），`--ink` 会变浅色字，
+   落在浅底上就是"浅字浅底"。故这里前景/背景/描边全部写死，并用 `color-scheme`
+   把弹层钉在浅色，字号/行高/字重一并调实。对比度：底 #fffdf5 / 正文 #1b2430
+   ≈ 14.6:1（WCAG AA 正文要求 ≥4.5:1，AAA ≥7:1）。 */
+#gl-pop{position:fixed;z-index:30;max-width:390px;background:#fffdf5;
+  color:#1b2430;color-scheme:light;
+  border:1px solid #2563eb;border-left:5px solid #2563eb;
+  border-radius:8px;padding:10px 13px;font-size:13px;
+  line-height:1.7;box-shadow:0 8px 24px rgba(15,23,42,.28);display:none}
+#gl-pop .t{font-weight:700;margin-bottom:4px;color:#0f2a5c;font-size:13.5px}
+#gl-pop .pl{color:#1b2430}
+#gl-pop .ex{color:#42506b;margin-top:6px;border-top:1px dashed #c9d2e0;
+  padding-top:6px;font-family:ui-monospace,Consolas,monospace;font-size:12px;
   word-break:break-word}
 .panel-intro{border:1px dashed var(--line);border-radius:8px;
   padding:6px 10px;margin:0 0 10px;font-size:12px;color:var(--ink2)}
@@ -2876,10 +2885,12 @@ $("btn-cmd-run").onclick=()=>runCmdAction()
 initUpstreams().then(()=>{
   state.no=Number($("upstream").value||0);
   /* P3-3：默认落地页 = 今日工作台。**不做 loadAll()**——会话列表由用户
-     点「会话检索」时按需加载（原实现是启动就拉一趟会话，改成工作台落地后
-     那趟请求是白花的；`state.loaded.home` 置真以免 switchTab 重复拉）。 */
-  state.loaded.home=true;
+     点「会话检索」时按需加载。
+     ⚠ 顺序要紧（2026-10-12 修）：`switchTab` 里是 `if(!state.loaded[name])`
+     才调加载函数，所以**必须先 switchTab 再置位**。先置位会把 loadOverview()
+     挡在守卫外面 → 页面永远停在「加载中…」（用户实测撞到）。 */
   switchTab("home");
+  state.loaded.home=true;
 }).catch(e=>showBanner("err","初始化失败: "+e));
 </script>
 </body>

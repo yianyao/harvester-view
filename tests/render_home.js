@@ -150,14 +150,25 @@ tabCalls.length = 0;
 goQueue("verify");
 check("待验证 → 报告页", tabCalls.includes("reports"));
 
-/* ⑤ 落地页 = 今日工作台（动线；若用户裁决改回，改的是 BOOT 那一处） */
-check("导航里有今日工作台且默认高亮",
-  html.includes('data-tab="home" class="on"'));
-check("启动切到 home（switchTab(\"home\")）",
-  html.includes('state.loaded.home=true;') &&
-  html.includes('switchTab("home");'));
+/* ⑥ 启动序列顺序（**真缺陷回归门**）
+ *
+ * 2026-10-12 用户实测：工作台永远停在「加载中…」。根因是启动处写成了
+ *   state.loaded.home=true;  // 先置位
+ *   switchTab("home");       // switchTab 里 if(!state.loaded[name]) 才加载
+ * → loadOverview() 被守卫挡掉、永不执行。
+ * 本门只做**顺序**断言：启动块里 switchTab("home") 必须出现在
+ * loaded.home 置位之前（上一版只查"源码里有没有 switchTab"，所以没抓到）。
+ */
+const bootBlock = (html.match(/initUpstreams\(\)\.then\(\(\)=>\{[\s\S]*?\}\)\.catch/) || [""])[0];
+const iSwitch = bootBlock.indexOf('switchTab("home")');
+const iLoaded = bootBlock.indexOf("state.loaded.home=true");
+check("启动块里能找到 switchTab(\"home\") 与 loaded.home 置位",
+  iSwitch >= 0 && iLoaded >= 0);
+check("顺序正确：先 switchTab（守卫放行→真加载）再置位",
+  iSwitch >= 0 && iLoaded >= 0 && iSwitch < iLoaded,
+  "顺序反了会让 loadOverview() 被 if(!state.loaded[name]) 挡掉 → 永远『加载中』");
 check("启动不再无条件 loadAll（避免白拉一趟会话）",
-  /state\.loaded\.home=true;\s*\n\s*switchTab\("home"\);/.test(html));
+  !/switchTab\("home"\);[\s\S]{0,80}loadAll\(\)/.test(bootBlock));
 
 console.log(failed ? ("\n" + failed + " CHECK(S) FAILED") :
   "\nALL HOME-DASHBOARD CHECKS PASSED");

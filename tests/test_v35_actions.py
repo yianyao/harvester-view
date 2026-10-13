@@ -194,14 +194,28 @@ class ActionsServeTest(_ServerMixin, unittest.TestCase):
         self.assertIn("/api/pattern-sessions?pattern=&days=", d["endpoints"])
 
     def test_action_registry_is_frozen_whitelist(self):
+        """P2 时这里返回的只有 A 档（4 个）；P3 起 B 档并入同一端点。
+
+        本用例保持 P2 的原意（**A 档实现全在白名单里**），并补上 P3 的
+        双档断言；B 档的逐项校验在 `test_v36_write_actions.py`。
+        """
         st, d = self._get("/api/actions")
         self.assertEqual(st, 200)
         ids = [a["action_id"] for a in d["actions"]]
-        self.assertEqual(sorted(ids), sorted(AS.ACTIONS))
+        a_ids = sorted(a["action_id"] for a in d["actions"] if a["tier"] == "A")
+        b_ids = sorted(a["action_id"] for a in d["actions"] if a["tier"] == "B")
+        self.assertEqual(a_ids, sorted(AS.ACTIONS))
+        self.assertEqual(len(ids), len(set(ids)), "A/B 档不许有重复 action_id")
+        self.assertTrue(b_ids, "P3 起 B 档必须出现")
         for a in d["actions"]:
-            self.assertEqual(a["tier"], "A")
+            self.assertIn(a["tier"], ("A", "B"))
             self.assertIn("reversible", a)
         self.assertIn("B", d["tiers"])
+        # B 档必须带风险等级与目标库（页面据此渲染徽章与"写哪里"）
+        for a in d["actions"]:
+            if a["tier"] == "B":
+                self.assertIn(a["risk"], ("reversible", "destructive"))
+                self.assertTrue(a["target"])
 
     def test_run_report_errors_matches_upstream_numbers(self):
         """A 档动作必须与 /api/reports/errors **同源同数**（同函数）。"""

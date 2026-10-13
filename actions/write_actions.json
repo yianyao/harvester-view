@@ -1,0 +1,135 @@
+{
+  "schema": 1,
+  "kind": "写动作白名单 v1（B 档）：只允许这些动作经由本服务写 meta 库",
+  "hint": "本文件是人写的**判断层**：哪些写动作可写、写哪个 meta 库、风险等级、确认页怎么说人话。命令名/参数名/参数类型/src 一律从 actions/commands.json（真解析器生成）合并，不在此重复。allow = 该子动作**真正消费**的字段（照 cli.py 抄；含服务端已定的 meta 路径），registrygen 会双向校验：声明了不消费的参数 → 失败（填了不生效却看起来能写）；漏声明 → 失败。server 只认这张表，表外动作一律 403。",
+  "actions": [
+    {
+      "action_id": "suggest_status",
+      "cmd": "suggest-status",
+      "risk": "reversible",
+      "target": "suggestions_meta",
+      "summary": "在建议台账里把一条建议的状态改为 {status}",
+      "detail": "影响 harvest-eval 的 A/B 分界（adopted_at）；不是 adopted 时会清空分界。",
+      "allow": ["meta", "key", "status", "adopted_at", "note"],
+      "params": {
+        "key": {"map": "key", "required": true, "label": "建议句（台账 key，逐字）"},
+        "status": {"map": "status", "required": true, "label": "新状态"},
+        "adopted_at": {"map": "adopted_at", "label": "采纳分界日（可空）"},
+        "note": {"map": "note", "label": "说明（可空）"}
+      }
+    },
+    {
+      "action_id": "topic_register",
+      "cmd": "topic",
+      "subaction": "register",
+      "risk": "reversible",
+      "target": "topics_meta",
+      "summary": "注册一个新主题「{name}」（关键词：{keywords}）",
+      "detail": "同名主题已存在时**幂等返回旧 id**，不会重复建。",
+      "allow": ["cmd", "meta", "name", "keywords"],
+      "params": {
+        "name": {"map": "name", "required": true, "label": "主题名"},
+        "keywords": {"map": "keywords", "label": "关键词（逗号分隔）"}
+      }
+    },
+    {
+      "action_id": "topic_add",
+      "cmd": "topic",
+      "subaction": "add",
+      "risk": "reversible",
+      "target": "topics_meta",
+      "summary": "往主题 {id_} 里加成员：{sids}",
+      "detail": "幂等：已是成员的 sid 会跳过，只登记新成员。",
+      "allow": ["cmd", "meta", "id_", "sids", "evidence"],
+      "params": {
+        "topic_id": {"map": "id_", "required": true, "label": "目标主题"},
+        "sids": {"map": "sids", "required": true, "label": "成员 sid（逗号分隔）"},
+        "evidence": {"map": "evidence", "label": "成员证据说明（可空）"}
+      }
+    },
+    {
+      "action_id": "topic_remove",
+      "cmd": "topic",
+      "subaction": "remove",
+      "risk": "reversible",
+      "target": "topics_meta",
+      "summary": "从主题 {id_} 移除成员 {sid}",
+      "detail": "只动注册表成员列表，**不删任何会话数据**。",
+      "allow": ["cmd", "meta", "id_", "sid"],
+      "params": {
+        "topic_id": {"map": "id_", "required": true, "label": "目标主题"},
+        "sid": {"map": "sid", "required": true, "label": "要移除的成员 sid"}
+      }
+    },
+    {
+      "action_id": "topic_rename",
+      "cmd": "topic",
+      "subaction": "rename",
+      "risk": "reversible",
+      "target": "topics_meta",
+      "summary": "把主题 {id_} 改名为「{name}」",
+      "detail": "id 不变，故已发布的 chain 仍能按 topic_id 对上；与既有主题重名会被拒（不静默合并）。",
+      "allow": ["cmd", "meta", "id_", "name"],
+      "params": {
+        "topic_id": {"map": "id_", "required": true, "label": "目标主题"},
+        "name": {"map": "name", "required": true, "label": "新主题名"}
+      }
+    },
+    {
+      "action_id": "topic_keywords",
+      "cmd": "topic",
+      "subaction": "keywords",
+      "risk": "reversible",
+      "target": "topics_meta",
+      "summary": "覆盖式定稿主题 {id_} 的关键词：{keywords}",
+      "detail": "**覆盖**而非追加：给的是定稿后的完整列表。",
+      "allow": ["cmd", "meta", "id_", "keywords"],
+      "params": {
+        "topic_id": {"map": "id_", "required": true, "label": "目标主题"},
+        "keywords": {"map": "keywords", "required": true,
+                     "label": "定稿关键词（逗号分隔，覆盖式）"}
+      }
+    },
+    {
+      "action_id": "topic_merge",
+      "cmd": "topic",
+      "subaction": "merge",
+      "risk": "destructive",
+      "target": "topics_meta",
+      "summary": "把源主题 {from_} 合并进 {id_}（默认删除源主题行）",
+      "detail": "成员并入目标并**删除源主题行**（keep_sources 勾上则保留）。源主题行删了就在页面上找不回来了。",
+      "allow": ["cmd", "meta", "id_", "from_", "keep_sources"],
+      "params": {
+        "topic_id": {"map": "id_", "required": true, "label": "目标主题（并入到这里）"},
+        "from_": {"map": "from_", "required": true, "label": "源主题（逗号分隔，会被删）"},
+        "keep_sources": {"map": "keep_sources", "label": "保留源主题行（默认不保留）"}
+      }
+    },
+    {
+      "action_id": "topic_delete",
+      "cmd": "topic",
+      "subaction": "delete",
+      "risk": "destructive",
+      "target": "topics_meta",
+      "summary": "删除主题行 {id_}（成员随行留痕，快照存台账）",
+      "detail": "只删注册行，**不动任何会话数据**；被删主题的快照进 actions_meta.db，但要恢复得人工照快照重建。",
+      "allow": ["cmd", "meta", "id_"],
+      "params": {
+        "topic_id": {"map": "id_", "required": true, "label": "要删除的主题"}
+      }
+    },
+    {
+      "action_id": "keywords_gc",
+      "cmd": "keywords-gc",
+      "risk": "reversible",
+      "target": "keywords_meta",
+      "summary": "回收 keywords_meta.db：只保留最近 {keep_runs} 次 run（vacuum={vacuum}）",
+      "detail": "keyword_stats 是累积表，读路径只读最新一次 run；删历史 run 不损失能力，但历史 run 就没了。",
+      "allow": ["meta", "keep_runs", "vacuum"],
+      "params": {
+        "keep_runs": {"map": "keep_runs", "required": true, "label": "保留最近几次 run"},
+        "vacuum": {"map": "vacuum", "label": "跑完顺手 VACUUM（回收空闲页）"}
+      }
+    }
+  ]
+}

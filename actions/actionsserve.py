@@ -43,6 +43,8 @@ from types import SimpleNamespace
 from urllib.parse import parse_qs, unquote, urlparse
 
 from . import ensure_harvester_importable, upstream_root
+from . import runlib
+from . import writeactions as wa
 
 # 上游 import 必须在放进 sys.path 之后（缺上游时保持 None，端点诚实降级）
 _HARVESTER_IMPORT_ERROR = ensure_harvester_importable()
@@ -64,6 +66,8 @@ DEFAULT_PORT = 8766
 _HERE = Path(__file__).resolve().parent
 PACKAGE_ROOT = _HERE.parent
 DEFAULT_COMMANDS_JSON = _HERE / "commands.json"
+DEFAULT_REGISTRY_JSON = _HERE / "actions_registry.json"
+DEFAULT_ACTIONS_META = _HERE / "actions_meta.db"
 DEFAULT_CARDS_ROOT = Path.home() / ".workbuddy" / "knowledge" / "cards"
 
 #: 动作执行线程池上限：命令台是人点的，不会并发几十个；超限直接拒绝而不是排队
@@ -112,7 +116,9 @@ class Config:
                  suggestions_meta: Path | None = None,
                  exports_root: Path | None = None,
                  commands_json: Path | None = None,
-                 corpus_watermark: bool = False):
+                 corpus_watermark: bool = False,
+                 registry_json: Path | None = None,
+                 actions_meta: Path | None = None):
         self.db = Path(db)
         self.cards_root = Path(cards_root)
         self.glossary = Path(glossary)
@@ -125,7 +131,10 @@ class Config:
                                  else None)
         self.exports_root = Path(exports_root) if exports_root else None
         self.commands_json = Path(commands_json or DEFAULT_COMMANDS_JSON)
-        #: 是否在 timline 端点里附带库龄误判（`stale`）。缺省 **关**：
+        #: 动作注册表（P3-1）与动作台账库（P3-2）
+        self.registry_json = Path(registry_json or DEFAULT_REGISTRY_JSON)
+        self.actions_meta = Path(actions_meta or DEFAULT_ACTIONS_META)
+        #: 是否在 timeline 端点里附带库龄判定（`stale`）。缺省 **关**：
         #: 它要扫一遍语料盘（实测 0.08 s，但盘在网络上/语料巨大时会变慢），
         #: P2-3 的验收是"无 chain 主题也能看时间线"，不该被库龄判定拖住。
         self.want_watermark = bool(corpus_watermark)
@@ -441,8 +450,13 @@ class JobStore:
 
 
 def _now() -> float:
+    """单调-ish 的墙上时间（秒）。只用于算耗时差，不做时间戳。"""
     import time
     return time.time()
+
+
+def _now_ms() -> int:
+    return int(_now() * 1000)
 
 
 def _iso() -> str:
@@ -457,6 +471,51 @@ def load_commands(path: Path) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def load_registry(path: Path) -> dict:
+    """读动作注册表（P3-1 生成物）。损坏 → 抛错，由端点渲染成 500。"""
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def registry_specs(cfg: Config) -> dict[str, dict]:
+    """注册表 → {action_id: 条目}（A 与 B 合并）。**执行器只认这里**：
+    注册表里没有的动作一律 403（SOP §5.3：不是万能 shell）。"""
+    reg = load_registry(cfg.registry_json)
+    out: dict[str, dict] = {}
+    for a in reg.get("read_actions") or []:
+        out[a["action_id"]] = {**a, "tier": a.get("tier") or "A"}
+    for a in reg.get("write_actions") or []:
+        out[a["action_id"]] = {**a, "tier": a.get("tier") or "B"}
+    return out
+
+
+def check_registry_consistency(reg: dict) -> list[str]:
+    """注册表 ↔ 实现的一致性（起服时自检 + 套件里有同样的断言）。
+
+    三类漂移都会让"页面显示能做、实际做不到"：
+    1. 注册表声明的 B 档动作在 `writeactions.WRITE_ACTIONS` 里没有实现；
+    2. 实现了但注册表没声明（页面上根本不出现，白写）；
+    3. 同一个 action_id 同时出现在 A/B 两档（权限归属自相矛盾）。
+    """
+    problems: list[str] = []
+    a_ids = {a["action_id"] for a in reg.get("read_actions") or []}
+    b_ids = {a["action_id"] for a in reg.get("write_actions") or []}
+    impl = set(wa.WRITE_ACTIONS)
+    for aid in sorted(b_ids - impl):
+        problems.append("注册表声明了 B 档动作 %s，但 writeactions 里没有实现"
+                        % aid)
+    for aid in sorted(impl - b_ids):
+        problems.append("writeactions 实现了 %s，但注册表没声明（页面上不会出现）"
+                        % aid)
+    for aid in sorted(a_ids - set(ACTIONS)):
+        problems.append("注册表声明了 A 档动作 %s，但 actionsserve 里没有实现"
+                        % aid)
+    for aid in sorted(set(ACTIONS) - a_ids):
+        problems.append("actionsserve 实现了 A 档动作 %s，但注册表没声明" % aid)
+    for aid in sorted(a_ids & b_ids):
+        problems.append("动作 %s 同时被声明为 A 与 B 档（权限自相矛盾）" % aid)
+    return problems
+
+
 def health(cfg: Config) -> dict:
     """自检 + 版本握手。`version_ok` 是**唯一**的握手判据：
     harvester.__version__ == commands.json.adapter_version（D4：不匹配 →
@@ -467,10 +526,21 @@ def health(cfg: Config) -> dict:
         adapter_version = load_commands(cfg.commands_json).get("adapter_version")
     except (OSError, json.JSONDecodeError, ValueError) as e:
         cmd_error = "commands.json 不可读/损坏（fail loud）: %s" % e
+    reg_error = None
+    reg_counts = {"read_actions": 0, "write_actions": 0}
+    reg_problems: list[str] = []
+    try:
+        reg = load_registry(cfg.registry_json)
+        reg_counts = {"read_actions": len(reg.get("read_actions") or []),
+                      "write_actions": len(reg.get("write_actions") or [])}
+        reg_problems = check_registry_consistency(reg)
+    except (OSError, json.JSONDecodeError, ValueError) as e:
+        reg_error = "actions_registry.json 不可读/损坏（fail loud）: %s" % e
     hv = getattr(harvester, "__version__", None) if harvester else None
     version_ok = bool(hv and adapter_version and hv == adapter_version)
     return {
-        "ok": _HARVESTER_IMPORT_ERROR is None and cmd_error is None,
+        "ok": (_HARVESTER_IMPORT_ERROR is None and cmd_error is None
+               and reg_error is None and not reg_problems),
         "view_actions_api": VIEW_ACTIONS_API,
         "service": "harvester-view 动作面 + 本地只读数据面",
         # 归并自 P1 viewserver 的三项（既有字段一个不少）：
@@ -491,6 +561,14 @@ def health(cfg: Config) -> dict:
         "artifacts_meta": (str(cfg.artifacts_meta)
                            if cfg.artifacts_meta else None),
         "port": DEFAULT_PORT,
+        # P3 新增（additive）：动作注册表与台账
+        "registry": str(cfg.registry_json),
+        "registry_error": reg_error,
+        "registry_counts": reg_counts,
+        "registry_problems": reg_problems,
+        "actions_meta": str(cfg.actions_meta),
+        "actions_meta_ledger": (runlib.ledger_stats(cfg.actions_meta)
+                                if cfg.actions_meta else None),
     }
 
 
@@ -680,6 +758,9 @@ def make_handler(cfg: Config):
                 if path == "/api/actions":
                     self._json(self._registry_payload())
                     return
+                if path == "/api/actions/ledger":
+                    self._ledger(qs)
+                    return
                 m = re.fullmatch(r"/api/actions/job/([0-9a-f]+)", path)
                 if m:
                     job = jobs.get(m.group(1))
@@ -703,6 +784,7 @@ def make_handler(cfg: Config):
                         "endpoints": [
                             "/view/cards", "/view/glossary", "/view/health",
                             "/api/health", "/api/commands", "/api/actions",
+                            "/api/actions/ledger",
                             "POST /api/actions/run",
                             "/api/actions/job/<id>",
                             "/api/topic/<id>/timeline?level=",
@@ -743,26 +825,44 @@ def make_handler(cfg: Config):
                 self._json({"error": "请求体必须是 JSON 对象"}, 400)
                 return
             action_id = req.get("action_id")
-            spec = ACTIONS.get(action_id)
-            if spec is None:
-                self._json({"error": "action_id=%r 不在 A 档白名单内（本服务"
-                                     "不是万能 shell；B/C 档动作见 /api/actions）"
-                                     % action_id}, 403)
-                return
-            if spec.get("tier") != "A":
-                self._json({"error": "动作 %s 非 A 档，本阶段不提供执行"
-                                     "（B 档两段提交见 P3-2）" % action_id}, 403)
-                return
-            try:
-                params = _clean_params(spec, req.get("params") or {}, cfg)
-            except ValueError as e:
-                self._json({"error": str(e)}, 400)
-                return
             pv = req.get("view_actions_api")
             if pv is not None and pv != VIEW_ACTIONS_API:
                 self._json({"error": "页面动作面契约版本 %r ≠ 服务端 %d，请刷新"
                                      "页面或升级对应侧"
                                      % (pv, VIEW_ACTIONS_API)}, 409)
+                return
+            # **执行器只认注册表**（P3-1/D5）：表外动作一律 403
+            try:
+                specs = registry_specs(cfg)
+            except (OSError, json.JSONDecodeError, ValueError) as e:
+                self._json({"error": "动作注册表不可读/损坏（fail loud）: %s" % e},
+                           500)
+                return
+            rspec = specs.get(action_id)
+            if rspec is None:
+                self._json({"error": "action_id=%r 不在动作注册表内（本服务不是"
+                                     "万能 shell：只执行冻结白名单里的动作）"
+                                     % action_id}, 403)
+                return
+            if rspec["tier"] == "C":
+                self._json({"error": "动作 %s 是 C 档：只生成命令，页面永不执行"
+                                     "（红线 3）" % action_id}, 403)
+                return
+            client = str(req.get("client") or self.headers.get("X-View-Client")
+                         or "web-ui")[:80]
+            if rspec["tier"] == "B":
+                self._run_write(rspec, req, client)
+                return
+            spec = ACTIONS.get(action_id)
+            if spec is None:   # 注册表声明了但没实现（health 里也会报）
+                self._json({"error": "动作 %s 在注册表里，但服务里没有对应实现"
+                                     "（注册表与实现漂移，见 /api/health 的 "
+                                     "registry_problems）" % action_id}, 500)
+                return
+            try:
+                params = _clean_params(spec, req.get("params") or {}, cfg)
+            except ValueError as e:
+                self._json({"error": str(e)}, 400)
                 return
             try:
                 job = jobs.submit(lambda: spec["handler"](cfg, params),
@@ -771,7 +871,7 @@ def make_handler(cfg: Config):
                 self._json({"error": str(e)}, 429)
                 return
             self._json({"job_id": job["job_id"], "status": job["status"],
-                        "action_id": action_id, "params": params,
+                        "action_id": action_id, "tier": "A", "params": params,
                         "est_sec": spec.get("est_sec"),
                         "poll": "/api/actions/job/" + job["job_id"]}, 202)
 
@@ -800,24 +900,182 @@ def make_handler(cfg: Config):
                                      % e}, 500)
 
         def _registry_payload(self) -> dict:
-            """A 档动作注册表（参数 schema 直接来自 ACTIONS，页面据此渲染
-            参数选择器——**注册表就是唯一真相**，页面不另写一份）。"""
+            """动作注册表（P3-1 生成物）——页面据此渲染动作卡与参数选择器。
+            **注册表就是唯一真相**：页面不另写一份，A/B 档同源。"""
             hv = getattr(harvester, "__version__", None) if harvester else None
-            return {"view_actions_api": VIEW_ACTIONS_API,
-                    "harvester_version": hv,
-                    "actions": [
-                        {"action_id": aid,
-                         "tier": spec["tier"],
-                         "label": spec["label"],
-                         "desc": spec["desc"],
-                         "params": spec.get("params") or {},
-                         "est_sec": spec.get("est_sec"),
-                         "reversible": spec.get("reversible"),
-                         "writes": spec.get("writes") or ""}
-                        for aid, spec in sorted(ACTIONS.items())],
-                    "tiers": {"A": "只读直接执行（本阶段已实现）",
-                              "B": "写 meta 两段提交（P3-2）",
-                              "C": "只生成命令，永不执行（P3-2）"}}
+            try:
+                reg = load_registry(cfg.registry_json)
+            except (OSError, json.JSONDecodeError, ValueError) as e:
+                self._json({"error": "动作注册表不可读/损坏（fail loud）: %s" % e},
+                           500)
+                return
+            a_out = []
+            for aid, spec in sorted(ACTIONS.items()):
+                a_out.append({"action_id": aid, "tier": "A",
+                              "label": spec["label"], "desc": spec.get("desc"),
+                              "params": spec.get("params") or {},
+                              "est_sec": spec.get("est_sec"),
+                              "reversible": spec.get("reversible"),
+                              "writes": spec.get("writes") or "",
+                              "risk": None})
+            b_out = [{"action_id": a["action_id"], "tier": a.get("tier", "B"),
+                      "label": a.get("summary"), "desc": a.get("detail"),
+                      "cmd": a.get("cmd"), "subaction": a.get("subaction"),
+                      "risk": a.get("risk"), "target": a.get("target"),
+                      "target_path": str(cfg.default_for(a.get("target")) or ""),
+                      "reversible": a.get("reversible"),
+                      "writes": a.get("writes") or "",
+                      "est_sec": 1,
+                      "params": {p["name"]: {
+                          "type": p["kind"], "src": p["src"],
+                          "default": p["default"], "label": p["label"],
+                          "required": p["required"],
+                          "choices": p["choices"], "note": p["note"],
+                          "server": p["server"]}
+                          for p in a["params"]}}
+                     for a in reg.get("write_actions") or []]
+            self._json({"view_actions_api": VIEW_ACTIONS_API,
+                        "harvester_version": hv,
+                        "actions": a_out + b_out,
+                        "tiers": reg.get("tiers") or {},
+                        "write_targets": reg.get("write_targets") or {},
+                        "registry_schema": reg.get("schema"),
+                        "counts": reg.get("counts") or {}})
+
+        # ---- B 档：两段提交（P3-2） ----
+        def _run_write(self, rspec: dict, req: dict, client: str) -> None:
+            """B 档调度：无 token → 预演 + 发 token；带 token → 校验后真写。
+
+            三段留痕（都进 `actions_meta.db`）：① 预演也记一行 run（status=
+            `preview`）——"有人点了什么但没确认"同样是有用的事实；② 执行记
+            `done`/`failed`；③ 真写成功再记一行 `write_records`（含 before/
+            after 与 destructive 快照）。
+            """
+            aid = rspec["action_id"]
+            params_in = req.get("params") or {}
+            token = req.get("confirm_token")
+            try:
+                norm = wa.normalize_params(rspec, params_in, cfg)
+            except wa.WriteError as e:
+                self._json({"error": str(e)}, 400)
+                return
+            try:
+                prev = wa.plan(aid, rspec, norm, cfg)
+            except wa.WriteError as e:
+                self._json({"error": str(e)}, 400)
+                return
+            except KeyError as e:
+                self._json({"error": "目标不存在：%s" % e}, 404)
+                return
+            except Exception as e:  # noqa: BLE001 - HTTP 边界
+                self._json({"error": "预演失败：%s" % e}, 500)
+                return
+
+            if not token:
+                run_id = uuid.uuid4().hex[:12]
+                try:
+                    conf = runlib.issue_confirm(cfg.actions_meta, aid, norm,
+                                                prev, client)
+                except sqlite3.DatabaseError as e:
+                    self._json({"error": "台账库不可写：%s" % e}, 500)
+                    return
+                runlib.record_run(
+                    cfg.actions_meta, run_id=run_id, action_id=aid, tier="B",
+                    client=client, params=norm, elapsed_ms=0, status="preview",
+                    result_summary="；".join(prev.get("human") or [])[:2000])
+                self._json({
+                    "status": "needs_confirm", "action_id": aid, "tier": "B",
+                    "risk": prev.get("risk"), "target": prev.get("target"),
+                    "target_path": prev.get("target_path"),
+                    "preview": prev, "human": prev.get("human") or [],
+                    "confirm_token": conf["token"],
+                    "expires_in": conf["expires_in"],
+                    "preview_run_id": run_id,
+                    "hint": "把 confirm_token 连同**同一份 params** 再 POST 一次"
+                            "即执行；参数或库状态变了会被拒并要求重新预览",
+                }, 200)
+                return
+
+            # 第二段：先校验 token（含参数指纹与预览指纹），再执行
+            run_id = uuid.uuid4().hex[:12]
+            t0 = _now_ms()
+            try:
+                runlib.consume_confirm(cfg.actions_meta, token, aid, norm, prev)
+            except runlib.ConfirmError as e:
+                runlib.record_run(cfg.actions_meta, run_id=run_id, action_id=aid,
+                                  tier="B", client=client, params=norm,
+                                  elapsed_ms=0, status="failed",
+                                  error=str(e))
+                self._json({"error": str(e), "retry": "preview"}, 409)
+                return
+            except sqlite3.DatabaseError as e:
+                self._json({"error": "台账库不可读：%s" % e}, 500)
+                return
+            try:
+                result = wa.execute(aid, rspec, norm, cfg)
+            except wa.WriteError as e:
+                ms = _now_ms() - t0
+                runlib.record_run(cfg.actions_meta, run_id=run_id, action_id=aid,
+                                  tier="B", client=client, params=norm,
+                                  elapsed_ms=ms, status="failed", error=str(e))
+                self._json({"error": str(e)}, 400)
+                return
+            except (KeyError, ValueError) as e:
+                ms = _now_ms() - t0
+                runlib.record_run(cfg.actions_meta, run_id=run_id, action_id=aid,
+                                  tier="B", client=client, params=norm,
+                                  elapsed_ms=ms, status="failed", error=str(e))
+                self._json({"error": "上游拒绝：%s" % e}, 400)
+                return
+            except Exception as e:  # noqa: BLE001 - HTTP 边界
+                ms = _now_ms() - t0
+                runlib.record_run(cfg.actions_meta, run_id=run_id, action_id=aid,
+                                  tier="B", client=client, params=norm,
+                                  elapsed_ms=ms, status="failed", error=str(e))
+                self._json({"error": "执行失败：%s" % e}, 500)
+                return
+            ms = _now_ms() - t0
+            summary = result.get("summary") or "；".join(prev.get("human") or [])
+            try:
+                runlib.record_run(cfg.actions_meta, run_id=run_id, action_id=aid,
+                                  tier="B", client=client, params=norm,
+                                  elapsed_ms=ms, status="done",
+                                  result_summary=summary)
+                runlib.record_write(
+                    cfg.actions_meta, run_id=run_id, action_id=aid,
+                    target=prev.get("target") or "",
+                    target_path=prev.get("target_path") or "",
+                    risk=prev.get("risk") or "", cmd=prev.get("cmd") or "",
+                    summary=summary, before=prev.get("before") or {},
+                    after=prev.get("after") or {},
+                    snapshot=prev.get("snapshot"), client=client)
+            except sqlite3.DatabaseError as e:
+                # 写成功了但台账没记上——**必须显式告诉调用方**，
+                # 否则"台账=全量留痕"的承诺被静默破坏
+                self._json({"ok": True, "result": result, "summary": summary,
+                            "run_id": run_id, "elapsed_ms": ms,
+                            "warning": "动作已执行，但台账写入失败：%s" % e}, 200)
+                return
+            self._json({"status": "done", "action_id": aid, "tier": "B",
+                        "run_id": run_id, "elapsed_ms": ms, "result": result,
+                        "summary": summary}, 200)
+
+        def _ledger(self, qs: dict):
+            limit = 50
+            try:
+                limit = max(1, min(500, int(qs.get("limit") or 50)))
+            except (TypeError, ValueError):
+                pass
+            try:
+                self._json({
+                    "view_actions_api": VIEW_ACTIONS_API,
+                    "stats": runlib.ledger_stats(cfg.actions_meta),
+                    "runs": runlib.recent_runs(cfg.actions_meta, limit=limit,
+                                               action_id=qs.get("action_id")),
+                    "writes": runlib.recent_writes(cfg.actions_meta, limit=limit),
+                    "db": str(cfg.actions_meta)})
+            except sqlite3.DatabaseError as e:
+                self._json({"error": "台账库错误：%s" % e}, 500)
 
         def _timeline(self, topic_id: str, qs: dict):
             level = str(qs.get("level") or "title")
@@ -875,6 +1133,10 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--suggestions-meta", default=None)
     ap.add_argument("--exports-root", default=None)
     ap.add_argument("--commands-json", default=str(DEFAULT_COMMANDS_JSON))
+    ap.add_argument("--registry-json", default=str(DEFAULT_REGISTRY_JSON),
+                    help="动作注册表（P3-1 生成物；执行器只认它）")
+    ap.add_argument("--actions-meta", default=str(DEFAULT_ACTIONS_META),
+                    help="动作台账库（P3-2）：action_runs/write_records/confirms")
     ap.add_argument("--corpus-watermark", action="store_true",
                     help="在 timeline 端点附带库龄判定（要扫一遍语料盘；"
                          "缺省关，见 Config.want_watermark 注释）")
@@ -896,7 +1158,9 @@ def config_from_args(args) -> Config:
                   exports_root=(Path(args.exports_root)
                                 if args.exports_root else None),
                   commands_json=Path(args.commands_json),
-                  corpus_watermark=getattr(args, "corpus_watermark", False))
+                  corpus_watermark=getattr(args, "corpus_watermark", False),
+                  registry_json=Path(args.registry_json),
+                  actions_meta=Path(args.actions_meta))
 
 
 def serve(cfg: Config, host: str = "127.0.0.1",
@@ -912,6 +1176,14 @@ def serve(cfg: Config, host: str = "127.0.0.1",
     if not cfg.glossary.exists():
         print("[actionsserve] 警告: glossary 不存在: %s（/view/glossary 返回"
               " 500）" % cfg.glossary, file=sys.stderr)
+    # P3：注册表 ↔ 实现一致性自检（**只警告不阻断**——不一致时页面会黄条，
+    # 但 A 档读动作仍然可用，没必要让整个服务起不来）
+    try:
+        probs = check_registry_consistency(load_registry(cfg.registry_json))
+    except (OSError, json.JSONDecodeError, ValueError) as e:
+        probs = ["注册表不可读/损坏: %s" % e]
+    for p in probs:
+        print("[actionsserve] ⚠ 注册表不一致: %s" % p, file=sys.stderr)
     srv = ThreadingHTTPServer((host, port), make_handler(cfg))
     real = srv.socket.getsockname()[1]
     print("[actionsserve] 已启动 http://%s:%d/  （db=%s, cards=%s）"

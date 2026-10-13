@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 tests/_tmp/
+# 动作台账（P3-2）：本机运行期产物，可能含会话 sid 与操作留痕，不入库
+actions/actions_meta.db*
 # 一次性产物（补丁脚本/中间报告）。**结论必须回写已提交的文档**——
 # 与后端仓库同款纪律：docs/reports/ 只放一次性产物。
 docs/reports/

@@ -1,0 +1,560 @@
+{
+ "schema": 1,
+ "kind": "harvester-view 动作注册表 v1（冻结白名单；SOP D5/D11）",
+ "generated_by": "actions/registrygen.py（python -m actions.registrygen）",
+ "hint": "三个档：A 只读直接执行 / B 写 meta 两段提交 / C 只生成命令永不执行。本表由 commands.json（事实）+ write_actions.json（人写的判断）合并生成，合并时做双向检查（引用不存在的命令/参数 → 失败；真 CLI 的写参数漏声明 → 失败）。执行器只认本表：表外动作一律 403。",
+ "tiers": {
+  "A": "只读直接执行（写 reports/ 与临时目录不算写库）",
+  "B": "写 meta 库：两段提交（confirm_token）+ 台账留痕",
+  "C": "只生成命令，页面永不执行"
+ },
+ "write_targets": {
+  "suggestions_meta": "suggestions_meta.db（建议池状态与人账）",
+  "topics_meta": "topics_meta.db（主题注册表）",
+  "keywords_meta": "keywords_meta.db（n-gram 统计累积表）"
+ },
+ "cards": [
+  {
+   "card_id": "collect",
+   "label": "采集更新",
+   "tier": "B",
+   "order": 1,
+   "desc": "把新会话收进库：日常用 update（增量），sync 是全量对账（重活）。",
+   "writes": "harvester.db（采集库，钦定写入路径）"
+  },
+  {
+   "card_id": "browse",
+   "label": "浏览检索",
+   "tier": "A",
+   "order": 2,
+   "desc": "看数据源状态、扫纲要、全文检索、按序号读会话。",
+   "writes": ""
+  },
+  {
+   "card_id": "export",
+   "label": "导出交接",
+   "tier": "A",
+   "order": 3,
+   "desc": "导出/聚合/打包/起草蒸馏包——产物落 exports/，供 Agent 消费。",
+   "writes": ""
+  },
+  {
+   "card_id": "tools",
+   "label": "工具体检",
+   "tier": "A",
+   "order": 4,
+   "desc": "G1 工具调用与失败率；trace 口径另有一份。",
+   "writes": ""
+  },
+  {
+   "card_id": "errors",
+   "label": "错误验尸",
+   "tier": "A",
+   "order": 5,
+   "desc": "G2 错误三分类与失败翼报告。",
+   "writes": ""
+  },
+  {
+   "card_id": "skill",
+   "label": "skill 鉴定",
+   "tier": "A",
+   "order": 6,
+   "desc": "G4 Skill 行为画像；join 把 chain 锚点与 skill 调用点交叉。",
+   "writes": ""
+  },
+  {
+   "card_id": "triage",
+   "label": "分诊蒸馏",
+   "tier": "A",
+   "order": 7,
+   "desc": "蒸馏队列与主题梳理流水线（含深度分诊；实测约 9 分钟，标重活）。",
+   "writes": ""
+  },
+  {
+   "card_id": "ledger",
+   "label": "班规裁决",
+   "tier": "A",
+   "order": 8,
+   "desc": "建议池生成与状态落库、人账同步、A/B 效果评估。",
+   "writes": "suggestions_meta.db（B 档动作）"
+  },
+  {
+   "card_id": "topic",
+   "label": "主题档案",
+   "tier": "A",
+   "order": 9,
+   "desc": "主题注册表全家族 + 五档时间线 + chain 导出与校验审计。",
+   "writes": "topics_meta.db（register/add/merge 属 B 档）"
+  },
+  {
+   "card_id": "artifacts",
+   "label": "产物回收",
+   "tier": "A",
+   "order": 10,
+   "desc": "从 Write/Edit 参数回源提取产物版本；查看用 show。",
+   "writes": "artifacts_meta.db（extract 属 B 档）"
+  },
+  {
+   "card_id": "kb",
+   "label": "知识库",
+   "tier": "A",
+   "order": 11,
+   "desc": "卡片校验/脚手架、知识库骨架与盘点。",
+   "writes": "卡片目录 / 知识库骨架（kb-init、cards new 属 B 档）"
+  },
+  {
+   "card_id": "keywords",
+   "label": "词频账本",
+   "tier": "A",
+   "order": 12,
+   "desc": "n-gram 关键词统计与 keywords_meta.db 回收。",
+   "writes": "keywords_meta.db（gc 属 B 档）"
+  },
+  {
+   "card_id": "service",
+   "label": "长驻服务",
+   "tier": "C",
+   "order": 13,
+   "desc": "要占端口常驻或要人亲手登录的动作——**只生成命令**，页面永不执行。",
+   "writes": "占用端口 / 浏览器登录态"
+  }
+ ],
+ "read_actions": [
+  {
+   "action_id": "regress",
+   "tier": "A",
+   "cmd": "regress",
+   "est_sec": null
+  },
+  {
+   "action_id": "report_errors",
+   "tier": "A",
+   "cmd": "report-errors",
+   "est_sec": null
+  },
+  {
+   "action_id": "report_tools",
+   "tier": "A",
+   "cmd": "report-tools",
+   "est_sec": null
+  },
+  {
+   "action_id": "topic_list",
+   "tier": "A",
+   "cmd": "topic",
+   "est_sec": null
+  }
+ ],
+ "write_actions": [
+  {
+   "action_id": "keywords_gc",
+   "tier": "B",
+   "cmd": "keywords-gc",
+   "subaction": null,
+   "risk": "reversible",
+   "target": "keywords_meta",
+   "summary": "回收 keywords_meta.db：只保留最近 {keep_runs} 次 run（vacuum={vacuum}）",
+   "detail": "keyword_stats 是累积表，读路径只读最新一次 run；删历史 run 不损失能力，但历史 run 就没了。",
+   "params": [
+    {
+     "name": "keep_runs",
+     "dest": "keep_runs",
+     "arg": "--keep-runs",
+     "kind": "int",
+     "src": "none",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": 1,
+     "note": null,
+     "label": "保留最近几次 run"
+    },
+    {
+     "name": "vacuum",
+     "dest": "vacuum",
+     "arg": "--vacuum",
+     "kind": "switch",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": false,
+     "note": null,
+     "label": "跑完顺手 VACUUM（回收空闲页）"
+    }
+   ],
+   "writes": "keywords_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  },
+  {
+   "action_id": "suggest_status",
+   "tier": "B",
+   "cmd": "suggest-status",
+   "subaction": null,
+   "risk": "reversible",
+   "target": "suggestions_meta",
+   "summary": "在建议台账里把一条建议的状态改为 {status}",
+   "detail": "影响 harvest-eval 的 A/B 分界（adopted_at）；不是 adopted 时会清空分界。",
+   "params": [
+    {
+     "name": "key",
+     "dest": "key",
+     "arg": "--key",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "建议句（台账 key，逐字）"
+    },
+    {
+     "name": "status",
+     "dest": "status",
+     "arg": "--status",
+     "kind": "enum",
+     "src": "none",
+     "server": false,
+     "required": true,
+     "choices": [
+      "pending",
+      "adopted",
+      "rejected"
+     ],
+     "default": null,
+     "note": null,
+     "label": "新状态"
+    },
+    {
+     "name": "adopted_at",
+     "dest": "adopted_at",
+     "arg": "--adopted-at",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "采纳分界日（可空）"
+    },
+    {
+     "name": "note",
+     "dest": "note",
+     "arg": "--note",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "说明（可空）"
+    }
+   ],
+   "writes": "suggestions_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  },
+  {
+   "action_id": "topic_add",
+   "tier": "B",
+   "cmd": "topic",
+   "subaction": "add",
+   "risk": "reversible",
+   "target": "topics_meta",
+   "summary": "往主题 {id_} 里加成员：{sids}",
+   "detail": "幂等：已是成员的 sid 会跳过，只登记新成员。",
+   "params": [
+    {
+     "name": "topic_id",
+     "dest": "id_",
+     "arg": "--id",
+     "kind": "str",
+     "src": "topics_api",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "目标主题"
+    },
+    {
+     "name": "sids",
+     "dest": "sids",
+     "arg": "--sids",
+     "kind": "str",
+     "src": "sessions_api",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "成员 sid（逗号分隔）"
+    },
+    {
+     "name": "evidence",
+     "dest": "evidence",
+     "arg": "--evidence",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": "",
+     "note": null,
+     "label": "成员证据说明（可空）"
+    }
+   ],
+   "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  },
+  {
+   "action_id": "topic_delete",
+   "tier": "B",
+   "cmd": "topic",
+   "subaction": "delete",
+   "risk": "destructive",
+   "target": "topics_meta",
+   "summary": "删除主题行 {id_}（成员随行留痕，快照存台账）",
+   "detail": "只删注册行，**不动任何会话数据**；被删主题的快照进 actions_meta.db，但要恢复得人工照快照重建。",
+   "params": [
+    {
+     "name": "topic_id",
+     "dest": "id_",
+     "arg": "--id",
+     "kind": "str",
+     "src": "topics_api",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "要删除的主题"
+    }
+   ],
+   "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "会丢信息（源主题行/历史 run 删除后页面上找不回）"
+  },
+  {
+   "action_id": "topic_keywords",
+   "tier": "B",
+   "cmd": "topic",
+   "subaction": "keywords",
+   "risk": "reversible",
+   "target": "topics_meta",
+   "summary": "覆盖式定稿主题 {id_} 的关键词：{keywords}",
+   "detail": "**覆盖**而非追加：给的是定稿后的完整列表。",
+   "params": [
+    {
+     "name": "topic_id",
+     "dest": "id_",
+     "arg": "--id",
+     "kind": "str",
+     "src": "topics_api",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "目标主题"
+    },
+    {
+     "name": "keywords",
+     "dest": "keywords",
+     "arg": "--keywords",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "定稿关键词（逗号分隔，覆盖式）"
+    }
+   ],
+   "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  },
+  {
+   "action_id": "topic_merge",
+   "tier": "B",
+   "cmd": "topic",
+   "subaction": "merge",
+   "risk": "destructive",
+   "target": "topics_meta",
+   "summary": "把源主题 {from_} 合并进 {id_}（默认删除源主题行）",
+   "detail": "成员并入目标并**删除源主题行**（keep_sources 勾上则保留）。源主题行删了就在页面上找不回来了。",
+   "params": [
+    {
+     "name": "topic_id",
+     "dest": "id_",
+     "arg": "--id",
+     "kind": "str",
+     "src": "topics_api",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "目标主题（并入到这里）"
+    },
+    {
+     "name": "from_",
+     "dest": "from_",
+     "arg": "--from",
+     "kind": "str",
+     "src": "topics_api",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "源主题（逗号分隔，会被删）"
+    },
+    {
+     "name": "keep_sources",
+     "dest": "keep_sources",
+     "arg": "--keep-sources",
+     "kind": "switch",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": false,
+     "note": null,
+     "label": "保留源主题行（默认不保留）"
+    }
+   ],
+   "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "会丢信息（源主题行/历史 run 删除后页面上找不回）"
+  },
+  {
+   "action_id": "topic_register",
+   "tier": "B",
+   "cmd": "topic",
+   "subaction": "register",
+   "risk": "reversible",
+   "target": "topics_meta",
+   "summary": "注册一个新主题「{name}」（关键词：{keywords}）",
+   "detail": "同名主题已存在时**幂等返回旧 id**，不会重复建。",
+   "params": [
+    {
+     "name": "name",
+     "dest": "name",
+     "arg": "--name",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "主题名"
+    },
+    {
+     "name": "keywords",
+     "dest": "keywords",
+     "arg": "--keywords",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "关键词（逗号分隔）"
+    }
+   ],
+   "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  },
+  {
+   "action_id": "topic_remove",
+   "tier": "B",
+   "cmd": "topic",
+   "subaction": "remove",
+   "risk": "reversible",
+   "target": "topics_meta",
+   "summary": "从主题 {id_} 移除成员 {sid}",
+   "detail": "只动注册表成员列表，**不删任何会话数据**。",
+   "params": [
+    {
+     "name": "topic_id",
+     "dest": "id_",
+     "arg": "--id",
+     "kind": "str",
+     "src": "topics_api",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "目标主题"
+    },
+    {
+     "name": "sid",
+     "dest": "sid",
+     "arg": "--sid",
+     "kind": "str",
+     "src": "sessions_api",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "要移除的成员 sid"
+    }
+   ],
+   "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  },
+  {
+   "action_id": "topic_rename",
+   "tier": "B",
+   "cmd": "topic",
+   "subaction": "rename",
+   "risk": "reversible",
+   "target": "topics_meta",
+   "summary": "把主题 {id_} 改名为「{name}」",
+   "detail": "id 不变，故已发布的 chain 仍能按 topic_id 对上；与既有主题重名会被拒（不静默合并）。",
+   "params": [
+    {
+     "name": "topic_id",
+     "dest": "id_",
+     "arg": "--id",
+     "kind": "str",
+     "src": "topics_api",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "目标主题"
+    },
+    {
+     "name": "name",
+     "dest": "name",
+     "arg": "--name",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "新主题名"
+    }
+   ],
+   "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  }
+ ],
+ "counts": {
+  "cards": 13,
+  "read_actions": 4,
+  "write_actions": 9,
+  "write_reversible": 7,
+  "write_destructive": 2
+ }
+}

@@ -17,9 +17,12 @@
 - **卡片本体**：G3 卡片页现在显示每张卡的结论 / 证据引文 / 锚点 / 置信度，
   与上游 /api/cards 的校验徽章合并（本体由本仓 cardlib.py 只读解析
   frontmatter，**不碰 session-harvester**，工程决策 D9）；
-- **本地只读服务 viewserver.py（端口 8766）**：提供 /view/cards 与
-  /view/glossary（回环地址绑定、只读、无凭据）；页面跨源取数用 CORS。
-  没启动它时页面照常工作，只是卡片页缺本体、解释层不渲染（黄条提示）；
+- **本地只读服务（端口 8766，P2 起由 `actions/actionsserve.py` 承担）**：提供
+  /view/cards 与 /view/glossary（回环地址绑定、只读、无凭据）；页面跨源取数用 CORS。
+  没启动它时页面照常工作，只是卡片页缺本体、解释层不渲染（黄条提示）。
+  **注意**：这两个端点在 8766，页面在 8088——前端必须用绝对地址（`ACT_BASE`），
+  用相对路径 `fetch("/view/…")` 会打到 8088 的 view.py 并 **404**（P1 遗留缺陷，
+  P2 会话起服实测抓到并已修，`tests/render_cmd.js` 有静态门钉住）；
 - **解释层 glossary（static/glossary.json）**：术语悬停卡（虚线下划线）、
   「怎么读」可折叠导语、错误模式人话表——全部静态数据，零 LLM；
 - **结论卡**：G1/G2/建议池/蒸馏队列头部新增模板结论（主语+数字+判语+
@@ -262,12 +265,24 @@ A：导出走浏览器下载（看下载栏）；复制依赖剪贴板权限，�
 ## 测试
 
 ```bash
-python -m unittest discover -s tests -v     # 25 例
+# 全套件（**62 例**；跑之前先设 PYTHONPATH 指向 session-harvester/scripts/sandbox）
+python -m unittest discover -s tests -v
+
+# 渲染门（两个，node；缺 node 时上面套件里转 skip，不是"通过"）
+node tests/render_smoke.js      # P0-2/P0-3 报告渲染
+node tests/render_cmd.js        # P2 命令台 + 数字皆门三跳 + 端点地址静态门
+
+# 跨仓库真实载荷门（真库取数喂真渲染函数；**退出码 3 = 未执行，不是通过**）
+python tests/check_real_payload.py
 ```
 
 覆盖：静态页服务、转发保真（query/token）、版本不匹配拒绝、
 不可达与超时降级、非 GET 405、多上游切换、`/u/all/facets` 聚合降级、
-`/u/all/search` 跨实例搜索与降级、config 加载 fail loud。
+`/u/all/search` 跨实例搜索与降级、config 加载 fail loud、
+卡片本体解析、本地服务三端点、**actions-serve（白名单 403 / 参数过滤 /
+契约版本 409 / 作业轮询 / timeline 五档 / pattern-sessions 数字对账 /
+regress 语料漂移必须变红）**、**命令注册表与真解析器逐参数比对（漂移即红）**、
+命令台渲染与三跳接线。
 
 ### 跨仓库集成门：真实载荷渲染（`tests/render_real.js`）
 

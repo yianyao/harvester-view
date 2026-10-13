@@ -44,6 +44,13 @@ button:disabled{opacity:.45;cursor:not-allowed}
   font-size:13px}
 #banner.warn{display:block;background:var(--warn-bg);color:var(--warn-ink)}
 #banner.err{display:block;background:var(--err-bg);color:var(--err-ink)}
+/* v0.51：banner 关闭按钮 + 可点跳转动作（用户 2026-10-13 报：提示条
+   既关不掉也不随切页签消失，还没法直接跳目标回合） */
+#banner .banner-x{float:right;cursor:pointer;font-weight:700;opacity:.65;
+  padding:0 4px;line-height:1}
+#banner .banner-x:hover{opacity:1}
+#banner .banner-act{cursor:pointer;font-weight:600;text-decoration:underline;
+  margin-left:8px;white-space:nowrap}
 main{display:flex;gap:14px;padding:14px 16px;align-items:flex-start}
 section.tab{padding:14px 16px}
 #left{flex:1.25;min-width:0}
@@ -532,7 +539,13 @@ const state = {no:0, offset:0, limit:50, total:0, q:"", sid:null,
                cmdCard:null, actionId:null, cmdParams:{}, job:null,
                chain:[], chainSilent:false,
                /* P3-3：今日工作台（overview 原样缓存，页面不改造数字） */
-               ov:null};
+               ov:null,
+               /* v0.51 锚点/下钻并发守卫：anchorRun=锚点直通链代号（每次
+                  gotoAnchor/gotoTopicAnchor 自增，过期链在每个 await 后
+                  自查放弃）；drillTk=openSession/openTurn 渲染代号（晚
+                  发的赢家渲染，早发的在途响应直接丢弃——修复"连点两个
+                  锚点，弹窗内容串台/没开"用户 2026-10-13 报） */
+               anchorRun:0, drillTk:0};
 
 /* ---------- 工具 ---------- */
 function esc(s){return String(s??"").replace(/[&<>"']/g,
@@ -547,9 +560,27 @@ function hl(text,q){
   }
   return out;
 }
-function showBanner(kind,msg){const b=$("banner");b.className=kind;
-  b.textContent=msg;}
-function hideBanner(){const b=$("banner");b.className="";b.textContent="";}
+/* v0.51 banner 增强：①常驻 × 关闭按钮（用户报：既关不掉）；②可选跳转
+   动作链接（锚点定位结果可一键直达回合）；③粘性标记——err 一律粘、
+   warn 显式声明粘。api() 成功后的软清除只清非粘提示，否则首次切到
+   会话页时 loadAll 的成功请求会把锚点/错误提示冲掉（用户报"弹窗没开
+   也没提示"的另一半成因）。切页签仍无条件清除（用户报：切 TAB 不关）。 */
+function showBanner(kind,msg){showBannerRich(kind,esc(msg),null);}
+function showBannerRich(kind,html,act){
+  const b=$("banner");b.className=kind;b.dataset.kind=kind;
+  b.dataset.sticky=(kind==="err"||act&&act.sticky)?"1":"";
+  b.innerHTML="<span id='banner-msg'>"+html+"</span>"+
+    (act?" <a href='javascript:void(0)' id='banner-act' class='banner-act'>"+
+      esc(act.label||"直达回合")+"</a>":"")+
+    "<span id='banner-x' class='banner-x' title='关闭提示'>×</span>";
+  if(act)$("banner-act").onclick=act.fn;
+  $("banner-x").onclick=hideBanner;
+}
+function hideBanner(){const b=$("banner");b.className="";b.textContent="";
+  b.dataset.kind="";b.dataset.sticky="";}
+/* api 成功后的清理：不动粘性提示（err/锚点结果），只清普通 warn */
+function softClearBanner(){const b=$("banner");
+  if(b.dataset.sticky!=="1")hideBanner();}
 function daysVal(id){const v=Number($(id).value||0);return v>0?v:0;}
 /* 锚点链接（sid#seq，可点 → 会话下钻并定位错误原文） */
 /* 锚点（sid#seq）：**显示截断、悬停出全量**。
@@ -744,7 +775,7 @@ async function api(path){
   try{ res=await fetch("/u/"+state.no+path); }
   catch(e){ showBanner("warn","本地代理不可达？请确认 view.py 正在运行");
             throw e; }
-  if(res.ok){ hideBanner(); return res.json(); }
+  if(res.ok){ softClearBanner(); return res.json(); }
   return failApi(res);
 }
 async function apiAll(path){ /* /u/all/* 聚合端点 */
@@ -752,7 +783,7 @@ async function apiAll(path){ /* /u/all/* 聚合端点 */
   try{ res=await fetch(path); }
   catch(e){ showBanner("warn","本地代理不可达？请确认 view.py 正在运行");
             throw e; }
-  if(res.ok){ hideBanner(); return res.json(); }
+  if(res.ok){ softClearBanner(); return res.json(); }
   return failApi(res);
 }
 /* 文本响应（P1-4：export-analysis format=md 的 text/markdown 出口） */
@@ -761,7 +792,7 @@ async function apiText(path){
   try{ res=await fetch("/u/"+state.no+path); }
   catch(e){ showBanner("warn","本地代理不可达？请确认 view.py 正在运行");
             throw e; }
-  if(res.ok){ hideBanner(); return res.text(); }
+  if(res.ok){ softClearBanner(); return res.text(); }
   return failApi(res);
 }
 /* P1-4 统一分析导出：view 端只做下载，md/JSON 拼装与去重全在端点侧
@@ -798,6 +829,7 @@ async function failApi(res){
 
 /* ---------- Tab 切换 ---------- */
 function switchTab(name){
+  hideBanner(); /* v0.51：切页签即关提示条（用户 2026-10-13 报：切 TAB 不关） */
   state.tab=name;
   for(const b of document.querySelectorAll("#tabs button"))
     b.classList.toggle("on",b.dataset.tab===name);
@@ -926,9 +958,14 @@ function toggleSel(sid,on){
   updateSelInfo();
 }
 /* ---------- 下钻：会话 → 回合 → 全文 ---------- */
+/* v0.51：drillTk 渲染代号——晚发起的下钻才是赢家，早发的在途响应
+   到达后自知过期、放弃渲染（修连点锚点时弹窗内容串台）。
+   被超越时返回 null，调用方（gotoTopicAnchor）据此中止后续步骤。 */
 async function openSession(sid){
+  const tk=++state.drillTk;
   state.sid=sid;
   const d=await api("/api/session/"+encodeURIComponent(sid));
+  if(tk!==state.drillTk)return null;
   const m=d.meta||{};
   const box=$("detail");
   box.style.display="block";
@@ -962,7 +999,9 @@ async function openSession(sid){
   return d;
 }
 async function openTurn(sid,no,hitIdx){
+  const tk=++state.drillTk;
   const d=await api("/api/session/"+encodeURIComponent(sid)+"/turn/"+no);
+  if(tk!==state.drillTk)return null;
   const box=$("turn-body");
   box.innerHTML="<hr><div class='sub'>回合 #"+d.turn+" 全文</div>"+
     (d.messages||[]).map(renderMsg).join("");
@@ -987,38 +1026,60 @@ function renderMsg(m){
     "</span><div class='body'>"+esc(text)+"</div></div>";
 }
 
-/* 锚点直通：打开会话 → 分批并发逐回合定位错误原文 → 高亮命中消息 */
+/* 锚点直通：打开会话 → 分批并发逐回合定位错误原文 → 高亮命中消息。
+   v0.51 三改（用户 2026-10-13 报）：
+   ① run 守卫——连点两个锚点时旧链在每个 await 后自查放弃，修"弹窗
+     内容串台/没开"（三跳入口 bindAnchors 无 .catch，错误也在此兜住）；
+   ② 无错误原文但回合号明确 → 直接 openTurn，不再让人"自行定位"；
+   ③ 定位失败/无回合号的提示条带「直达回合」可点动作（showBannerRich）。 */
 async function gotoAnchor(sid,seq,errText){
-  switchTab("sessions");
-  await openSession(sid);
-  const probe=String(errText||"").replace(/\s+/g," ").trim();
-  if(!probe){ showBanner("warn","锚点无错误原文，已打开会话 "
-    +sid+"（回合列表中自行定位 step #"+seq+"）"); return; }
-  const d=await api("/api/session/"+encodeURIComponent(sid));
-  const n=Math.min(d.n_turns||0,80);
-  for(let base=1;base<=n;base+=5){
-    const batch=[...Array(5)].map((_,i)=>base+i).filter(x=>x<=n);
-    const rs=await Promise.all(batch.map(x=>
-      api("/api/session/"+encodeURIComponent(sid)+"/turn/"+x)
-        .catch(()=>null)));
-    for(const t of rs){
-      if(!t)continue;
-      let idx=(t.messages||[]).findIndex(m=>
-        String(m.content||"").replace(/\s+/g," ").includes(probe));
-      if(idx<0){ /* 降级：用更短探针再试 */
-        const p2=probe.slice(0,30);
-        if(p2) idx=(t.messages||[]).findIndex(m=>
-          String(m.content||"").replace(/\s+/g," ").includes(p2));
-      }
-      if(idx>=0){
-        await openTurn(sid,t.turn,idx);
-        return;
+  const run=++state.anchorRun;
+  try{
+    switchTab("sessions");
+    await openSession(sid);
+    if(run!==state.anchorRun)return;
+    const probe=String(errText||"").replace(/\s+/g," ").trim();
+    if(!probe){
+      if(seq>0){ await openTurn(sid,seq); return; }
+      showBannerRich("warn","锚点无错误原文，已打开会话 "+
+        esc(shortSid(sid))+"（无回合号，请在回合列表人工定位）。",
+        {label:"打开回合 #1",fn:()=>openTurn(sid,1),sticky:true});
+      return;
+    }
+    const d=await api("/api/session/"+encodeURIComponent(sid));
+    if(run!==state.anchorRun)return;
+    const n=Math.min(d.n_turns||0,80);
+    for(let base=1;base<=n;base+=5){
+      const batch=[...Array(5)].map((_,i)=>base+i).filter(x=>x<=n);
+      const rs=await Promise.all(batch.map(x=>
+        api("/api/session/"+encodeURIComponent(sid)+"/turn/"+x)
+          .catch(()=>null)));
+      if(run!==state.anchorRun)return;
+      for(const t of rs){
+        if(!t)continue;
+        let idx=(t.messages||[]).findIndex(m=>
+          String(m.content||"").replace(/\s+/g," ").includes(probe));
+        if(idx<0){ /* 降级：用更短探针再试 */
+          const p2=probe.slice(0,30);
+          if(p2) idx=(t.messages||[]).findIndex(m=>
+            String(m.content||"").replace(/\s+/g," ").includes(p2));
+        }
+        if(idx>=0){
+          await openTurn(sid,t.turn,idx);
+          return;
+        }
       }
     }
+    showBannerRich("warn","已在会话 "+esc(shortSid(sid))+
+      " 中做了逐回合定位，但未找到与错误原文逐字匹配的消息"+
+      "（表述可能经 adapter 改写）——可按 step #"+seq+" 人工定位。",
+      {label:"直达回合 #"+(seq>0?seq:1),
+       fn:()=>openTurn(sid,seq>0?seq:1),sticky:true});
+  }catch(e){
+    if(run===state.anchorRun)
+      showBanner("err","锚点跳转失败（会话可能不在当前库或上游不可达）："+
+        shortSid(sid)+" — "+e.message);
   }
-  showBanner("warn","已在会话 "+sid+" 中打开全文检索定位，"
-    +"但未找到与错误原文逐字匹配的消息（表述可能经 adapter 改写）——"
-    +"可按 step #"+seq+" 在回合列表中人工定位。");
 }
 
 /* ---------- P1-5：会话异常类别 chips（错误→会话对账） ---------- */
@@ -1850,13 +1911,17 @@ function bindTopicNodes(root){
   for(const el of root.querySelectorAll(".tl-node"))
     el.onclick=()=>gotoTopicAnchor(el.dataset.sid,Number(el.dataset.turn));
 }
-/* 主题锚点直通：turn=会话回合号（与链锚点同口径），直达回合全文 */
+/* 主题锚点直通：turn=会话回合号（与链锚点同口径），直达回合全文。
+   v0.51：同一 anchorRun 代号 + openSession 被超越即中止（返回 null）。 */
 async function gotoTopicAnchor(sid,turn){
+  const run=++state.anchorRun;
   switchTab("sessions");
   try{
-    await openSession(sid);
+    if(await openSession(sid)===null)return;
+    if(run!==state.anchorRun)return;
     await openTurn(sid,turn);
-  }catch(e){ showBanner("err","锚点跳转失败："+e.message); }
+  }catch(e){ if(run===state.anchorRun)
+    showBanner("err","锚点跳转失败："+e.message); }
 }
 /* 复制命令（红线 3：视图绝不执行，只给文本） */
 function topicPackCmd(id,level,sid){

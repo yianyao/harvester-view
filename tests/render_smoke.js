@@ -339,6 +339,30 @@ check("旧本地拼装已移除（exportAbnormal*/mdTriage）",
 check("agents/cards 报告仍可本地导出（端点未覆盖，mdReport 保留）",
   html.includes("mdReport("));
 
+/* --- v0.51 banner 增强 + 锚点/下钻并发守卫（用户 2026-10-13 报） ---
+ * 门钉不变式：①提示条可关可跳；②api 成功不清粘性提示；③切页签必关；
+ * ④锚点链/下钻渲染带代号守卫（连点不串台）；⑤无原文+回合号明确直开回合。 */
+check("banner 有常驻关闭按钮与可点动作（showBannerRich）",
+  html.includes("function showBannerRich") &&
+  html.includes("class='banner-x'") &&
+  html.includes("class='banner-act'"));
+check("api 成功走软清除（err/锚点粘性提示不被 loadAll 冲掉）",
+  html.includes("function softClearBanner") &&
+  (html.match(/softClearBanner\(\)/g) || []).length >= 3 &&
+  !/if\(res\.ok\)\{\s*hideBanner\(\)/.test(html));
+check("切页签无条件关提示条",
+  /function switchTab\(name\)\{\s*hideBanner\(\);/.test(html));
+check("锚点链带 anchorRun 守卫（连点不串台）",
+  /async function gotoAnchor\(sid,seq,errText\)\{\s*const run=\+\+state\.anchorRun;/
+    .test(html) &&
+  /async function gotoTopicAnchor\(sid,turn\)\{\s*const run=\+\+state\.anchorRun;/
+    .test(html));
+check("下钻渲染带 drillTk 代号（晚发赢家，早发弃渲染）",
+  /async function openSession\(sid\)\{\s*const tk=\+\+state\.drillTk;/.test(html) &&
+  /async function openTurn\(sid,no,hitIdx\)\{\s*const tk=\+\+state\.drillTk;/.test(html));
+check("无错误原文+回合号明确 → 直开回合（不再「自行定位」）",
+  html.includes("await openTurn(sid,seq)"));
+
 /* --- v0.22 P1-3 交叉表（G2 renderErrors 消费 additive cross 字段） ---
  * H22：渲染断言必须演示会红；旧上游无 cross 字段时降级不渲染不崩。 */
 eval(extract("renderErrors"));

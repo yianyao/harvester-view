@@ -337,6 +337,24 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 #tour .t-body{color:var(--ink2);margin-bottom:6px}
 #tour .t-do{background:var(--bg);border-radius:6px;padding:6px 8px;margin-bottom:8px}
 #tour .t-nav{display:flex;gap:8px;justify-content:flex-end}
+/* P5-2 三身份（机械事实/AI 判断/人的裁决）：只动左边条与徽章描边，
+   不写死底色（主题对比度纪律）；三种线型/颜色肉眼可分。 */
+.p-fact{border-left:3px solid var(--ink2);padding-left:8px}
+.p-ai{border-left:3px dashed var(--accent);padding-left:8px}
+.p-human{border-left:3px solid var(--ok-ink);padding-left:8px}
+.p-tag{display:inline-block;font-size:11px;font-weight:600;
+  border:1px solid;border-radius:4px;padding:0 6px;margin-right:6px}
+.p-tag.t-fact{color:var(--ink2);border-color:var(--ink2)}
+.p-tag.t-ai{color:var(--accent);border-color:var(--accent)}
+.p-tag.t-human{color:var(--ok-ink);border-color:var(--ok-ink)}
+/* P5-2 数据新鲜度常驻条：灰=与库同步；黄=库已更新/语料比库新。
+   只读 /api/meta 指纹（apiserve 只读面），绝不发动作请求。 */
+#freshbar{display:none;margin:6px 16px 0;padding:5px 12px;border-radius:8px;
+  font-size:12px;border:1px solid var(--line);color:var(--ink2);
+  background:var(--panel)}
+#freshbar.stale{border-color:var(--warn-ink);color:var(--warn-ink)}
+#freshbar .fb-act{cursor:pointer;font-weight:600;text-decoration:underline;
+  margin-left:8px}
 </style>
 </head>
 <body>
@@ -358,6 +376,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 </header>
 <div id="banner"></div>
 <div id="tour" style="display:none"></div>
+<div id="freshbar" style="display:none"></div>
 
 <!-- ============ Tab 0: 今日工作台（P3-3） ============
   数据源：/api/overview（服务端算好四队列 + 三环；**每个数字带 source 与
@@ -1269,7 +1288,8 @@ function renderRepConcl(kind,d){
         "在 CLI 侧人工并入并 suggest-status 落账"),
       cmd:()=>showBanner("warn","命令台在 P2 阶段接入（占位）")};
   }
-  box.innerHTML=(cc||"")+panelIntro(introKey);
+  box.innerHTML=(cc?"<div class='p-fact'>"+pTag("fact")+cc+"</div>":"")+
+    panelIntro(introKey);
   if(handlers)bindConcl(box,handlers);
   if(glossary.loaded)applyTermTooltips(box);
 }
@@ -1305,7 +1325,8 @@ async function loadTriage(manual){
   let ok=false;
   try{ await _renderTriage(out,t0); ok=true;
     try{ await loadGlossary(); }catch(e){}
-    $("tri-concl").innerHTML=triageConcl(state.triLast)+panelIntro("triage");
+    $("tri-concl").innerHTML="<div class='p-fact'>"+pTag("fact")+
+    triageConcl(state.triLast)+"</div>"+panelIntro("triage");
     if(glossary.loaded)applyTermTooltips(out);
   }
   catch(e){ out.innerHTML=errorBox("生成失败："+e.message+
@@ -1709,9 +1730,9 @@ function renderAgents(d,out){
   const ownerPill=o=>o?"<span class='pill "+
     (o==="harness"?"err":o==="tool"?"known":"ok")+
     "' title='修复责任方'>"+esc(o)+"</span>":"";
-  const statusPill=s=>s&&s!=="pending"?"<span class='pill "+
+  const statusPill=s=>s&&s!=="pending"?pTag("human")+"<span class='pill "+
     (s==="adopted"?"ok":"err")+"'>"+esc(s)+"</span>":"";
-  let html="<p class='sub2'>纪律：以下为 AGENTS.md 候选条目（机器产出），"+
+  let html="<p class='sub2'>"+pTag("ai")+"纪律：以下为 AGENTS.md 候选条目（机器产出），"+
     "人工审阅后自行并入——本视图绝不写入任何配置文件。</p>";
   html+="<h3 class='sec'>待修清单（未解决 ≥ 1，优先处理）</h3>";
   html+=todo.length?("<table><thead><tr><th class='num'>实测</th>"+
@@ -1802,7 +1823,7 @@ function renderCards(d,out){
         :errs.length?"<span class='pill err'>校验错误 "+errs.length+"</span>"
         :warns.length?"<span class='pill known'>校验警告 "+warns.length+
         "</span>":"<span class='pill ok'>校验通过</span>";
-      html+="<div class='card-body'><h4>"+esc(b.title||b.id||b.path)+" "+vp+
+      html+="<div class='card-body p-ai'><h4>"+pTag("ai")+esc(b.title||b.id||b.path)+" "+vp+
         (b.confidence!=null?"<span class='pill known' "+
           "title='卡片蒸馏时的置信度'>置信度 "+b.confidence+"</span>":"")+
         (b.type?"<span class='sub2'>"+esc(b.type)+"</span>":"")+"</h4>";
@@ -2978,7 +2999,7 @@ async function loadLedger(quiet){
   if(!box)return;
   if(d.__err){box.innerHTML=errorBox("台账不可读："+d.__err);return;}
   const s=d.stats||{};
-  let h="<div class='sub2'>动作 "+s.runs+" 次（失败 "+s.failed+"）｜"+
+  let h="<div class='sub2'>"+pTag("human")+"动作 "+s.runs+" 次（失败 "+s.failed+"）｜"+
     "写库 "+s.writes+" 次（破坏性 "+s.destructive+"）｜最近写："+
     esc(s.last_write||"—")+"</div>";
   h+=(d.writes||[]).length
@@ -3185,6 +3206,11 @@ async function loadOverview(){
     return;
   }
   state.ov=d;
+  /* P5-2：新鲜度条消费 overview 的库龄判定（stale=语料水位 vs 库 mtime） */
+  if(!state.fresh)state.fresh={cur:(d.db_fingerprint||null),
+    corpusStale:(d.db_fingerprint||{}).stale===true};
+  else state.fresh.corpusStale=(d.db_fingerprint||{}).stale===true;
+  renderFreshBar();
   renderQueues(d);
   renderQueueDetail(d);
   renderRings(d);
@@ -3687,6 +3713,61 @@ function maybeAutoTour(){
 $("btn-tour").onclick=()=>tourStart();
 /* ===== P5-1 tour end ===== */
 
+/* ===== P5-2 三身份与新鲜度（provenance+freshbar） =====
+ * 三身份：机械事实（库数出来的）/ AI 判断（建议池条目/卡片蒸馏产物）/
+ * 人的裁决（裁决状态与动作台账）——pTag 徽章 + 左边条，肉眼可分；
+ * 未知身份诚实返回空串（不造第四种）。
+ * 新鲜度条：只读 /api/meta 的 db_fingerprint 指纹，60s 轮询；指纹变了
+ * （库被 sync/update 过）或语料比库新（overview 的 stale 水位）→ 黄。
+ * 全程只渲染，不执行任何动作（红线）。 */
+function pTag(kind){
+  const m={fact:["t-fact","机械事实"],ai:["t-ai","AI 判断"],
+    human:["t-human","人的裁决"]};
+  const t=m[kind];
+  return t?("<span class='p-tag "+t[0]+"'>"+t[1]+"</span>"):"";
+}
+function freshKey(fp){
+  return fp?[fp.sessions,fp.steps,fp.errors,fp.db_mtime].join("|"):"";
+}
+function renderFreshBar(){
+  const bar=$("freshbar");
+  if(!bar)return;
+  const fr=state.fresh;
+  if(!fr||!fr.cur){bar.style.display="none";bar.innerHTML="";return;}
+  const moved=!!(fr.base&&freshKey(fr.cur)!==freshKey(fr.base));
+  const bad=moved||fr.corpusStale===true;
+  bar.style.display="block";
+  bar.className=bad?"stale":"";
+  const fp=fr.cur;
+  let why;
+  if(moved)why="库已更新（"+(fr.base.sessions||"?")+"→"+(fp.sessions||"?")+
+    " 会话），本页数字是旧的";
+  else if(fr.corpusStale===true)why="语料比库新——有会话还没收割入库";
+  else why="指纹一致，页面数字与库同步";
+  bar.innerHTML="<b>数据新鲜度</b>｜"+why+
+    "（"+(fp.sessions||"?")+" 会话 / "+(fp.errors||"?")+" 错误 @ "+
+    esc(String(fp.db_mtime||"—"))+"）"+
+    (moved?"<span class='fb-act' id='fb-reload' "+
+      "title='重载页面取最新库'>刷新页面</span>"+
+      "<span class='fb-act' id='fb-rebase' "+
+      "title='把当前指纹记为基线（我知道数字可能是旧的）'>以此为新基线</span>":"");
+  if(moved){
+    $("fb-reload").onclick=()=>location.reload();
+    $("fb-rebase").onclick=()=>{fr.base=fr.cur;renderFreshBar();};
+  }
+}
+async function pollFreshBar(){
+  try{
+    const m=await api("/api/meta");
+    const fp=m&&m.db_fingerprint;
+    if(!fp)return;
+    if(!state.fresh)state.fresh={base:fp,cur:fp,corpusStale:false};
+    else state.fresh.cur=fp;
+    renderFreshBar();
+  }catch(e){}
+}
+/* ===== P5-2 provenance end ===== */
+
 initUpstreams().then(()=>{
   state.no=Number($("upstream").value||0);
   /* P3-3：默认落地页 = 今日工作台。**不做 loadAll()**——会话列表由用户
@@ -3697,6 +3778,7 @@ initUpstreams().then(()=>{
   switchTab("home");
   state.loaded.home=true;
   maybeAutoTour(); /* P5-1：首次访问自动开五页引导（seen 过不弹；先 switchTab 后调用，复用已加载态） */
+  pollFreshBar(); setInterval(pollFreshBar,60000); /* P5-2：指纹轮询（灰→黄），只读 /api/meta */
 }).catch(e=>showBanner("err","初始化失败: "+e));
 </script>
 </body>

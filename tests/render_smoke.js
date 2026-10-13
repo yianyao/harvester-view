@@ -75,6 +75,7 @@ const DATA = {
 
 eval(extract("renderTools"));
 eval(extract("renderSkills"));
+function pTag(){return "";} /* P5-2 桩：身份徽章不参与卡片渲染断言 */
 eval(extract("renderCards"));
 
 let failed = 0;

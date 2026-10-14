@@ -643,6 +643,17 @@ def _cards_cli(g) -> str:
     return _cli(parts)
 
 
+#: 卡片校验命令的说明（用户 2026-10-14 批注：--root 是哪来的、为什么在
+#: .workbuddy\knowledge 下）。抽成常量随命令包三处共用，改一处全同步。
+CARD_VALIDATE_NOTE = (
+    "只读；错误与警告分列。命令里的 --root 不是探测出来的：是 start-viewv2.cmd "
+    "起服时定死传给后端的卡片仓路径（WorkBuddy 知识库卡片仓 "
+    "%USERPROFILE%\\.workbuddy\\knowledge\\cards），页面生成命令时原样填入，"
+    "点「在命令台打开」也会自动带上，不用手抄。卡片仓放 .workbuddy\\knowledge"
+    "下是因为 WorkBuddy 主程序的知识库就从这加载——本工具与主程序共用同一份"
+    "卡片，另放仓根会出现两份对不上。")
+
+
 def _card_items(g) -> list[dict]:
     items = []
     for c in (g["cards"] or {}).get("cards") or []:
@@ -657,7 +668,7 @@ def _card_items(g) -> list[dict]:
             suggestion="警告里最常见的是「证据行未在锚点原文中找到」——要么改证据"
                        "引用，要么接受它是改写并人工复核。校验器只报警，不改卡片。",
             commands=[_cmd("校验卡片目录",
-                           "只读；错误与警告分列。",
+                           CARD_VALIDATE_NOTE,
                            cli=_cards_cli(g))]))
     return items
 
@@ -790,7 +801,7 @@ def _targets_all(g) -> list[dict]:
          "where": WHERE_CARDS, "owner": "Agent + 人",
          "suggestion": "补齐 frontmatter 的锚点与证据，校验过后入库。",
          "package": [c for c in [_cmd(
-             "校验卡片目录", "只读；错误与警告分列。",
+             "校验卡片目录", CARD_VALIDATE_NOTE,
              cli=_cards_cli(g))] if c],
          "metrics": [_metric("cards", "待做卡片数", "items")],
          "primary": "cards", "items": cardsp},
@@ -939,7 +950,7 @@ def _targets_all(g) -> list[dict]:
          "where": WHERE_CARDS, "owner": "人 + Agent",
          "suggestion": "警告多是「证据行与锚点原文对不上」：改引用，"
                        "或人工复核后接受。",
-         "package": [_cmd("校验卡片目录", "只读；错误与警告分列。",
+         "package": [_cmd("校验卡片目录", CARD_VALIDATE_NOTE,
                           cli=_cards_cli(g))],
          "metrics": [_metric("cards", "待确认卡片数", "items")],
          "primary": "cards", "items": cards},

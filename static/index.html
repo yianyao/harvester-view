@@ -411,6 +411,26 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 <section class="tab" id="tab-work" style="display:none">
   <main>
     <div id="work-intro"></div>
+    <!-- v0.64（用户 2026-10-14 批注：数据到处乱放，让人咋找）：
+         路径速查常驻处理单页，讲清两个"家"与命令里路径的来源 -->
+    <details class="panel-intro"><summary>数据都在哪（命令里那些路径是哪来的）</summary>
+      <div class="sub2">
+      <b>两个"家"，各管各的，不混放：</b><br>
+      ① <b>采集仓</b>（本机 session-harvester/ 仓根）——自己采集的数据都住这：
+      harvester.db（会话·消息·工具步三表）、topics_meta / artifacts_meta /
+      keywords_meta / suggestions_meta 四本账、exports\（导出包）。
+      命令里写 <code>--db harvester.db</code> 只写文件名，就是因为库与命令行惯例
+      的当前目录（仓根）同目录。<br>
+      ② <b>WorkBuddy 知识库</b>（%USERPROFILE%\.workbuddy\knowledge\）——凡是
+      WorkBuddy 主程序自己要加载的东西都住这：cards\（知识卡片）、
+      cards_pending\（草稿卡片）、topics\（主题 chain 长文），以及主程序自己的
+      feedback\、handoffs\、INDEX.md。卡片与 chain 放这里<b>不是乱放</b>：
+      WorkBuddy 主程序的知识库界面就从这读，本工具只是把同一份卡片/chain
+      拿来校验与蒸馏——若另放仓根，就会有两份卡片、两边对不上。<br>
+      ③ 命令里的路径<b>不是运行时探测的</b>：是 start-viewv2.cmd 起服时写死
+      传给后端的配置（--cards-root / --chain-root），页面生成命令时把配置值
+      原样填进去；点「在命令台打开」参数也会自动带上，不用手抄。
+      </div></details>
     <div id="work-head"><div class="empty">从「今日工作台」点任意数字进入。</div></div>
     <div id="work-pkg"></div>
     <div id="work-items"></div>

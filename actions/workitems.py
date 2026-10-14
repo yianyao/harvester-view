@@ -62,12 +62,12 @@ VIEW_WORKITEMS_API = 1
 #: 明细条数上限；超限会让 `reconcile.ok=false`（响亮），不静默截断。
 MAX_ITEMS = 200
 
-WHERE_REPORTS_AGENTS = "报告页 → 建议条目（G2 建议池）"
-WHERE_REPORTS_ERRORS = "报告页 → G2 错误三分类"
-WHERE_REPORTS_SKILL = "报告页 → G4 Skill 画像"
+WHERE_REPORTS_AGENTS = "报告页 → 建议条目"
+WHERE_REPORTS_ERRORS = "报告页 → 错误三分类"
+WHERE_REPORTS_SKILL = "报告页 → Skill 行为画像"
 WHERE_TRIAGE = "蒸馏队列页"
 WHERE_TOPICS = "主题页"
-WHERE_CARDS = "卡片页 → G3 卡片校验"
+WHERE_CARDS = "卡片页 → 卡片校验"
 
 
 # ---------------------------------------------------------------- 小工具
@@ -233,15 +233,15 @@ def _ledger_items(g, predicate) -> list[dict]:
 
 def _ledger_suggestion(r, is_topic) -> str:
     if r["status"] == "pending":
-        return ("逐条裁决：写进 AGENTS.md 当班规（adopted），或驳回（rejected）。"
-                "工具只落状态，**绝不自动改 AGENTS.md**。")
+        return ("逐条拍板：写进 AGENTS.md 给 AI 当规矩（=采纳），或者驳回。"
+                "工具只记录你的决定，**绝不自动改 AGENTS.md**。")
     if r["status"] == "rejected":
         return "已驳回：不再参与效果评估。若判断变了，用下面的命令改回 pending。"
     if is_topic:
-        return ("这是**主题级裁决**（`topic:` 命名空间），由主题注册表同步而来，"
-                "不是班规句、也不参与 A/B 效果评估。")
-    return ("已采纳。效果看 `harvest-eval` 的三值判定：判「变差」才回滚，"
-            "判「无变化」建议退休，判「不下结论」是样本不够。")
+        return ("这是**主题登记**（从主题注册表同步来的另一本账），"
+                "不是给 AI 的规矩句，也不参加效果评估。")
+    return ("已采纳。有没有用要看效果评估的三种结论：判『变差』才回滚，"
+            "判『没变化』建议退休，判『看不出结论』是样本不够。")
 
 
 def _decide_commands(g, key) -> list[dict]:
@@ -253,14 +253,14 @@ def _decide_commands(g, key) -> list[dict]:
                      "（本层不猜路径）。")]
     return [
         _cmd("换成命令台执行（采纳）",
-             "两段提交：先预演看清将写什么，再确认才写。note 里带一行 "
-             "`pattern: <错误模式>`，harvest-eval 才认得这条班规。",
+             "两步提交：先预演看清要写什么，确认后才真正写。备注里带一行 "
+             "`pattern: 错误名`，效果评估才认得这条规矩。",
              cli=_cli(["suggest-status", "--meta", _q(meta), "--key", _q(key),
                        "--status", "adopted", "--note", _q("pattern: <错误模式>")]),
              action_id="suggest_status",
              params={"key": key, "status": "adopted"}, tier="B"),
         _cmd("换成命令台执行（驳回）",
-             "驳回会清空 adopted_at 分界，harvest-eval 不再评估它。",
+             "驳回后，效果评估就不再看它了。",
              cli=_cli(["suggest-status", "--meta", _q(meta), "--key", _q(key),
                        "--status", "rejected"]),
              action_id="suggest_status",
@@ -304,9 +304,9 @@ def _repair_items(g) -> list[dict]:
             anchor=_anchor(first and first.get("sid"), first and first.get("seq"),
                            first and first.get("error")),
             detail=e.get("body") or "",
-            suggestion="坑还在：先点锚点回原文确认，再看班规有没有写清这一步。"
-                       "要改的是 AGENTS.md 里的条目（人工改），"
-                       "工具的活只是把 `pattern:` 桥补上，让 harvest-eval 认得出它。",
+            suggestion="坑还在：先点锚点回原文确认，再看 AGENTS.md 里那条规矩写得够不够清楚。"
+                       "要改内容请人工改 AGENTS.md；工具只负责补一行 "
+                       "`pattern: 错误名` 的批注，让效果评估能把规矩和错误对上号。",
             commands=_repair_commands(g, e["title"], pattern, first),
             level="bad", owner=e.get("owner") or ""))
     return items
@@ -319,9 +319,9 @@ def _repair_commands(g, title, pattern, sample) -> list[dict]:
     if meta:
         note = ("pattern: " + pattern) if pattern else "pattern: <错误模式>"
         out.append(_cmd(
-            "在命令台补 pattern 桥（采纳并留痕）",
-            "note 里带一行 `pattern: <错误模式>`，harvest-eval 才会把这条班规与"
-            "错误模式对上；不改这一条，评估就永远「未评估」。",
+            "在命令台补 pattern 批注（采纳并留痕）",
+            "备注里带一行 `pattern: 错误名`，效果评估才能把这条规矩与"
+            "错误对上号；不补这一行，评估会一直显示『未评估』。",
             cli=_cli(["suggest-status", "--meta", _q(meta), "--key", _q(title),
                       "--status", "adopted", "--note", _q(note)]),
             action_id="suggest_status",
@@ -349,10 +349,13 @@ def _distill_items(g) -> list[dict]:
                    ("疑似已有卡", "是" if p.get("known_card") else "否")],
             anchor=_anchor(first and first.get("sid"), first and first.get("seq"),
                            first and first.get("error")),
-            detail="该模式在本轮分诊窗口里出现，但建议池里**还没有**对应条目。",
-            suggestion="这是待蒸馏的素材：要么给它起草一条班规候选（suggest-agents "
-                       "会按模板出候选），要么从锚点会话出一份蒸馏包交给 Agent 写卡。"
-                       "工具不自动起草、也不自动改 AGENTS.md。",
+            detail="这个坑最近反复出现，但建议池里还没有对应条目——"
+                   "也就是还没登记过怎么处置它。",
+            suggestion="发现一个反复出现的坑，还没登记处置：① 跑 suggest-agents "
+                       "把它起草成给 AI 的规则条目（班规草稿，需人工定稿）；"
+                       "② 或从出坑的那次会话导出一份打包材料（蒸馏包，见下面命令），"
+                       "交给 AI 写知识卡片。工具只出草稿和命令，"
+                       "不会自动改你的规则文件（AGENTS.md）。",
             commands=_draft_command(first),
             owner="Agent（起草）+ 人（定稿）"))
     return items
@@ -393,7 +396,7 @@ def _cards_pending_items(g) -> list[dict]:
             "cardpending:" + Path(p).name, Path(p).name,
             facts=[("路径", str(p.parent))],
             detail="已生成脚手架、还没定稿入卡片仓。",
-            suggestion="按 §8 frontmatter 规范补齐锚点与证据，再 `cards validate` 后入库。",
+            suggestion="按卡片规范补齐锚点（出处标记）和证据原文，跑一次下面的卡片校验，过了就能入库。",
             commands=[_cmd("校验卡片目录",
                            "含刚定稿的这张；错误与警告分列。",
                            cli=_cards_cli(g))]))
@@ -443,12 +446,11 @@ def _eval_items(g, verdict) -> list[dict]:
 
 def _eval_suggestion(verdict) -> str:
     if verdict == _he.VERDICT_UNCHANGED:
-        return ("「无变化」：采纳前后没差别。工具建议**退休**这条班规，"
-                "但退休要人决定（工具的活只是把 verdict 摆出来，绝不自动改 "
-                "AGENTS.md）。")
-    return ("「不下结论」= 样本不够，**不是**「没用」，更不是「变差」。"
-            "据此回滚是误判。要么等语料再攒一阵，要么放宽窗口/降样本门槛重跑"
-            "（下面的命令）；仍然不够就只能继续挂着。")
+        return ("『没变化』：采纳前后没差别。工具建议让这条规矩退休，"
+                "但由你决定（工具只是把结论摆出来，绝不自动改 AGENTS.md）。")
+    return ("『看不出结论』= 样本不够，**不是**『没用』，更不是『变差』。"
+            "据此回滚会误判。要么再攒一阵数据，要么用下面的命令放宽时间窗和"
+            "样本门槛重跑；还不够就只能先挂着。")
 
 
 def _verify_commands(g) -> list[dict]:
@@ -534,7 +536,7 @@ def _skill_chain_items(g) -> list[dict]:
                    ("来源", "、".join(s.get("sources") or []) or "—"),
                    ("疑似已有卡", "是" if s.get("known_card") else "否"),
                    ("行为链", str(len(s.get("chain") or [])) + " 步")],
-            detail="有待鉴定行为的 skill（分诊队列口径：窗口内出现过调用）。",
+            detail="最近用过、但还没鉴定好坏的 skill（蒸馏队列页的口径）。",
             suggestion="这就是「待鉴定」：行为画像还没定稿。先看全量调用清单，"
                        "确认是好用法还是坑，再决定做卡还是记进班规。",
             commands=_skill_command(s.get("skill")),
@@ -554,8 +556,8 @@ def _topic_items(g) -> list[dict]:
                    ("chain", str(t.get("chains_count") or 0)),
                    ("最后活动", (t.get("last_activity") or "—")[:19])],
             detail="关键词：" + str(t.get("keywords") or "")[:200],
-            suggestion="成员 0 的主题要么补成员要么合并（topic merge）；"
-                       "成员多但没 chain 的，是「该写长文了」的信号。",
+            suggestion="没有成员的主题要么补成员要么合并；"
+                       "成员多但还没写长文的，是该动笔的信号。",
             level="ok" if n else "bad"))
     return items
 
@@ -689,8 +691,8 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "queue:decide", "group": "queue", "queue_id": "decide",
          "label": "待你裁决", "question": "有裁决等着我做吗？", "unit": "条",
          "source": "suggestmeta.load_records[status=pending]",
-         "definition": "建议台账里 status=pending 的条数（未被裁决的建议句）；"
-                       "已裁决的不算。本数只数**建议句**，主题登记另计。",
+         "definition": "还没拍板的建议句条数：建议已写好，但你还没决定采纳还是驳回。"
+                       "已拍板的不算；本数只数建议句，主题登记另算一本账。",
          "where": WHERE_REPORTS_AGENTS, "owner": "人",
          "suggestion": "这一队是「要我拍板」的：每条要么采纳、要么驳回，"
                        "工具不会替你决定。裁决完记得把采纳的句子人工并进 AGENTS.md。",
@@ -703,12 +705,13 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "queue:repair", "group": "queue", "queue_id": "repair",
          "label": "待修补", "question": "哪里有坑该填？", "unit": "条",
          "source": "api_reports_agents.entries[unresolved_count>=1]",
-         "definition": "建议条目里 unresolved_count>=1 的条数（= 失败之后同会话同"
-                       "工具再没被调用过的次数之和口径见「未解决次数」）。"
-                       "与 G2 的 given_up 同源不同粒度：本数是**条目数**。",
+         "definition": "『规矩写了但坑还在』的建议条数。坑还在 = 采纳这条建议之后"
+                       "同类错误又出现过，且失败之后同会话里这个工具再没被调用过"
+                       "（次数合计见下一行）。与错误报告页的『未解决次数』同源、"
+                       "颗粒不同：这里是**条目数**。",
          "where": WHERE_REPORTS_AGENTS, "owner": "人（改班规）+ 工具（补 pattern 桥）",
-         "suggestion": "每条都是「班规写了但坑还在」：先点锚点回原文，"
-                       "再决定是改班规措辞，还是补 pattern 桥让评估能盯住它。",
+         "suggestion": "每条都是『规矩写了但坑还在』：先点锚点回原文，"
+                       "再决定是改规矩措辞，还是补 pattern 批注让评估盯住它。",
          "package": [c for c in [_cmd(
              "跑一次效果评估（看采纳后有没有真的好）",
              "未解决率与复发率**都要不升**才算改善；任一显著变差即变差。",
@@ -720,8 +723,9 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "queue:distill", "group": "queue", "queue_id": "distill",
          "label": "待蒸馏", "question": "有什么素材值得做成卡片/主题？", "unit": "个",
          "source": "triage.collect_triage.new_patterns",
-         "definition": "分诊队列里的**新错误模式**数（pattern 在建议池里还没有"
-                       "对应条目）。另有 skill 行为链与待做卡片，见下方明细。",
+         "definition": "还没变成知识的重复踩坑数：这些错误模式最近反复出现，"
+                       "但建议池里还没登记处置办法。另有 skill 行为链与待做卡片，"
+                       "见下方明细。",
          "where": WHERE_TRIAGE, "owner": "Agent（起草）+ 人（定稿）",
          "suggestion": "这些都是「还没变成知识的重复劳动」。挑次数高的先做，"
                        "一条模式只做一次，别批量生成一堆没人看的卡片。",
@@ -738,8 +742,8 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "queue:verify", "group": "queue", "queue_id": "verify",
          "label": "待验证", "question": "采纳的班规真的有效吗？", "unit": "条",
          "source": "harvesteval.run_eval.counts[不下结论]",
-         "definition": "已采纳（adopted）但 A/B 样本不足、**下不了结论**的条数。"
-                       "它是「还看不出来」而不是「没用」——不混进变差。",
+         "definition": "已采纳、但采纳前后对比的样本太少、**看不出有没有效果**的条数。"
+                       "是『还看不出来』，不是『没用』——更不能混进『变差』。",
          "where": WHERE_REPORTS_AGENTS, "owner": "人（决定等还是放宽）",
          "suggestion": "「不下结论」只能等样本或放宽门槛，**不能**当成没用去回滚。",
          "package": _verify_commands(g),
@@ -750,8 +754,7 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "queue:decide.done", "group": "detail", "queue_id": "decide",
          "label": "已裁决（可复核）", "unit": "条",
          "source": "suggestmeta.load_records[status!=pending]",
-         "definition": "台账里已裁决的条数（adopted + rejected，含 `topic:` "
-                       "命名空间的主题登记）。",
+         "definition": "已拍板的建议条数（采纳 + 驳回，含主题登记那本账的条目）。",
          "where": WHERE_REPORTS_AGENTS, "owner": "人",
          "suggestion": "已裁决不等于做对了：复核一下驳回的是不是真该驳回、"
                        "采纳的有没有按 harvest-eval 的结果退休。",
@@ -763,7 +766,7 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "queue:distill.old", "group": "detail",
          "queue_id": "distill", "label": "旧坑重现", "unit": "个",
          "source": "triage.collect_triage.old_patterns",
-         "definition": "旧坑重现（曾是建议/卡片、又在新窗口里出现的模式）。",
+         "definition": "老坑又冒出来了：以前登记过建议或卡片，最近又出现的踩坑模式。",
          "where": WHERE_TRIAGE, "owner": "人 + Agent",
          "suggestion": "坑回来了说明上一版班规没拦住；改措辞，别再加一条新规则。",
          "package": [c for c in [_cmd(
@@ -773,7 +776,7 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "queue:distill.cards", "group": "detail",
          "queue_id": "distill", "label": "待做卡片", "unit": "张",
          "source": "目录扫描 cards_pending/*.md",
-         "definition": "已生成脚手架、还没定稿入卡片仓的卡片数。",
+         "definition": "草稿卡片数：架子已搭好，还没定稿进卡片库。",
          "where": WHERE_CARDS, "owner": "Agent + 人",
          "suggestion": "补齐 frontmatter 的锚点与证据，校验过后入库。",
          "package": [c for c in [_cmd(
@@ -784,13 +787,11 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "queue:verify.evaluable", "group": "detail",
          "queue_id": "verify", "label": "可评估的已采纳", "unit": "条",
          "source": "harvesteval.run_eval.adopted_total",
-         "definition": "可评估的已采纳条数（不含 `topic:` 命名空间登记）。"
-                       "上游 `adopted_total = len(entries)`，故本数就等于这份明细"
-                       "的条数——不是巧合，是同一集合。",
+         "definition": "能做效果对比的已采纳条数（主题登记的不算）。"
+                       "这个数就等于下面明细的行数——数字与清单天然一致。",
          "where": WHERE_REPORTS_AGENTS, "owner": "人",
-         "suggestion": "这 9 条之外的已采纳条目都没法评估（多半是没写 "
-                       "`pattern:` 桥，或属于主题登记）。想让评估覆盖更多，"
-                       "先补 pattern 桥。",
+         "suggestion": "这份清单之外的已采纳条目没法评估——多半是没写 `pattern:` "
+                       "批注，或属于主题登记。想让评估覆盖更多，先补批注。",
          "package": [c for c in [_cmd("跑一次效果评估",
                                       "三值判定 + 样本门槛。",
                                       cli=eval_cli)] if c],
@@ -800,8 +801,8 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "queue:verify.unchanged", "group": "detail",
          "queue_id": "verify", "label": "无变化（建议退休）", "unit": "条",
          "source": "harvesteval.run_eval.counts[无变化]",
-         "definition": "A/B 判为「无变化」的条数（工具判据建议退休，"
-                       "但**工具不改 AGENTS.md**，退休由人决定）。",
+         "definition": "采纳前后对比判『没变化』的条数。工具的建议是让这条规矩退休，"
+                       "但不代你做主（不会自动改 AGENTS.md）。",
          "where": WHERE_REPORTS_AGENTS, "owner": "人（决定退休）",
          "suggestion": "采纳前后没差别 → 这条班规大概是白占地方。退休要人决定。",
          "package": [c for c in [_cmd("跑一次效果评估", "看还有没有别的判语。",
@@ -814,8 +815,8 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "ring:errors.0", "group": "ring", "ring_id": "errors",
          "label": "错误 → 班规 → 效果 · 有料（全库错误）", "unit": "条",
          "source": "errstats.collect_errors_from_db",
-         "definition": "有料＝全库错误步骤数。按错误模式汇总，故**次数**是"
-                       "模式次数之和、明细是模式列表（两行数字同源）。",
+         "definition": "全库错误步骤总数。按踩坑模式归堆统计：次数 = 各模式次数之和，"
+                       "明细就是模式清单（数字与明细同源）。",
          "where": WHERE_REPORTS_ERRORS, "owner": "人",
          "suggestion": "按次数从大到小处理头部；`未解决 > 0` 的模式说明坑还在。",
          "package": [_cmd("在命令台跑错误三分类报告",
@@ -827,17 +828,17 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "ring:errors.1", "group": "ring", "ring_id": "errors",
          "label": "错误 → 班规 → 效果 · 已行动（已采纳）", "unit": "条",
          "source": "suggestmeta.load_records[status=adopted]",
-         "definition": "已行动＝已采纳为班规的条数（含 `topic:` 命名空间的主题登记）。",
+         "definition": "已经采纳成 AI 规矩的条数（含主题登记）。",
          "where": WHERE_REPORTS_AGENTS, "owner": "人",
-         "suggestion": "已采纳不等于有效：效果由 harvest-eval 判，"
-                       "「无变化」建议退休、「变差」才回滚。",
+         "suggestion": "采纳了不等于有用：效果由评估命令判，"
+                       "『没变化』建议退休、『变差』才回滚。",
          "package": _verify_commands(g),
          "metrics": [_metric("entries", "已采纳条数", "items")],
          "primary": "entries", "items": adopted},
         {"target_id": "ring:errors.2", "group": "ring", "ring_id": "errors",
          "label": "错误 → 班规 → 效果 · 待验证（不下结论）", "unit": "条",
          "source": "harvesteval.run_eval.counts[不下结论]",
-         "definition": "待验证＝样本不足、下不了结论的条数（还看不出来）。",
+         "definition": "采纳了但样本太少、还看不出效果的条数。",
          "where": WHERE_REPORTS_AGENTS, "owner": "人",
          "suggestion": "只能等样本或放宽门槛；不许把「看不出来」当成「没用」。",
          "package": _verify_commands(g),
@@ -846,10 +847,9 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "ring:errors.givenup", "group": "ring", "ring_id": "errors",
          "label": "错误 → 班规 → 效果 · 未解决（模式维度）", "unit": "次",
          "source": "errstats.pattern_stats.given_up",
-         "definition": "**错误模式**维度的未解决：至少 1 次未解决的归一模式数"
-                       "（模式数）与未解决次数合计（次数）——同一批明细的两条指标，"
-                       "正是 P3「口径冲突」那一处的正解（pattern 行没有 given_up "
-                       "字段，必须走 pattern_stats）。",
+         "definition": "踩坑模式维度的未解决：有至少 1 次『失败后工具再没被调用』的"
+                       "模式个数（模式数）与次数合计（次数）——同一批明细数出两条数字，"
+                       "模式数与次数各算各的。",
          "where": WHERE_REPORTS_ERRORS, "owner": "人",
          "suggestion": "这些模式是「放弃了但没解决」：优先给它们补班规或改工具，"
                        "别只盯着总次数。",
@@ -863,7 +863,7 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "ring:skill.0", "group": "ring", "ring_id": "skill",
          "label": "skill → 鉴定 → 修复 · 有料（行为画像）", "unit": "个",
          "source": "api_reports_skills.skills",
-         "definition": "有料＝行为画像里的 skill 数（每个 skill 一行）。",
+         "definition": "行为画像里登记的 skill 个数（每个 skill 一行）。",
          "where": WHERE_REPORTS_SKILL, "owner": "人 + Agent",
          "suggestion": "先看失败多与低样本的；低样本只记录、不下结论。",
          "package": [c for c in [_cmd(
@@ -876,8 +876,7 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "ring:skill.1", "group": "ring", "ring_id": "skill",
          "label": "skill → 鉴定 → 修复 · 待鉴定（行为链）", "unit": "条",
          "source": "triage.collect_triage.skills",
-         "definition": "待鉴定＝有待鉴定行为的 skill 行为链数"
-                       "（窗口内出现过调用）。",
+         "definition": "还没鉴定好坏的 skill 行为链条数（最近用过、但没有定论是好用法还是坑）。",
          "where": WHERE_TRIAGE, "owner": "人 + Agent",
          "suggestion": "有调用、没定稿：确认是好用法还是坑，再决定做卡还是记班规。",
          "package": [c for c in [_cmd("重跑分诊队列（本队列的数据源）",
@@ -889,7 +888,7 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "ring:topics.0", "group": "ring", "ring_id": "topics",
          "label": "主题 → chain → 卡片 · 有料（注册主题）", "unit": "个",
          "source": "api_topics.topics",
-         "definition": "有料＝注册主题数（每个主题一行）。",
+         "definition": "已注册的主题个数（每个主题一行）。",
          "where": WHERE_TOPICS, "owner": "人",
          "suggestion": "成员 0 的要补成员或合并；成员多的看要不要出 chain。",
          "package": [c for c in [_cmd(
@@ -902,8 +901,8 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "ring:topics.1", "group": "ring", "ring_id": "topics",
          "label": "主题 → chain → 卡片 · 已行动（已发布 chain）", "unit": "条",
          "source": "api_topics.topics[chains_count]",
-         "definition": "已行动＝已发布 chain 长文数。一条主题可能有多条 chain，"
-                       "故**条数**是明细的 chains 之和、明细是「有 chain 的主题」。",
+         "definition": "已发布的主题长文条数。一条主题可能有多篇长文，"
+                       "所以条数 = 明细里各主题长文数之和，明细本身是『有长文的主题』。",
          "where": WHERE_TOPICS, "owner": "人",
          "suggestion": "改过 chain 就要重跑校验与审计（引文逐字 + 锚点语义）。",
          #: 命令包刻意留空：chain-validate 是**按文件**跑的（位置参数），
@@ -917,9 +916,9 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "ring:topics.2", "group": "ring", "ring_id": "topics",
          "label": "主题 → chain → 卡片 · 待确认（卡片警告/错误）", "unit": "张",
          "source": "api_cards.summary[error+warn]",
-         "definition": "待确认＝卡片仓里有警告/错误的卡片数"
+         "definition": "卡片库里带警告/错误的卡片数"
                        + ("" if g["cards"] is not None else
-                          "（未配置 --cards-root，本项按 0 计）"),
+                          "（未配置卡片目录，本项按 0 计）"),
          "where": WHERE_CARDS, "owner": "人 + Agent",
          "suggestion": "警告多是「证据行与锚点原文对不上」：改引用，"
                        "或人工复核后接受。",
@@ -977,16 +976,15 @@ DETAIL_MAP = {
 _AGGREGATE = {
     ("decide", "噪声登记（不属于任何主题）"): {
         "unit": "条", "source": "suggestmeta.registry_counts[sessions_noise]",
-        "definition": "零散/噪声登记表里的条数——**聚合数，不是待处理清单**"
-                      "（逐条判定归属走主题页的零散候选），故这里不给明细、"
-                      "也不给命令。",
+        "definition": "已判定『不属于任何主题』的散会话登记条数——**聚合数，"
+                      "不是待处理清单**（想逐条判定归属，去主题页），"
+                      "所以这里不配明细、也不给命令。",
         "where": WHERE_TOPICS},
     ("verify", "未评估（pending/rejected 与主题登记）"): {
         "unit": "条", "source": "harvesteval.run_eval.skipped(_topic)",
-        "definition": "**聚合数**：**未执行**评估的条数（pending/rejected 与主题"
-                      "登记）——「未执行」与「评估了没变化」必须分得开"
-                      "（AGENTS.md §五 16），故单列且不给明细："
-                      "它们不是待你处理的记录。",
+        "definition": "**聚合数**：还没做效果评估的条数（没拍板的、已驳回的、"
+                      "主题登记的）。『没评估』与『评估了没变化』是两回事，"
+                      "必须分开数；这里只报数、不给明细——它们不是等你处理的活。",
         "where": "—"},
 }
 
@@ -1016,7 +1014,7 @@ def build_queue_details(g, idx) -> dict:
             lst.append({"label": label, "value": m["value"],
                         "unit": m.get("unit") or t["unit"],
                         "source": m.get("source") or t["source"],
-                        "definition": m["label"] + "（go: " + t["definition"] + "）",
+                        "definition": m["label"] + "。" + t["definition"],
                         "where": t["where"], "target": tid, "metric": metric,
                         "aggregate": False})
         out[qid] = lst

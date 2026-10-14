@@ -351,10 +351,10 @@ def _distill_items(g) -> list[dict]:
                            first and first.get("error")),
             detail="这个坑最近反复出现，但建议池里还没有对应条目——"
                    "也就是还没登记过怎么处置它。",
-            suggestion="发现一个反复出现的坑，还没登记处置：① 跑 suggest-agents "
-                       "把它起草成给 AI 的规则条目（班规草稿，需人工定稿）；"
-                       "② 或从出坑的那次会话导出一份打包材料（蒸馏包，见下面命令），"
-                       "交给 AI 写知识卡片。工具只出草稿和命令，"
+            suggestion="两条路都已备好，点下面命令包里的「在命令台打开」即可："
+                       "① 「生成班规候选」把它起草成给 AI 的规则条目（预演确认后"
+                       "写建议池文件，再人工定稿）；② 「生成蒸馏包」从出坑的这次"
+                       "会话导出打包材料，交给 AI 写知识卡片。工具只出草稿，"
                        "不会自动改你的规则文件（AGENTS.md）。",
             commands=_draft_command(first),
             owner="Agent（起草）+ 人（定稿）"))
@@ -366,8 +366,11 @@ def _draft_command(sample) -> list[dict]:
         return []
     return [_cmd(
         "打包这一条的会话原文（蒸馏包）",
-        "自包含 md：会话原文 + 卡片规范 + 指令，直接喂 Agent 就能起草。",
-        cli=_cli(["draft", "--sid", _q(sample["sid"]), "--type", "pitfall"]))]
+        "B 档动作：点了在命令台预填好 sid，先预演、确认才写；"
+        "产物是自包含 md（会话原文+卡片规范+指令），直接喂 Agent 就能起草。",
+        cli=_cli(["draft", "--sid", _q(sample["sid"]), "--type", "pitfall"]),
+        action_id="draft_pack",
+        params={"sid": sample["sid"], "type": "pitfall"}, tier="B")]
 
 
 def _old_pattern_items(g) -> list[dict]:
@@ -731,8 +734,11 @@ def _targets_all(g) -> list[dict]:
                        "一条模式只做一次，别批量生成一堆没人看的卡片。",
          "package": [c for c in [
              _cmd("按模板出建议池候选（人工再审）",
-                  "suggest-agents 只产候选、只落建议池状态，不改 AGENTS.md。",
-                  cli=coverage_cli),
+                  "B 档动作：点了在命令台预填好，先预演看清将写什么，确认才写。"
+                  "只产候选、只写建议池文件，不改 AGENTS.md。",
+                  cli=coverage_cli,
+                  action_id="suggest_agents",
+                  params={"min_count": 3, "max": 15}, tier="B"),
              _cmd("重跑分诊队列，输出 JSON 供后续消费",
                   "队列是现算的；这个命令把同一批数据落盘。",
                   cli=triage_cli)] if c],

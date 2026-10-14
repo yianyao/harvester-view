@@ -1882,7 +1882,7 @@
      "choices": null,
      "src": "chips",
      "negates": null,
-     "help": "只统计最近 N 天（按 steps.ts，近似口径）",
+     "help": "只统计最近 N 天（按步骤时间戳粗算；近似口径=不如逐条精确）",
      "note": "只统计最近 N 天（按 steps.ts，近似口径）"
     },
     {
@@ -2032,7 +2032,7 @@
      "choices": null,
      "src": "cards_api",
      "negates": null,
-     "help": "chain 长文路径",
+     "help": "chain 长文路径（chain=主题蒸馏出的结构化长文）",
      "note": null
     },
     {
@@ -2114,7 +2114,7 @@
      "choices": null,
      "src": "server",
      "negates": null,
-     "help": "索引库路径；steps 表有数据时用结构化口径（含重试/放弃率）",
+     "help": "索引库路径；steps 表有数据时用结构化口径（直接数步骤表的数据；口径=统计的标准；含重试/放弃率）",
      "note": null
     },
     {
@@ -2126,7 +2126,7 @@
      "choices": null,
      "src": "chips",
      "negates": null,
-     "help": "只统计最近 N 天（按 steps.ts，近似口径）",
+     "help": "只统计最近 N 天（按步骤时间戳粗算；近似口径=不如逐条精确）",
      "note": "只统计最近 N 天（按 steps.ts，近似口径）"
     },
     {
@@ -2370,7 +2370,7 @@
      "choices": null,
      "src": "server",
      "negates": null,
-     "help": "追加「建议池 ↔ 台账」覆盖核对（v0.45）：列出待裁决、台账陈旧·已采纳（疑似生效，不算欠账）与·其他（应清账），另附人账总览；只对账不代改",
+     "help": "追加「建议池 ↔ 台账」覆盖核对（v0.45）：列出待裁决、台账陈旧·已采纳（疑似生效，不算欠账）与·其他（应清账），另附人账总览（人账=人工登记的四本账）；只对账不代改",
      "note": null
     },
     {
@@ -2597,6 +2597,18 @@
      "src": "server",
      "negates": null,
      "help": "抑制表所在 meta 库（默认 topics_meta.db）",
+     "note": null
+    },
+    {
+     "name": "--min-jaccard",
+     "dest": "min_jaccard",
+     "kind": "float",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "只列出重复度 J≥该值的候选（如 0.92）；「同簇链式重复」没有独立 J 值，始终保留。J=两段会话文字的重复度，1=逐字相同",
      "note": null
     }
    ],
@@ -2970,7 +2982,7 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": "add：成员证据说明（如关键词命中口径）",
+     "help": "add：成员证据说明（如按什么标准命中关键词）",
      "note": null
     },
     {

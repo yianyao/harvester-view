@@ -141,9 +141,12 @@ def build() -> dict:
                 % (aid, sorted(unused)))
         # allow 里扣掉声明过的（页面会传），剩下的只允许是**服务端已定的路径类**
         # 参数（如 `--meta`：CLI 真读它，但值由起服时定，页面不暴露也不传）。
-        # 别的剩余一律报错——那意味着"CLI 会读某个字段，而这里既没声明也没绑定"。
+        # `auto_out` 同理（v0.62）：输出文件路径由**服务端自动命名**（页面绝不
+        # 传路径——让人指路就等于给"顺手指向任意文件"留后门），plan/execute
+        # 里由 writeactions 自己算。别的剩余一律报错——那意味着"CLI 会读某个
+        # 字段，而这里既没声明也没绑定"。
         unbound = [k for k in sorted(allow - declared)
-                   if argfacts[k]["src"] != SERVER_SRC]
+                   if argfacts[k]["src"] not in (SERVER_SRC, "auto_out")]
         if unbound:
             raise SystemExit(
                 "[registrygen] 写动作 %s 的 allow 里 %s 既未声明为可传参数、"
@@ -213,6 +216,7 @@ def build() -> dict:
             "suggestions_meta": "suggestions_meta.db（建议池状态与人账）",
             "topics_meta": "topics_meta.db（主题注册表）",
             "keywords_meta": "keywords_meta.db（n-gram 统计累积表）",
+            "repo_files": "主库仓内工作文件（建议池 agents_suggestions.md / 蒸馏包 docs/distill_prompts/*.md；覆盖前自动备份，不碰库与 AGENTS.md）",
         },
         "cards": cards,
         "read_actions": read_actions,

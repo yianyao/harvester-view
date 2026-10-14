@@ -35,7 +35,9 @@ from actions import writeactions as WA  # noqa: E402
 
 C_TIER_CMDS = {"mcp-serve", "api-serve", "weblogin check",
                "weblogin init-config", "weblogin prepare"}
-META_TARGETS = {"suggestions_meta", "topics_meta", "keywords_meta"}
+# target 不再硬编码清单（v0.62）：以注册表 write_targets 声明为准——
+# 新增写目标（如 repo_files）必须在 registrygen 立项，这里的门是
+# "target 必须在 write_targets 里"，而不是"target 必须是这三个"。
 
 
 class CardByCardWalkthrough(unittest.TestCase):
@@ -76,8 +78,9 @@ class CardByCardWalkthrough(unittest.TestCase):
             aid = a["action_id"]
             self.assertEqual(a["tier"], "B", aid)
             self.assertIn(a["risk"], ("reversible", "destructive"), aid)
-            self.assertIn(a["target"], META_TARGETS,
-                          "%s 的 target=%r 不在三个 meta 库里——写别处必须先立项"
+            self.assertIn(a["target"], self.reg.get("write_targets", {}),
+                          "%s 的 target=%r 不在 write_targets 声明里——"
+                          "写别处必须先立项（registrygen write_targets）"
                           % (aid, a["target"]))
             self.assertTrue(a.get("reversible"), "%s 缺可逆性人话" % aid)
             self.assertIn("两段提交", a.get("writes") or "",
@@ -86,12 +89,15 @@ class CardByCardWalkthrough(unittest.TestCase):
 
     def test_b_tier_required_params_are_self_describing(self):
         for a in self.reg["write_actions"]:
-            req = [p for p in a["params"] if p["required"]]
-            self.assertTrue(req, "%s 一个必填参数都没有？写动作不可能无参" % a["action_id"])
-            for p in req:
+            # v0.62 起允许零必填（如 suggest_agents：全默认参数的扫描型动作），
+            # 但必须声明至少一个参数（全无参 = 填了不生效的黑箱，禁止）。
+            self.assertTrue(a["params"], "%s 一个参数都没声明？"
+                            % a["action_id"])
+            for p in a["params"]:
                 self.assertTrue(p.get("label"),
-                                "%s 的必填参数 %s 缺人话 label（页面会显示英文 dest）"
+                                "%s 的参数 %s 缺人话 label（页面会显示英文 dest）"
                                 % (a["action_id"], p["name"]))
+            for p in [p for p in a["params"] if p["required"]]:
                 self.assertFalse(p.get("server"),
                                  "%s 的必填参数 %s 不该是服务端参数"
                                  % (a["action_id"], p["name"]))

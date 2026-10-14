@@ -425,8 +425,9 @@ class WriteHttpTest(_Fixture):
         tiers = {a["tier"] for a in d["actions"]}
         self.assertEqual(tiers, {"A", "B"})
         b = [a for a in d["actions"] if a["tier"] == "B"]
-        # 9 → 11（v0.49 会话抑制加两个：session_suppress + session_unsuppress）
-        self.assertEqual(len(b), 11)
+        # 9 → 11（v0.49 会话抑制加两个）→ 13（v0.62 写工作文件加两个：
+        # suggest_agents + draft_pack，用户令 2026-10-14 命令可就地执行）
+        self.assertEqual(len(b), 13)
         for a in b:
             self.assertIn(a["risk"], ("reversible", "destructive"))
 

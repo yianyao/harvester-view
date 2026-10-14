@@ -169,7 +169,8 @@ check("命令包显示条数", pkg.includes("批量 " + rows.length + " 条命�
 check("命令行文本逐条渲染（可复制粘贴）",
   pkg.includes(esc(WI.package[0].cli)) &&
   pkg.includes(esc(WI.items[0].commands[0].cli)));
-check("写明本视图不代执行（诚实边界）", pkg.includes("不代你执行"));
+check("写明诚实边界：执行只在冻结白名单内 + B 档两段提交（v0.62 用户修订红线）",
+  pkg.includes("冻结白名单") && pkg.includes("先预演、你确认、才写"));
 check("有 action_id 的命令给「在命令台打开」按钮",
   pkg.includes("data-wact=\"suggest_status\""));
 check("纯 CLI 命令不给假的执行按钮",

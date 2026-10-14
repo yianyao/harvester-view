@@ -11,7 +11,8 @@
  "write_targets": {
   "suggestions_meta": "suggestions_meta.db（建议池状态与人账）",
   "topics_meta": "topics_meta.db（主题注册表）",
-  "keywords_meta": "keywords_meta.db（n-gram 统计累积表）"
+  "keywords_meta": "keywords_meta.db（n-gram 统计累积表）",
+  "repo_files": "主库仓内工作文件（建议池 agents_suggestions.md / 蒸馏包 docs/distill_prompts/*.md；覆盖前自动备份，不碰库与 AGENTS.md）"
  },
  "cards": [
   {
@@ -160,6 +161,63 @@
  ],
  "write_actions": [
   {
+   "action_id": "draft_pack",
+   "tier": "B",
+   "cmd": "draft",
+   "subaction": null,
+   "risk": "reversible",
+   "target": "repo_files",
+   "summary": "为会话 {sid} 生成蒸馏包（{type} 卡型），写入 docs/distill_prompts/",
+   "detail": "产物是自包含 md（会话原文+卡片规范+指令），交给任意 Agent 就能起草知识卡片。**只新增/覆盖这一个 md 文件**，不碰库、不碰 AGENTS.md；覆盖已有同名文件前先备份为 .bak-<时间戳>。sid 可从明细锚点一键预填。",
+   "params": [
+    {
+     "name": "sid",
+     "dest": "sid",
+     "arg": "--sid",
+     "kind": "str",
+     "src": "sessions_api",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "会话 sid（出坑/有料的那次会话）"
+    },
+    {
+     "name": "type",
+     "dest": "type",
+     "arg": "--type",
+     "kind": "enum",
+     "src": "chips",
+     "server": false,
+     "required": false,
+     "choices": [
+      "pitfall",
+      "workflow",
+      "insight"
+     ],
+     "default": "pitfall",
+     "note": null,
+     "label": "卡型：pitfall（坑）/insight（洞见）/workflow（流程）"
+    },
+    {
+     "name": "max_chars",
+     "dest": "max_chars",
+     "arg": "--max-chars",
+     "kind": "int",
+     "src": "chips",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": 24000,
+     "note": "覆盖该档默认字符预算（不填=用档位预算）",
+     "label": "会话原文截断预算（字符数）"
+    }
+   ],
+   "writes": "repo_files（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  },
+  {
    "action_id": "keywords_gc",
    "tier": "B",
    "cmd": "keywords-gc",
@@ -277,6 +335,59 @@
     }
    ],
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  },
+  {
+   "action_id": "suggest_agents",
+   "tier": "B",
+   "cmd": "suggest-agents",
+   "subaction": null,
+   "risk": "reversible",
+   "target": "repo_files",
+   "summary": "扫描全库错误模式，生成班规候选清单 agents_suggestions.md",
+   "detail": "按模板起草建议条目，写进主库根的 agents_suggestions.md（建议池文件）——**绝不自动改 AGENTS.md**，人工审阅后自行并入。覆盖已有文件前先备份为 .bak-<时间戳>。",
+   "params": [
+    {
+     "name": "since",
+     "dest": "since",
+     "arg": "--since",
+     "kind": "float",
+     "src": "chips",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": null,
+     "note": "只统计最近 N 天（按 steps.ts，近似口径）",
+     "label": "只统计最近 N 天（可空=全库）"
+    },
+    {
+     "name": "min_count",
+     "dest": "min_count",
+     "arg": "--min-count",
+     "kind": "int",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": 3,
+     "note": null,
+     "label": "至少出现几次才列（默认 3）"
+    },
+    {
+     "name": "max",
+     "dest": "max",
+     "arg": "--max",
+     "kind": "int",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": 15,
+     "note": null,
+     "label": "最多列几条（默认 15）"
+    }
+   ],
+   "writes": "repo_files（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
   {
@@ -646,8 +757,8 @@
  "counts": {
   "cards": 13,
   "read_actions": 6,
-  "write_actions": 11,
-  "write_reversible": 8,
+  "write_actions": 13,
+  "write_reversible": 10,
   "write_destructive": 3
  }
 }

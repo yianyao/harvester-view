@@ -3416,9 +3416,9 @@ function renderWorkPkg(d){
   }
   const shown=rows.slice(0,60);
   let h="<details open><summary>处理命令包（批量 "+rows.length+" 条命令）</summary>";
-  h+="<p class='sub2'>纪律：本视图**不代你执行**。命令行是给你核对后粘贴的"+
-     "（在 session-harvester 仓根目录执行）；带「在命令台打开」的能在命令台"+
-     "按两段提交执行——**先预演、你确认、才写**。</p>"+
+  h+="<p class='sub2'>纪律：执行只发生在冻结白名单内。命令行可复制到仓根目录"+
+     "核对后执行；带「在命令台打开」的可就地执行——B 档两段提交："+
+     "先预演、你确认、才写。</p>"+
      "<div class='wi-tools'><button class='xbtn' id='work-copy'>"+
      "复制全部命令</button></div>";
   for(const r of shown){
@@ -3455,7 +3455,10 @@ function renderWorkItems(d){
     const facts=(it.facts||[]).map(f=>"<span>"+esc(f[0])+"："+esc(f[1])+
       "</span>").join("");
     const cmds=(it.commands||[]).map(c=>"<div class='wi-cmd'>"+
-      esc(c.cli||"")+"</div>").join("");
+      esc(c.cli||"")+"</div>"+
+      (c.action_id?("<button class='xbtn' data-wact=\""+esc(c.action_id)+
+        "\" data-wparams='"+esc(JSON.stringify(c.params||{}))+
+        "'>在命令台打开（已预填）</button>"):"")).join("");
     return "<div class='wi-item "+esc(it.level||"")+"'>"+
       "<h4>"+esc(it.title)+
       (it.owner?" <span class='sub2'>"+esc(it.owner)+"</span>":"")+"</h4>"+
@@ -3468,6 +3471,8 @@ function renderWorkItems(d){
   }).join("");
   box.innerHTML=h;
   bindAnchors(box);
+  for(const b of box.querySelectorAll("[data-wact]"))
+    b.onclick=()=>{openInCmd(b.dataset.wact,JSON.parse(b.dataset.wparams||"{}"));};
 }
 /* 处理单 → 命令台：把 action_id 与参数带过去（用户点一下就到位，不用手抄 key）。
    注意**不能**先置 state.loaded.cmd：那是 switchTab 的加载守卫（SOP §5 第 1 条）。

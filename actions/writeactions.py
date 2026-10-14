@@ -22,7 +22,9 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import shutil
 import time
 from pathlib import Path
 
@@ -708,6 +710,178 @@ def _exec_session_unsuppress(p: dict, cfg) -> dict:
             "removed": n, "sids": sids}
 
 
+# ---------- 班规候选与蒸馏包（v0.62：写主库仓内工作文件，不碰库）----------
+#
+# 用户令（2026-10-14）：建议文案不再只给"复制命令"——命令台要能就地执行。
+# 这两个动作写的是**主库仓内的工作文件**（建议池 md / 蒸馏包 md）：
+# - 只新增/覆盖这一个目标文件；覆盖前自动备份 .bak-<时间戳>（可逆承诺）；
+# - 不碰任何库表、不碰 AGENTS.md（上游纪律：工具绝不代改规矩文件）；
+# - 输出路径**服务端自动命名**（registrygen 的 auto_out 语义），页面绝不传
+#   路径——让人指路等于给"顺手指向任意文件"留后门；
+# - 预演与执行都调上游同一批只读函数（collect_errors_from_db /
+#   build_suggestion_entries / build_distill_packet），不做两套算法。
+
+def _repo_root(cfg) -> Path:
+    return Path(cfg.db).resolve().parent
+
+
+def _require_db(cfg) -> Path:
+    db = Path(cfg.db)
+    if not db.is_file():
+        raise WriteError("索引库不存在：%s（先跑采集更新）" % db)
+    return db
+
+
+def _bak_copy(target: Path) -> Path | None:
+    """覆盖前备份：存在才备份，返回备份路径（None=首次创建，无需备份）。"""
+    if not target.is_file():
+        return None
+    bak = target.with_name(target.name + ".bak-"
+                           + time.strftime("%Y%m%d-%H%M%S"))
+    shutil.copy2(target, bak)
+    return bak
+
+
+def _file_human(out: Path, before: dict, what: str) -> list[str]:
+    return [
+        what,
+        "写入：%s%s" % (out, "（已存在 → 先备份 .bak 再覆盖）"
+                       if before.get("exists") else "（新文件）"),
+    ]
+
+
+def _plan_suggest_agents(p: dict, cfg) -> dict:
+    from harvester.agent_suggest import build_suggestion_entries
+    from harvester.errstats import collect_errors_from_db
+    from harvester.suggestmeta import load_statuses
+    db = _require_db(cfg)
+    since = p.get("since")
+    try:
+        since_days = float(since) if since not in (None, "") else None
+    except (TypeError, ValueError):
+        raise WriteError("since 需要数字（天数），收到 %r" % (since,))
+    min_count = int(p.get("min_count") or 3)
+    max_items = int(p.get("max") or 15)
+    if min_count < 1:
+        raise WriteError("min_count 至少为 1")
+    if max_items < 1:
+        raise WriteError("max 至少为 1")
+    out = _repo_root(cfg) / "agents_suggestions.md"
+    errors, meta = collect_errors_from_db(db, since_days=since_days)
+    statuses = None
+    if cfg.suggestions_meta and Path(cfg.suggestions_meta).is_file():
+        statuses = load_statuses(Path(cfg.suggestions_meta))
+    built = build_suggestion_entries(errors, min_count=min_count,
+                                     max_items=max_items, statuses=statuses)
+    n_entries = len(built["entries"])
+    before = _fingerprint(out)
+    win = ("最近 %g 天" % since_days) if since_days else "全库"
+    human = _file_human(out, before,
+                        "动作：扫描索引库错误步骤（%s，共 %s 步 / %s 条错误）"
+                        "并按模板起草建议"
+                        % (win, meta.get("total_steps") or 0,
+                           meta.get("error_count") or 0))
+    human += [
+        "命中：%d 条建议候选（另有 %d 个模式未命中模板，归「待人工归因」）"
+        % (n_entries, len(built["leftover"])),
+        "纪律：绝不自动改 AGENTS.md——建议池写好后由人工审阅、自行并入",
+    ]
+    return {"target_path": str(out),
+            "before": before, "after": None, "snapshot": None,
+            "count": n_entries,
+            "limits": ["条数按预演时的库即时统计；执行时库若变了，"
+                       "以执行时实况为准"],
+            "human": human, "noop": False}
+
+
+def _exec_suggest_agents(p: dict, cfg) -> dict:
+    from harvester.agent_suggest import build_suggestions
+    from harvester.errstats import collect_errors_from_db
+    from harvester.suggestmeta import load_statuses
+    db = _require_db(cfg)
+    since = p.get("since")
+    since_days = float(since) if since not in (None, "") else None
+    min_count = int(p.get("min_count") or 3)
+    max_items = int(p.get("max") or 15)
+    out = _repo_root(cfg) / "agents_suggestions.md"
+    errors, _meta = collect_errors_from_db(db, since_days=since_days)
+    statuses = None
+    if cfg.suggestions_meta and Path(cfg.suggestions_meta).is_file():
+        statuses = load_statuses(Path(cfg.suggestions_meta))
+    content = build_suggestions(errors, min_count=min_count,
+                                max_items=max_items, statuses=statuses)
+    bak = _bak_copy(out)
+    out.write_text(content, encoding="utf-8", newline="\n")
+    return {"summary": "建议池已写入 %s%s；请人工审阅后自行并入 AGENTS.md"
+                       % (out, "（原文件已备份 %s）" % bak if bak else ""),
+            "path": str(out), "backup": str(bak) if bak else None}
+
+
+def _draft_out_path(cfg, sid: str, ctype: str) -> Path:
+    # 文件名服务端定：卡型 + sid 指纹前 10 位（同 sid 同型幂等同名，
+    # 重跑覆盖自己；不用 sid 原文——它含盘符斜杒，当文件名不安全）。
+    digest = hashlib.sha1(sid.encode("utf-8")).hexdigest()[:10]
+    return (_repo_root(cfg) / "docs" / "distill_prompts"
+            / ("draft-%s-%s.md" % (ctype, digest)))
+
+
+def _draft_packet(p: dict, cfg) -> tuple[str, Path, str, int]:
+    """plan/execute 共用：校验参数 + 生成包（只读）。返回 (packet, out, ctype, max_chars)。"""
+    from harvester.drafting import REQUIRED_TYPES, build_distill_packet
+    db = _require_db(cfg)
+    sid = (p.get("sid") or "").strip()
+    if not sid:
+        raise WriteError("缺必填参数 sid（会话唯一编号，明细锚点里有）")
+    ctype = p.get("type") or "pitfall"
+    if ctype not in REQUIRED_TYPES:
+        raise WriteError("type=%r 不在 %s（pitfall=坑 / insight=洞见 / "
+                         "workflow=流程）" % (ctype, sorted(REQUIRED_TYPES)))
+    try:
+        max_chars = int(p.get("max_chars") or 24000)
+    except (TypeError, ValueError):
+        raise WriteError("max_chars 需要整数，收到 %r" % (p.get("max_chars"),))
+    if max_chars < 500:
+        raise WriteError("max_chars 太小（至少 500，太小包里没原文）")
+    try:
+        packet = build_distill_packet(db, sid, ctype=ctype,
+                                      max_chars=max_chars)
+    except KeyError as e:
+        raise WriteError(str(e.args[0]) if e.args else str(e))
+    except ValueError as e:
+        raise WriteError(str(e))
+    return packet, _draft_out_path(cfg, sid, ctype), ctype, max_chars
+
+
+def _plan_draft(p: dict, cfg) -> dict:
+    packet, out, ctype, max_chars = _draft_packet(p, cfg)
+    sid = (p.get("sid") or "").strip()
+    before = _fingerprint(out)
+    human = _file_human(out, before,
+                        "动作：为会话 %s 生成蒸馏包（%s 卡型，原文截断预算 "
+                        "%d 字符）" % (sid, ctype, max_chars))
+    human += [
+        "内容：自包含 md（指令 + 卡片规范 + 会话原文），本次约 %d 字"
+        % len(packet),
+        "下一步：把文件交给任意 Agent 起草卡片 → 草稿落 cards_pending/ "
+        "→ 卡片校验 → 人工终审",
+    ]
+    return {"target_path": str(out), "before": before, "after": None,
+            "snapshot": None, "bytes": len(packet),
+            "limits": ["字数按预演时的库算；执行时以实况为准"],
+            "human": human, "noop": False}
+
+
+def _exec_draft(p: dict, cfg) -> dict:
+    from harvester.drafting import write_packet
+    packet, out, _ctype, _mc = _draft_packet(p, cfg)
+    bak = _bak_copy(out)
+    path = write_packet(out, packet)
+    return {"summary": "蒸馏包已写入 %s（约 %d 字）%s；交给任意 Agent 起草卡片"
+                       % (path, len(packet),
+                          "（原文件已备份 %s）" % bak if bak else ""),
+            "path": str(path), "backup": str(bak) if bak else None}
+
+
 #: action_id → (plan, execute)。**这张表就是 B 档的"实现白名单"**：
 #: `actions_registry.json` 声明了什么，这里必须一一对上（有测试比对）。
 WRITE_ACTIONS: dict[str, dict] = {
@@ -733,6 +907,10 @@ WRITE_ACTIONS: dict[str, dict] = {
                      "execute": lambda p, c: _exec_topic({**p, "__kind": "delete"}, c)},
     "keywords_gc": {"plan": _plan_keywords_gc,
                     "execute": _exec_keywords_gc},
+    "suggest_agents": {"plan": _plan_suggest_agents,
+                       "execute": _exec_suggest_agents},
+    "draft_pack": {"plan": _plan_draft,
+                   "execute": _exec_draft},
 }
 
 

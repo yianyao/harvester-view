@@ -822,7 +822,9 @@ def _targets_all(g) -> list[dict]:
          "label": "错误 → 班规 → 效果 · 有料（全库错误）", "unit": "条",
          "source": "errstats.collect_errors_from_db",
          "definition": "全库错误步骤总数。按踩坑模式归堆统计：次数 = 各模式次数之和，"
-                       "明细就是模式清单（数字与明细同源）。",
+                       "明细就是模式清单（数字与明细同源）。「模式」= 把同一种坑归成一堆"
+                       "（按出错形状归并），不是『不同方式』——「错误模式 N 个」就是 N 种不同的坑，"
+                       "全部错误按坑归并而来。",
          "where": WHERE_REPORTS_ERRORS, "owner": "人",
          "suggestion": "按次数从大到小处理头部；`未解决 > 0` 的模式说明坑还在。",
          "package": [_cmd("在命令台跑错误三分类报告",
@@ -834,7 +836,9 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "ring:errors.1", "group": "ring", "ring_id": "errors",
          "label": "错误 → 班规 → 效果 · 已行动（已采纳）", "unit": "条",
          "source": "suggestmeta.load_records[status=adopted]",
-         "definition": "已经采纳成 AI 规矩的条数（含主题登记）。",
+         "definition": "已经采纳成 AI 规矩的条数（含主题登记）。注意这本账与第一段"
+                       "是**两本账**：第一段数的是错误次数，这里数的是规矩条数——"
+                       "不是从第一段里挑出来的一批，不互为子集。",
          "where": WHERE_REPORTS_AGENTS, "owner": "人",
          "suggestion": "采纳了不等于有用：效果由评估命令判，"
                        "『没变化』建议退休、『变差』才回滚。",
@@ -844,7 +848,8 @@ def _targets_all(g) -> list[dict]:
         {"target_id": "ring:errors.2", "group": "ring", "ring_id": "errors",
          "label": "错误 → 班规 → 效果 · 待验证（不下结论）", "unit": "条",
          "source": "harvesteval.run_eval.counts[不下结论]",
-         "definition": "采纳了但样本太少、还看不出效果的条数。",
+         "definition": "已采纳条目里，采纳前后对比的样本太少、**看不出有没有效果**的"
+                       "条数——是上一段「已采纳」的子集（评估只对已采纳的做）。",
          "where": WHERE_REPORTS_AGENTS, "owner": "人",
          "suggestion": "只能等样本或放宽门槛；不许把「看不出来」当成「没用」。",
          "package": _verify_commands(g),

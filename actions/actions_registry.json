@@ -122,9 +122,69 @@
  ],
  "read_actions": [
   {
+   "action_id": "adapters",
+   "tier": "A",
+   "cmd": "adapters",
+   "est_sec": null
+  },
+  {
+   "action_id": "cards_validate",
+   "tier": "A",
+   "cmd": "cards validate",
+   "est_sec": null
+  },
+  {
+   "action_id": "chain_audit",
+   "tier": "A",
+   "cmd": "chain-audit",
+   "est_sec": null
+  },
+  {
+   "action_id": "chain_validate",
+   "tier": "A",
+   "cmd": "chain-validate",
+   "est_sec": null
+  },
+  {
+   "action_id": "deadcode_scan",
+   "tier": "A",
+   "cmd": "deadcode-scan",
+   "est_sec": null
+  },
+  {
    "action_id": "dualtrack",
    "tier": "A",
    "cmd": null,
+   "est_sec": null
+  },
+  {
+   "action_id": "export_analysis",
+   "tier": "A",
+   "cmd": "export-analysis",
+   "est_sec": null
+  },
+  {
+   "action_id": "harvest_eval",
+   "tier": "A",
+   "cmd": "harvest-eval",
+   "est_sec": null
+  },
+  {
+   "action_id": "kb_stats",
+   "tier": "A",
+   "cmd": "kb-stats",
+   "est_sec": null
+  },
+  {
+   "action_id": "pack",
+   "tier": "A",
+   "cmd": "pack",
+   "est_sec": null
+  },
+  {
+   "action_id": "read",
+   "tier": "A",
+   "cmd": "read",
    "est_sec": null
   },
   {
@@ -134,9 +194,27 @@
    "est_sec": null
   },
   {
+   "action_id": "report_chains",
+   "tier": "A",
+   "cmd": "report-chains",
+   "est_sec": null
+  },
+  {
    "action_id": "report_errors",
    "tier": "A",
    "cmd": "report-errors",
+   "est_sec": null
+  },
+  {
+   "action_id": "report_skill",
+   "tier": "A",
+   "cmd": "report-skill",
+   "est_sec": null
+  },
+  {
+   "action_id": "report_skill_join",
+   "tier": "A",
+   "cmd": "report-skill-join",
    "est_sec": null
   },
   {
@@ -146,10 +224,68 @@
    "est_sec": null
   },
   {
+   "action_id": "report_traces",
+   "tier": "A",
+   "cmd": "report-traces",
+   "est_sec": null
+  },
+  {
+   "action_id": "search",
+   "tier": "A",
+   "cmd": "search",
+   "est_sec": null
+  },
+  {
+   "action_id": "suppress_candidates",
+   "tier": "A",
+   "cmd": "suppress candidates",
+   "est_sec": null
+  },
+  {
+   "action_id": "suppress_list",
+   "tier": "A",
+   "cmd": "suppress list",
+   "est_sec": null
+  },
+  {
+   "action_id": "topic_candidates",
+   "tier": "A",
+   "cmd": "topic-candidates",
+   "est_sec": null
+  },
+  {
+   "action_id": "topic_chain",
+   "tier": "A",
+   "cmd": "topic",
+   "est_sec": null,
+   "subaction": "chain"
+  },
+  {
+   "action_id": "topic_dedupe",
+   "tier": "A",
+   "cmd": "topic",
+   "est_sec": null,
+   "subaction": "dedupe"
+  },
+  {
+   "action_id": "topic_export",
+   "tier": "A",
+   "cmd": "topic",
+   "est_sec": null,
+   "subaction": "export"
+  },
+  {
    "action_id": "topic_list",
    "tier": "A",
    "cmd": "topic",
    "est_sec": null
+  },
+  {
+   "action_id": "topic_md",
+   "tier": "A",
+   "cmd": "topic",
+   "est_sec": null,
+   "subaction": "md"
   },
   {
    "action_id": "topic_pack",
@@ -157,6 +293,26 @@
    "cmd": "topic",
    "est_sec": null,
    "subaction": "pack"
+  },
+  {
+   "action_id": "topic_show",
+   "tier": "A",
+   "cmd": "topic",
+   "est_sec": null,
+   "subaction": "show"
+  },
+  {
+   "action_id": "topic_turns",
+   "tier": "A",
+   "cmd": "topic",
+   "est_sec": null,
+   "subaction": "turns"
+  },
+  {
+   "action_id": "triage",
+   "tier": "A",
+   "cmd": "triage",
+   "est_sec": null
   }
  ],
  "write_actions": [
@@ -756,7 +912,7 @@
  ],
  "counts": {
   "cards": 13,
-  "read_actions": 6,
+  "read_actions": 31,
   "write_actions": 13,
   "write_reversible": 10,
   "write_destructive": 3

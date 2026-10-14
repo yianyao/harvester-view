@@ -47,8 +47,10 @@ RING_DEFS = (
     ("errors", "错误 → 班规 → 效果",
      "错误面（G2 的 given_up）→ 建议池裁决 → harvest-eval 效果判定",
      ("ring:errors.0", "ring:errors.1", "ring:errors.2")),
-    ("skill", "skill → 鉴定 → 修复",
-     "skill 调用（G4/triage 行为链）→ 行为画像 → 待鉴定数",
+    ("skill", "skill → 鉴定（修复段暂无数字）",
+     "两段账：行为画像登记了哪些 skill（有料）→ 最近用过但还没定论"
+     "是好用法还是坑的（待鉴定）。「修复」一段暂无台账——skill 修没修好"
+     "目前数不出来，先只有两段；等有台账再补第三段。",
      ("ring:skill.0", "ring:skill.1")),
     ("topics", "主题 → chain → 卡片",
      "主题注册表 → 已发布 chain → 卡片仓校验",

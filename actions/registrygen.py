@@ -49,6 +49,33 @@ READ_ACTIONS: dict[str, object] = {
     "topic_pack": ("topic", "pack"),
     "regress": "regress",
     "dualtrack": None,
+    # ---- v0.63 白名单补全（用户 2026-10-14「都加上」）：覆盖 commands.json
+    # 里全部剩余 A 档命令。新动作走 _cli_report（进程内真 CLI，输出捕获）。
+    "adapters": "adapters",
+    "search": "search",
+    "read": "read",
+    "pack": "pack",
+    "cards_validate": "cards validate",
+    "chain_validate": "chain-validate",
+    "chain_audit": "chain-audit",
+    "deadcode_scan": "deadcode-scan",
+    "export_analysis": "export-analysis",
+    "harvest_eval": "harvest-eval",
+    "kb_stats": "kb-stats",
+    "report_chains": "report-chains",
+    "report_skill": "report-skill",
+    "report_skill_join": "report-skill-join",
+    "report_traces": "report-traces",
+    "suppress_list": "suppress list",
+    "suppress_candidates": "suppress candidates",
+    "topic_candidates": "topic-candidates",
+    "triage": "triage",
+    "topic_show": ("topic", "show"),
+    "topic_turns": ("topic", "turns"),
+    "topic_dedupe": ("topic", "dedupe"),
+    "topic_export": ("topic", "export"),
+    "topic_md": ("topic", "md"),
+    "topic_chain": ("topic", "chain"),
 }
 
 #: 参数的 src 取值里，"路径类、页面不暴露"的那一类：B 档动作的这类参数

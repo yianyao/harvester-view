@@ -196,8 +196,10 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 .qcard .qq{font-size:12px;color:var(--ink2);margin:3px 0 6px}
 .qcard .qd{font-size:11px;color:var(--ink2);border-top:1px dashed var(--line);
   margin-top:6px;padding-top:5px}
-.qcard .qs{font-size:10px;color:var(--ink2);font-family:ui-monospace,Consolas,monospace;
+.qcard .qs{font-size:10px;color:var(--accent);font-family:ui-monospace,Consolas,monospace;
   word-break:break-all}
+/* v0.63：真源用青色等宽字与口径（灰字）区分（用户 2026-10-14：
+   「灰字等宽字号，干脆用不同颜色区分」）；title 悬浮给白话解释。 */
 .ring{border:1px solid var(--line);border-radius:7px;padding:8px 11px;margin:6px 0;
   background:var(--panel)}
 .ring .rt{font-weight:600}
@@ -210,7 +212,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 .arm .av{font-size:19px;font-weight:700;line-height:1.1}
 .arm .au{font-size:11px;color:var(--ink2);font-weight:400}
 .arm .ad{font-size:10.5px;color:var(--ink2);margin-top:2px}
-.arm .as{font-size:10px;color:var(--ink2);
+.arm .as{font-size:10px;color:var(--accent);
   font-family:ui-monospace,Consolas,monospace;word-break:break-all;margin-top:2px}
 .legend{font-size:11px;color:var(--ink2);margin:4px 0 0}
 /* ---- v0.49 处理单（work items）----
@@ -386,13 +388,15 @@ h3.sec{font-size:14px;margin:18px 0 6px}
     <div id="home-intro"></div>
     <div id="home-banner" class="sub2"></div>
     <h3 class="sec">四队列（点数字去处理）</h3>
+    <p class="legend">四队列和下面的闭环健康是<b>一本账的两种看法</b>：闭环健康是三条流水线的库存体检（问题攒了多少、卡在哪一段）；四队列是从这些库存里捞出的、按<b>下一步动作</b>分的四队活（裁决/修补/蒸馏/验证）。队列里的每一条活，都来自环上某一段的明细——点数字进处理单就能看到。</p>
     <div id="home-queues" class="queue-grid"><div class="empty">加载中…</div></div>
     <div id="home-qdetail"></div>
     <h3 class="sec">闭环健康（积压量 = 卡在哪一段）</h3>
-    <p class="legend">每根环三段：<b>有料</b>（数据是否在位）→ <b>已行动</b>／
+    <p class="legend">每根环是一条流水线的三段：<b>有料</b>（数据在位）→ <b>已行动</b>／
       <b>待鉴定</b>（裁决与行动是否发生）→ <b>待验证</b>／<b>待确认</b>
-      （效果与产物是否验收）。数字旁的灰字是**口径**，等宽字是**真源**
-      （哪个上游函数算的）——口径有争议时以真源那一处为准。</p>
+      （效果与产物是否验收）。注意：环上各段数的是<b>不同的账</b>（如错误面数次数、已行动数规矩条数），
+      不互为子集；只有明确标注「是…的子集」的除外。每段下方：灰字=<b>口径</b>（这个数怎么算的）；
+      青色等宽字=<b>真源</b>（由哪个函数现算出来，备查——平时不用管，两处数字打架时以真源那处为准）。</p>
     <div id="home-rings"><div class="empty">加载中…</div></div>
     <div id="home-foot" class="sub2"></div>
   </main>
@@ -2788,8 +2792,9 @@ function updateCmdPreview(){
     return;
   }
   /* 分支**必须**按"有没有可执行动作"来分，不能只按档位：A 档也有尚未
-     实现动作的命令（白名单 3 个 vs 注册表 43 条），直接读 act.est_sec
-     会整页抛错（2026-10-12 由 tests/render_cmd.js 实测抓出）。
+     实现动作的命令（白名单 31 个 vs 注册表 49 条命令，v0.63 起全部 A 档
+     命令都有动作），直接读 act.est_sec 会整页抛错（2026-10-12 由
+     tests/render_cmd.js 实测抓出）。
      2026-10-13 增：子动作感知——topic+pack 走 topic_pack（A 档），即便
      命令级 tier 是 B（聚合命令按最严子动作定档）；B 档子动作不在此直连
      （仍走动作卡列表），故可执行=act 为 A 且（命令本身 A 或子动作 A）。 */
@@ -3088,6 +3093,16 @@ function jobResultHtml(job){
         pats.map(p=>"<div>"+esc(p.pattern)+" "+
         "<a href='javascript:void(0)' data-pat=\""+esc(p.pattern)+
         "\" class='anchor'>x"+p.count+"</a></div>").join("");
+  }else if(r.stdout!==undefined){
+    /* v0.63：CLI 报告型动作（report-chains、validate、audit、triage 等）——
+       进程内真 CLI 跑出来的文本报告，原样展示（与终端逐字一致）。 */
+    h+="<div class='sub2'>退出码 "+esc(String(r.exit_code))+
+      (String(r.exit_code)==="0"?"（正常）":"（非 0：报告里有需修项或告警）")+
+      "｜执行命令："+esc((r.argv||[]).join(" "))+"</div>"+
+      "<pre style='max-height:320px;overflow:auto;font-size:11px;"+
+      "white-space:pre-wrap'>"+esc(r.stdout||"（无输出）")+"</pre>"+
+      (r.stderr?"<pre style='max-height:160px;overflow:auto;font-size:11px;"+
+       "white-space:pre-wrap;color:var(--warn-ink)'>"+esc(r.stderr)+"</pre>":"");
   }
   h+="<details><summary>原始 JSON</summary><pre style='max-height:260px;"+
     "overflow:auto;font-size:11px'>"+esc(JSON.stringify(r,null,1).slice(0,20000))+
@@ -3248,7 +3263,7 @@ function renderQueues(d){
       "<span class='sub2'>"+esc(q.where||"")+"</span>"+
       (q.suggestion?"<div class='qd'>建议："+esc(q.suggestion)+"</div>":"")+
       "<div class='qd'>口径："+esc(q.definition||"")+"</div>"+
-      "<div class='qs'>"+esc(q.source||"")+"</div>"+
+      "<div class='qs' title='真源=这个数由哪个函数现算出来（备查）。平时不用管；两处数字打架时以真源那处为准。'>真源 "+esc(q.source||"")+"</div>"+
       (q.reconcile_ok===false?
         "<div class='qd' style='color:var(--err-ink)'>⚠ 对账断了（数字与明细对不上）</div>":"")+
       "</div>";
@@ -3309,7 +3324,7 @@ function armHtml(a){
     "<div class='av'>"+a.value+"<span class='au'> "+esc(a.unit||"")+"</span></div>"+
     "<div class='ad'>"+esc(a.definition||"")+"</div>"+
     ms+
-    "<div class='as'>"+esc(a.source||"")+"</div>"+
+    "<div class='as' title='真源=这个数由哪个函数现算出来（备查）。平时不用管；两处数字打架时以真源那处为准。'>真源 "+esc(a.source||"")+"</div>"+
     (a.where?"<div class='ad'>去："+esc(a.where)+"</div>":"")+
     (a.aggregate?"<div class='ad'>聚合数（不派活）</div>":"")+
     (a.target?("<button class='xbtn' data-wgo=\""+esc(a.target)+
@@ -3666,8 +3681,8 @@ $("btn-cmd-run").onclick=()=>runCmdAction()
 function tourSteps(){
   return [
     {tab:"home",name:"今日工作台",title:"第 1 页 · 今日工作台：你现在在哪",
-     body:"四队列=今天要处理的活，点数字直达那批明细；闭环健康=「错误→班规→效果」整条链路卡在哪一段。每个数字旁都写了口径与真源，看不懂先看灰字。",
-     todo:"在「闭环健康」找第一段（错误面），看一眼全库错误数——这是旅程的起点：错误被看见了。"},
+     body:"四队列=今天要动手的活，按下一步动作分四类（裁决/修补/蒸馏/验证）；闭环健康=三条流水线的库存体检（问题攒了多少、卡在哪一段）。队列里的活就是从环的明细里捞出来的。每个数字带两行小字：灰字=口径（怎么算的），青色等宽字=真源（哪个函数算的，备查）。",
+     todo:"在「闭环健康」找第一段（错误面），看一眼全库错误数——旅程从「把错误看清楚」开始。"},
     {tab:"reports",name:"报告",title:"第 2 页 · 报告：机械事实（AI 只陈述，不替你下结论）",
      body:"反复踩的坑会被归一成「错误模式」，按次数排序；这里没有 AI 编的故事，只有从库里数出来的事实。真库案例：「Edit 前先 Read」类错误模式累计上百次——改文件前没先读，踩了又踩。",
      todo:"找一条次数高、标着「未解决」的模式，记住它的次数与样例——下一步回原文核对。"},
@@ -3679,7 +3694,7 @@ function tourSteps(){
      todo:"从工作台点「待你裁决」「待修补」的数字进这一页，逐条看建议、做你的裁决。"},
     {tab:"cmd",name:"命令台",title:"第 5 页 · 命令台：裁决落成动作（闭环最后一段）",
      body:"A 档=只读动作直接执行；B 档=写库动作先预演、你确认后才写，全程留台账；C 档=只给命令文本，绝不代执行。采纳的班规有没有用，跑 A 档对照验证就知道。",
-     todo:"旅程到此走完：错误被看见→回原文核实→建议待裁决→裁决落成动作→效果可验证。下次从工作台的数字继续。"},
+     todo:"旅程到此走完：看清错误→回原文核实→建议待裁决→裁决落成动作→效果可验证。下次从工作台的数字继续。"},
   ];
 }
 function tourRender(){

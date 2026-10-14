@@ -339,6 +339,374 @@ def _action_dualtrack(cfg: Config, params: dict) -> dict:
     return dualtrack.build(cfg, topic_id, level, tl)
 
 
+# ---------- A 档通用执行器（v0.63：白名单补全，用户 2026-10-14「都加上」） ----------
+
+def _cli_report(argv: list[str]) -> dict:
+    """A 档通用执行器：进程内跑**真 CLI**（argv 由各动作处理器拼好），捕获输出。
+
+    为什么走 CLI 而不是另调一层函数：这些 report/校验命令的「数字真源」就是
+    CLI 背后的那批 collect/render 函数——进程内跑 CLI 与终端里跑**同一代码
+    路径**，页面结果与手敲命令逐字一致，不存在第二套口径。
+    只读纪律由各动作处理器保证：**绝不拼进 --out / --apply 类参数**
+    （--out 是 auto_out 参数，页面与动作都不传，产物一律打印捕获）。
+    argparse 用法错误（SystemExit 2）转成 ValueError → 作业层显式失败，
+    不让 usage 文本混进 stdout 冒充报告。
+    """
+    import contextlib
+    import io
+    if _HARVESTER_IMPORT_ERROR is not None:  # pragma: no cover
+        raise RuntimeError(_HARVESTER_IMPORT_ERROR or "上游 harvester 不可用")
+    from harvester import cli as _hcli
+    out, err = io.StringIO(), io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            ns = _hcli.build_parser().parse_args(argv)
+            code = ns.func(ns)
+    except SystemExit as e:  # argparse 用法错误 / 提前退出
+        raise ValueError("命令参数不合法（argparse 退出码 %s）：%s\n%s"
+                         % (e.code, " ".join(argv),
+                            err.getvalue()[:300])) from None
+    return {"view_actions_api": VIEW_ACTIONS_API, "argv": argv,
+            "exit_code": int(code or 0), "stdout": out.getvalue(),
+            "stderr": err.getvalue()}
+
+
+def _sources_path(cfg: Config) -> str:
+    """采集源配置（sources.json）：与库同目录（这就是主仓根，CLI 的惯例 cwd）。"""
+    p = cfg.db.parent / "sources.json"
+    if not p.is_file():
+        raise RuntimeError("采集源配置不存在：%s（adapters/read/pack 要用它"
+                           "扫采集源；先在主仓根跑 probe）" % p)
+    return str(p)
+
+
+def _chain_file(cfg: Config, name) -> Path:
+    """把页面传来的 chain 文件名解析到 chain_root 下（拒绝任何路径成分）。
+
+    页面只允许传**文件名**（主题页/卡片页列出来的那份），解析、拼路径都在
+    服务端——不收路径就不存在「顺手指向任意文件」的读取后门。"""
+    if cfg.chain_root is None:
+        raise RuntimeError("未配置 chain-root（起服时加 --chain-root）")
+    text = str(name or "").strip()
+    if not text or Path(text).name != text or text in (".", ".."):
+        raise _BadRequest("chain 文件名不合法：%r（只传 chain-root 下的文件名，"
+                          "不带目录）" % (name,))
+    p = cfg.chain_root / text
+    if not p.is_file():
+        raise _NotFound("chain 文件不存在：%s（chain-root=%s）"
+                        % (text, cfg.chain_root))
+    return p
+
+
+def _require_topics_meta(cfg: Config) -> Path:
+    if cfg.topics_meta is None or not cfg.topics_meta.is_file():
+        raise RuntimeError("未配置 topics_meta（起服时加 --topics-meta）")
+    return cfg.topics_meta
+
+
+def _action_adapters(cfg: Config, params: dict) -> dict:
+    """A 档：数据源探测状态（`adapters`，只打印不写）。"""
+    return _cli_report(["adapters", "--sources", _sources_path(cfg)])
+
+
+def _action_search(cfg: Config, params: dict) -> dict:
+    """A 档：全文检索（`search`；与 /api/sessions 的 FTS 同库不同路——
+    这里走 CLI 原口径，带 role 片段）。"""
+    query = str(params.get("query") or "").strip()
+    if not query:
+        raise _BadRequest("缺检索词（query）")
+    argv = ["search", query, "--db", str(cfg.db)]
+    if params.get("limit") is not None:
+        argv += ["--limit", str(int(params["limit"]))]
+    if params.get("source"):
+        argv += ["--source", str(params["source"])]
+    return _cli_report(argv)
+
+
+def _action_read(cfg: Config, params: dict) -> dict:
+    """A 档：按纲要序号读会话原文（`read`；序号来自 scan 纲要，采集源实时读）。"""
+    no = str(params.get("no") or "").strip()
+    if not no:
+        raise _BadRequest("缺纲要序号（no）——序号见 scan 生成的纲要")
+    argv = ["read", no, "--sources", _sources_path(cfg),
+            "--turn", str(params.get("turn") or "1")]
+    return _cli_report(argv)
+
+
+def _action_pack(cfg: Config, params: dict) -> dict:
+    """A 档：交接包（`pack` 的进程内版）——**产物返回页面不落盘**。
+
+    CLI 版默认写 context_pack.md（写文件）；动作版走 topic_pack 同款纪律：
+    build_pack 只读采集源，内容直接回页面，人自己决定存到哪。"""
+    from harvester.adapters import load_sources
+    from harvester.exporter import parse_selection
+    from harvester.outline import scan_all
+    from harvester.pack import build_pack
+    sel = str(params.get("select") or "").strip()
+    if not sel:
+        raise _BadRequest("缺会话选择（select，如 3 或 1,4-5；序号见纲要）")
+    adapters_list, items, _ = scan_all(sources=load_sources(_sources_path(cfg)))
+    adapters = {ad.id: ad for ad in adapters_list}
+    try:
+        nos, dropped = parse_selection(sel, len(items))
+    except ValueError as e:
+        raise _BadRequest("序号不合法：%s" % e)
+    recs = []
+    for n in nos:
+        it = next(x for x in items if x["no"] == n)
+        try:
+            recs.append((adapters[it["adapter"]].load_session(it["session_id"]), n))
+        except Exception as e:  # noqa: BLE001 - 单条失败跳过（与 CLI 同款）
+            print("[warn] 序号 %s 加载失败已跳过: %s" % (n, e))
+    if not recs:
+        raise _BadRequest("所选会话全部加载失败（纲要过期？重新 scan）")
+    content = build_pack(recs, total_budget=int(params.get("tokens") or 2000),
+                         question=params.get("question") or None)
+    return {"view_actions_api": VIEW_ACTIONS_API, "sessions": len(recs),
+            "chars": len(content), "content": content,
+            "note": ("越界序号已忽略：%s" % dropped) if dropped else ""}
+
+
+def _action_cards_validate(cfg: Config, params: dict) -> dict:
+    """A 档：卡片校验（`cards validate`；root/db/注册表全部服务端定）。"""
+    argv = ["cards", "validate", "--root", str(cfg.cards_root),
+            "--db", str(cfg.db)]
+    if cfg.topics_meta and cfg.topics_meta.is_file():
+        argv += ["--topics-meta", str(cfg.topics_meta)]
+    return _cli_report(argv)
+
+
+def _action_chain_validate(cfg: Config, params: dict) -> dict:
+    """A 档：chain 长文结构校验（`chain-validate`；文件限 chain_root 内）。"""
+    p = _chain_file(cfg, params.get("file"))
+    return _cli_report(["chain-validate", str(p),
+                        "--meta", str(_require_topics_meta(cfg)),
+                        "--db", str(cfg.db)])
+
+
+def _action_chain_audit(cfg: Config, params: dict) -> dict:
+    """A 档：chain 内容审计（`chain-audit`：引文逐字门+锚点语义门+覆盖）。"""
+    p = _chain_file(cfg, params.get("file"))
+    argv = ["chain-audit", str(p), "--db", str(cfg.db)]
+    for flag, key in (("--no-quotes", "no_quotes"),
+                      ("--no-anchors", "no_anchors"),
+                      ("--no-coverage", "no_coverage"),
+                      ("--quotes-ascii", "quotes_ascii"),
+                      ("--strict", "strict")):
+        if params.get(key):
+            argv.append(flag)
+    if params.get("list_limit") is not None:
+        argv += ["--list-limit", str(int(params["list_limit"]))]
+    return _cli_report(argv)
+
+
+def _action_deadcode_scan(cfg: Config, params: dict) -> dict:
+    """A 档：死代码扫描（`deadcode-scan`；base=主仓根，兄弟仓自动覆盖）。
+
+    不给 --fail-on-found（那是 CI 门的用法）；unstable 单列（并发编辑的
+    结论不可信口径与上游一致）。"""
+    from harvester.deadcode import (DEFAULT_ROOTS, found_total, render_deadcode,
+                                    scan, unstable_total)
+    report = scan(roots=DEFAULT_ROOTS, base=cfg.db.parent)
+    text = render_deadcode(report)
+    u = unstable_total(report)
+    return {"view_actions_api": VIEW_ACTIONS_API, "stdout": text,
+            "exit_code": 0, "found": found_total(report),
+            "unstable": u,
+            "stderr": ("[deadcode-scan] %d 个文件扫描期间被改动 → %d 条发现"
+                       "不可信，请等写入结束重跑" % (len(report["unstable"]), u))
+                      if u else ""}
+
+
+def _action_export_analysis(cfg: Config, params: dict) -> dict:
+    """A 档：统一分析导出（`export-analysis`；产物打印捕获，不落盘）。"""
+    kind = str(params.get("kind") or "").strip()
+    if kind not in ("sessions", "tools", "errors", "skills", "triage"):
+        raise _BadRequest("kind 只支持 sessions/tools/errors/skills/triage，"
+                          "收到 %r" % kind)
+    fmt = str(params.get("format") or "md")
+    if fmt not in ("md", "json"):
+        raise _BadRequest("format 只支持 md/json，收到 %r" % fmt)
+    argv = ["export-analysis", "--kind", kind, "--format", fmt,
+            "--db", str(cfg.db)]
+    if params.get("days") is not None:
+        argv += ["--days", str(params["days"])]
+    if params.get("sids"):
+        argv += ["--sids", str(params["sids"])]
+    if params.get("min_count") is not None:
+        argv += ["--min-count", str(int(params["min_count"]))]
+    if params.get("top") is not None:
+        argv += ["--top", str(int(params["top"]))]
+    if cfg.cards_root and Path(cfg.cards_root).is_dir():
+        argv += ["--cards-root", str(cfg.cards_root)]
+    return _cli_report(argv)
+
+
+def _action_harvest_eval(cfg: Config, params: dict) -> dict:
+    """A 档：效果评估（`harvest-eval`；只读采集库，报告打印捕获）。"""
+    if cfg.suggestions_meta is None:
+        raise RuntimeError("未配置 suggestions_meta（起服时加 --suggestions-meta）")
+    argv = ["harvest-eval", "--db", str(cfg.db),
+            "--meta", str(cfg.suggestions_meta)]
+    if params.get("since") is not None:
+        argv += ["--since", str(params["since"])]
+    for key, flag in (("window_days", "--window-days"),
+                      ("min_per_window", "--min-per-window"),
+                      ("min_total", "--min-total")):
+        if params.get(key) is not None:
+            argv += [flag, str(int(params[key]))]
+    if params.get("threshold") is not None:
+        argv += ["--threshold", str(params["threshold"])]
+    return _cli_report(argv)
+
+
+def _action_kb_stats(cfg: Config, params: dict) -> dict:
+    """A 档：知识库盘点（`kb-stats`；root=上游缺省 ~/.workbuddy/knowledge）。"""
+    from harvester.distill import KB_DEFAULT_ROOT
+    return _cli_report(["kb-stats", "--root", str(KB_DEFAULT_ROOT)])
+
+
+def _action_report_chains(cfg: Config, params: dict) -> dict:
+    """A 档：工具链失败模式报告（`report-chains`）。"""
+    argv = ["report-chains", "--db", str(cfg.db)]
+    if params.get("since") is not None:
+        argv += ["--since", str(params["since"])]
+    if params.get("top") is not None:
+        argv += ["--top", str(int(params["top"]))]
+    return _cli_report(argv)
+
+
+def _action_report_skill(cfg: Config, params: dict) -> dict:
+    """A 档：skill 行为画像（`report-skill`）。"""
+    argv = ["report-skill", "--db", str(cfg.db)]
+    if params.get("skill"):
+        argv += ["--skill", str(params["skill"])]
+    if params.get("min_calls") is not None:
+        argv += ["--min-calls", str(int(params["min_calls"]))]
+    return _cli_report(argv)
+
+
+def _action_report_skill_join(cfg: Config, params: dict) -> dict:
+    """A 档：skill 进化 join 交叉表（`report-skill-join`；chain 限 root 内）。"""
+    p = _chain_file(cfg, params.get("chain"))
+    argv = ["report-skill-join", "--chain", str(p), "--db", str(cfg.db)]
+    if params.get("skill"):
+        argv += ["--skill", str(params["skill"])]
+    if params.get("margin_days") is not None:
+        argv += ["--margin-days", str(params["margin_days"])]
+    return _cli_report(argv)
+
+
+def _action_report_traces(cfg: Config, params: dict) -> dict:
+    """A 档：OTel trace 统计（`report-traces`；root=~/.workbuddy/traces）。"""
+    return _cli_report(["report-traces",
+                        "--root", str(Path.home() / ".workbuddy" / "traces")])
+
+
+def _action_suppress_list(cfg: Config, params: dict) -> dict:
+    """A 档：抑制表清单（`suppress list`；抑制表在 topics_meta.db）。"""
+    return _cli_report(["suppress", "list",
+                        "--meta", str(_require_topics_meta(cfg))])
+
+
+def _action_suppress_candidates(cfg: Config, params: dict) -> dict:
+    """A 档：抑制候选清单（`suppress candidates`，只读扫描）。
+
+    min_jaccard 先验对齐 CLI：0~1 之外一律拒绝（不静默当没给）。"""
+    argv = ["suppress", "candidates", "--db", str(cfg.db),
+            "--meta", str(_require_topics_meta(cfg))]
+    if params.get("min_jaccard") is not None:
+        mj = float(params["min_jaccard"])
+        if not (0.0 < mj <= 1.0):
+            raise _BadRequest("min_jaccard 需在 0~1 之间（收到 %s）" % mj)
+        argv += ["--min-jaccard", str(mj)]
+    return _cli_report(argv)
+
+
+def _action_topic_candidates(cfg: Config, params: dict) -> dict:
+    """A 档：主题聚类候选（`topic-candidates`；只产候选不改注册表）。"""
+    argv = ["topic-candidates", "--db", str(cfg.db)]
+    if cfg.topics_meta and cfg.topics_meta.is_file():
+        argv += ["--topics-meta", str(cfg.topics_meta)]
+    for key, flag in (("min_sim", "--min-sim"), ("min_size", "--min-size"),
+                      ("top_tools", "--top-tools")):
+        if params.get(key) is not None:
+            argv += [flag, str(params[key])]
+    return _cli_report(argv)
+
+
+def _action_triage(cfg: Config, params: dict) -> dict:
+    """A 档：蒸馏队列（`triage`；与工作台「待蒸馏」同源同口径）。"""
+    argv = ["triage", "--db", str(cfg.db)]
+    if params.get("since") is not None:
+        argv += ["--since", str(params["since"])]
+    if cfg.cards_root and Path(cfg.cards_root).is_dir():
+        argv += ["--cards-root", str(cfg.cards_root)]
+    for key, flag in (("min_count", "--min-count"), ("top", "--top")):
+        if params.get(key) is not None:
+            argv += [flag, str(int(params[key]))]
+    return _cli_report(argv)
+
+
+def _topic_sub_argv(cfg: Config, sub: str, params: dict,
+                    *, db: bool = False, chain_root: bool = False) -> list[str]:
+    """`topic <子动作>` 的公共 argv（meta 服务端定；id 从 params.topic_id 取）。"""
+    argv = ["topic", sub, "--id", str(params.get("topic_id") or "").strip(),
+            "--meta", str(_require_topics_meta(cfg))]
+    if not argv[3]:
+        raise _BadRequest("缺主题 id（--id）——回主题页选一个主题")
+    if db:
+        argv += ["--db", str(cfg.db)]
+    if chain_root and cfg.chain_root:
+        argv += ["--chain-root", str(cfg.chain_root)]
+    return argv
+
+
+def _action_topic_show(cfg: Config, params: dict) -> dict:
+    return _cli_report(_topic_sub_argv(cfg, "show", params))
+
+
+def _action_topic_dedupe(cfg: Config, params: dict) -> dict:
+    return _cli_report(_topic_sub_argv(cfg, "dedupe", params, db=True))
+
+
+def _action_topic_export(cfg: Config, params: dict) -> dict:
+    return _cli_report(_topic_sub_argv(cfg, "export", params, db=True,
+                                       chain_root=True))
+
+
+def _action_topic_md(cfg: Config, params: dict) -> dict:
+    return _cli_report(_topic_sub_argv(cfg, "md", params, db=True,
+                                       chain_root=True))
+
+
+def _action_topic_turns(cfg: Config, params: dict) -> dict:
+    argv = _topic_sub_argv(cfg, "turns", params, db=True)
+    if params.get("cap") is not None:
+        argv += ["--cap", str(int(params["cap"]))]
+    if params.get("full"):
+        argv.append("--full")
+    return _cli_report(argv)
+
+
+def _action_topic_chain(cfg: Config, params: dict) -> dict:
+    argv = _topic_sub_argv(cfg, "chain", params, db=True)
+    level = str(params.get("level") or "title")
+    if level not in ("title", "coarse", "mid", "fine", "artifact"):
+        raise _BadRequest("level=%r 不在 title/coarse/mid/fine/artifact" % level)
+    argv += ["--level", level]
+    if params.get("sid"):
+        argv += ["--sid", str(params["sid"])]
+    if params.get("max_chars") is not None:
+        argv += ["--max-chars", str(int(params["max_chars"]))]
+    if level == "artifact" and not cfg.artifacts_meta:
+        raise _BadRequest("level=artifact 需要 --artifacts-meta（起服时已传则"
+                          "自动带上）")
+    if cfg.artifacts_meta and cfg.artifacts_meta.is_file():
+        argv += ["--artifacts-meta", str(cfg.artifacts_meta)]
+    return _cli_report(argv)
+
+
 #: A 档动作白名单。**冻结**：执行器只认这张表（SOP §5.3 红线——新增的不是
 #: 任意执行，而是一张冻结的动作注册表）。
 ACTIONS: dict[str, dict] = {
@@ -431,6 +799,344 @@ ACTIONS: dict[str, dict] = {
         "reversible": "幂等（只读三库，产物返回页面不落盘）",
         "writes": "",
         "handler": _action_dualtrack,
+    },
+    # ---- v0.63 白名单补全（用户 2026-10-14「还有哪些没加的？都加上」）----
+    # 覆盖 commands.json 里**全部剩余 A 档命令**；执行一律走进程内真 CLI
+    # （_cli_report），输出捕获返回页面，绝不落盘（--out 一律不传）。
+    "adapters": {
+        "tier": "A",
+        "label": "数据源探测状态",
+        "desc": "显示本机各采集源的探测状态（adapters；读 sources.json）。",
+        "params": {},
+        "est_sec": 8,
+        "reversible": "幂等（只读采集源配置）",
+        "writes": "",
+        "handler": _action_adapters,
+    },
+    "search": {
+        "tier": "A",
+        "label": "全文检索",
+        "desc": "FTS 全文检索历史会话（search；结果带 role 与片段）。",
+        "params": {"query": {"type": "text", "src": "chips", "default": None,
+                             "label": "检索词"},
+                   "limit": {"type": "int", "src": "chips", "default": 20,
+                             "label": "最多几条"},
+                   "source": {"type": "text", "src": "chips", "default": None,
+                              "label": "只看某来源（可空）"}},
+        "est_sec": 2,
+        "reversible": "幂等（只读索引库）",
+        "writes": "",
+        "handler": _action_search,
+    },
+    "read": {
+        "tier": "A",
+        "label": "读会话原文",
+        "desc": "按纲要序号读采集源里的会话原文（read；序号见 scan 纲要）。",
+        "params": {"no": {"type": "text", "src": "chips", "default": None,
+                          "label": "纲要序号"},
+                   "turn": {"type": "text", "src": "chips", "default": "1",
+                            "label": "回合（1..N / last / all）"}},
+        "est_sec": 10,
+        "reversible": "幂等（只读采集源）",
+        "writes": "",
+        "handler": _action_read,
+    },
+    "pack": {
+        "tier": "A",
+        "label": "交接包（给另一个 Agent）",
+        "desc": "把所选会话打包成接续上下文（pack）。CLI 版写文件；动作版"
+                "产物直接回页面，不落盘。",
+        "params": {"select": {"type": "text", "src": "chips", "default": None,
+                              "label": "会话序号（如 3 或 1,4-5）"},
+                   "tokens": {"type": "int", "src": "chips", "default": 2000,
+                              "label": "token 预算"},
+                   "question": {"type": "text", "src": "chips", "default": None,
+                                "label": "带着什么问题交接（可空）"}},
+        "est_sec": 15,
+        "reversible": "幂等（只读采集源，产物返回页面不落盘）",
+        "writes": "",
+        "handler": _action_pack,
+    },
+    "cards_validate": {
+        "tier": "A",
+        "label": "卡片校验",
+        "desc": "校验卡片目录（cards validate；root/db/注册表服务端定，"
+                "错误与警告分列）。",
+        "params": {},
+        "est_sec": 3,
+        "reversible": "幂等（只读卡片目录与库）",
+        "writes": "",
+        "handler": _action_cards_validate,
+    },
+    "chain_validate": {
+        "tier": "A",
+        "label": "chain 结构校验",
+        "desc": "校验主题长文结构（chain-validate：sid 在成员内、turn 越界）。",
+        "params": {"file": {"type": "text", "src": "chips", "default": None,
+                            "label": "chain 文件名（chain-root 下）"}},
+        "est_sec": 2,
+        "reversible": "幂等（只读）",
+        "writes": "",
+        "handler": _action_chain_validate,
+    },
+    "chain_audit": {
+        "tier": "A",
+        "label": "chain 内容审计",
+        "desc": "审计主题长文内容保真（chain-audit：引文逐字门+锚点语义门"
+                "+证据覆盖）。",
+        "params": {"file": {"type": "text", "src": "chips", "default": None,
+                            "label": "chain 文件名（chain-root 下）"},
+                   "strict": {"type": "text", "src": "chips", "default": None,
+                              "label": "锚点告警也判失败（strict）"},
+                   "list_limit": {"type": "int", "src": "chips", "default": 20,
+                                  "label": "逐条清单最多列几条"}},
+        "est_sec": 5,
+        "reversible": "幂等（只读）",
+        "writes": "",
+        "handler": _action_chain_audit,
+    },
+    "deadcode_scan": {
+        "tier": "A",
+        "label": "死代码扫描",
+        "desc": "扫主仓+兄弟仓源码树（deadcode-scan）；启发式，只提示不判死。",
+        "params": {},
+        "est_sec": 10,
+        "reversible": "幂等（只读源码树）",
+        "writes": "",
+        "handler": _action_deadcode_scan,
+    },
+    "export_analysis": {
+        "tier": "A",
+        "label": "统一分析导出",
+        "desc": "五类分析产物（export-analysis：sessions/tools/errors/"
+                "skills/triage），md/JSON 同源；产物回页面不落盘。",
+        "params": {"kind": {"type": "text", "src": "chips", "default": "errors",
+                            "label": "类别（sessions/tools/errors/skills/triage）"},
+                   "format": {"type": "text", "src": "chips", "default": "md",
+                              "label": "格式（md/json）"},
+                   "days": {"type": "days", "src": "chips", "default": None,
+                            "label": "时间窗"},
+                   "min_count": {"type": "int", "src": "chips", "default": None,
+                                 "label": "至少出现几次"},
+                   "top": {"type": "int", "src": "chips", "default": None,
+                           "label": "Top N"}},
+        "est_sec": 3,
+        "reversible": "幂等（只读库，产物返回页面）",
+        "writes": "",
+        "handler": _action_export_analysis,
+    },
+    "harvest_eval": {
+        "tier": "A",
+        "label": "班规效果评估",
+        "desc": "采纳规则的 A/B 三值判定（harvest-eval：改善/没变化/不下结论）。",
+        "params": {"since": {"type": "days", "src": "chips", "default": None,
+                             "label": "只看最近 N 天"},
+                   "window_days": {"type": "int", "src": "chips", "default": None,
+                                   "label": "前后窗口天数（默认 7）"},
+                   "min_per_window": {"type": "int", "src": "chips",
+                                      "default": None,
+                                      "label": "每窗口样本门槛（默认 5）"},
+                   "min_total": {"type": "int", "src": "chips", "default": None,
+                                 "label": "合计样本门槛（默认 20）"},
+                   "threshold": {"type": "days", "src": "chips", "default": None,
+                                 "label": "判定阈值（默认 0.1）"}},
+        "est_sec": 5,
+        "reversible": "幂等（只读两库）",
+        "writes": "",
+        "handler": _action_harvest_eval,
+    },
+    "kb_stats": {
+        "tier": "A",
+        "label": "知识库盘点",
+        "desc": "知识库根目录盘点（kb-stats：话题文件数/INDEX 一致性/台账条数）。",
+        "params": {},
+        "est_sec": 2,
+        "reversible": "幂等（只读）",
+        "writes": "",
+        "handler": _action_kb_stats,
+    },
+    "report_chains": {
+        "tier": "A",
+        "label": "工具链失败模式",
+        "desc": "长回合/连击/循环/空转/高步 Top N（report-chains）。",
+        "params": {"since": {"type": "days", "src": "chips", "default": None,
+                             "label": "时间窗"},
+                   "top": {"type": "int", "src": "chips", "default": 10,
+                           "label": "Top N"}},
+        "est_sec": 3,
+        "reversible": "幂等（只读库）",
+        "writes": "",
+        "handler": _action_report_chains,
+    },
+    "report_skill": {
+        "tier": "A",
+        "label": "skill 行为画像",
+        "desc": "按 skill 聚合调用/行为链/触发任务（report-skill；可精确到单个）。",
+        "params": {"skill": {"type": "text", "src": "chips", "default": None,
+                             "label": "只看某个 skill（可空）"},
+                   "min_calls": {"type": "int", "src": "chips", "default": 0,
+                                 "label": "低于该调用次数标低样本"}},
+        "est_sec": 3,
+        "reversible": "幂等（只读库）",
+        "writes": "",
+        "handler": _action_report_skill,
+    },
+    "report_skill_join": {
+        "tier": "A",
+        "label": "skill 进化交叉表",
+        "desc": "chain 时间线锚点 × skill 调用锚点交叉（report-skill-join）。",
+        "params": {"chain": {"type": "text", "src": "chips", "default": None,
+                             "label": "chain 文件名（chain-root 下）"},
+                   "skill": {"type": "text", "src": "chips", "default": None,
+                             "label": "只看某个 skill（可空）"},
+                   "margin_days": {"type": "days", "src": "chips",
+                                   "default": 90,
+                                   "label": "认可窗（天）"}},
+        "est_sec": 3,
+        "reversible": "幂等（只读）",
+        "writes": "",
+        "handler": _action_report_skill_join,
+    },
+    "report_traces": {
+        "tier": "A",
+        "label": "trace 工具统计",
+        "desc": "OTel trace 的耗时/失败率/取消（report-traces；读本地 traces）。",
+        "params": {},
+        "est_sec": 3,
+        "reversible": "幂等（只读）",
+        "writes": "",
+        "handler": _action_report_traces,
+    },
+    "suppress_list": {
+        "tier": "A",
+        "label": "抑制表清单",
+        "desc": "列出已抑制会话（suppress list：谁/何时/为什么）。",
+        "params": {},
+        "est_sec": 1,
+        "reversible": "幂等（只读抑制表）",
+        "writes": "",
+        "handler": _action_suppress_list,
+    },
+    "suppress_candidates": {
+        "tier": "A",
+        "label": "抑制候选清单",
+        "desc": "扫描重复簇与零轮次会话（suppress candidates，只读）；"
+                "可按 J 下限过滤重复簇候选。",
+        "params": {"min_jaccard": {"type": "days", "src": "chips",
+                                   "default": None,
+                                   "label": "只列重复度 J≥此值的候选（0~1）"}},
+        "est_sec": 30,
+        "reversible": "幂等（只读扫描）",
+        "writes": "",
+        "handler": _action_suppress_candidates,
+    },
+    "topic_candidates": {
+        "tier": "A",
+        "label": "主题聚类候选",
+        "desc": "标题 n-gram+任务签名产候选主题（topic-candidates；"
+                "只产候选不改注册表）。",
+        "params": {"min_sim": {"type": "days", "src": "chips", "default": 0.35,
+                               "label": "相似度下限"},
+                   "min_size": {"type": "int", "src": "chips", "default": 2,
+                                "label": "最小簇大小"},
+                   "top_tools": {"type": "int", "src": "chips", "default": 3,
+                                 "label": "每簇列几个标志工具"}},
+        "est_sec": 10,
+        "reversible": "幂等（只读）",
+        "writes": "",
+        "handler": _action_topic_candidates,
+    },
+    "triage": {
+        "tier": "A",
+        "label": "蒸馏队列",
+        "desc": "重复踩坑/旧坑重现/skill 待鉴定初筛（triage；与工作台"
+                "「待蒸馏」同源）。",
+        "params": {"since": {"type": "days", "src": "chips", "default": 7,
+                             "label": "时间窗（天）"},
+                   "min_count": {"type": "int", "src": "chips", "default": 2,
+                                 "label": "至少出现几次才列"},
+                   "top": {"type": "int", "src": "chips", "default": 10,
+                           "label": "Top N"}},
+        "est_sec": 5,
+        "reversible": "幂等（只读库与卡片目录）",
+        "writes": "",
+        "handler": _action_triage,
+    },
+    "topic_show": {
+        "tier": "A",
+        "label": "主题详情",
+        "desc": "看一个主题的成员清单与关键词（topic show）。",
+        "params": {"topic_id": {"type": "topic_id", "src": "topics_api",
+                                "default": None, "label": "主题 id"}},
+        "est_sec": 1,
+        "reversible": "幂等（只读注册表）",
+        "writes": "",
+        "handler": _action_topic_show,
+    },
+    "topic_turns": {
+        "tier": "A",
+        "label": "主题回合索引",
+        "desc": "主题成员的回合索引/raw 全文（topic turns；chain 锚点的来源）。",
+        "params": {"topic_id": {"type": "topic_id", "src": "topics_api",
+                                "default": None, "label": "主题 id"},
+                   "cap": {"type": "int", "src": "chips", "default": 200,
+                           "label": "每会话最多几个回合"},
+                   "full": {"type": "text", "src": "chips", "default": None,
+                            "label": "raw 全文（true=全文，默认预览）"}},
+        "est_sec": 5,
+        "reversible": "幂等（只读）",
+        "writes": "",
+        "handler": _action_topic_turns,
+    },
+    "topic_dedupe": {
+        "tier": "A",
+        "label": "主题去重报告",
+        "desc": "会话级去重（topic dedupe：成员 → 代表，重复列出）。",
+        "params": {"topic_id": {"type": "topic_id", "src": "topics_api",
+                                "default": None, "label": "主题 id"}},
+        "est_sec": 5,
+        "reversible": "幂等（只读）",
+        "writes": "",
+        "handler": _action_topic_dedupe,
+    },
+    "topic_export": {
+        "tier": "A",
+        "label": "主题结构化导出",
+        "desc": "给机器读的 topic JSON（topic export）；产物回页面不落盘。",
+        "params": {"topic_id": {"type": "topic_id", "src": "topics_api",
+                                "default": None, "label": "主题 id"}},
+        "est_sec": 3,
+        "reversible": "幂等（只读，产物返回页面）",
+        "writes": "",
+        "handler": _action_topic_export,
+    },
+    "topic_md": {
+        "tier": "A",
+        "label": "主题人读速览",
+        "desc": "一页速览（topic md：是什么/跨多久/关键转折/结论与未决）。",
+        "params": {"topic_id": {"type": "topic_id", "src": "topics_api",
+                                "default": None, "label": "主题 id"}},
+        "est_sec": 3,
+        "reversible": "幂等（只读，产物返回页面）",
+        "writes": "",
+        "handler": _action_topic_md,
+    },
+    "topic_chain": {
+        "tier": "A",
+        "label": "主题链时间线",
+        "desc": "主题链分层时间线（topic chain：title/coarse/mid/fine/artifact）。",
+        "params": {"topic_id": {"type": "topic_id", "src": "topics_api",
+                                "default": None, "label": "主题 id"},
+                   "level": {"type": "level", "src": "chips", "default": "title",
+                             "label": "分层"},
+                   "sid": {"type": "sid", "src": "sessions_api", "default": None,
+                           "label": "成员 sid（fine/artifact 档必填）"},
+                   "max_chars": {"type": "int", "src": "chips", "default": None,
+                                 "label": "字符预算（可空）"}},
+        "est_sec": 3,
+        "reversible": "幂等（只读，产物返回页面）",
+        "writes": "",
+        "handler": _action_topic_chain,
     },
 }
 

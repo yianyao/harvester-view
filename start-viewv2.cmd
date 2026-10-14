@@ -28,7 +28,16 @@ if not exist "%SRV%\harvester.db" (
   pause
   exit /b 1
 )
-set "CARDS_ROOT=%USERPROFILE%\.workbuddy\knowledge\cards"
+rem v0.65 portable (user rule 2026-10-14: project MUST stay host-agnostic
+rem and migratable; never hardcode user names or machine-specific paths).
+rem Cards/topics default to this machine's WorkBuddy knowledge dir, but
+rem env vars win. To migrate: copy old machine's knowledge\cards and
+rem knowledge\topics to the same path on the new machine, OR put them
+rem anywhere and set env vars before running this script, e.g.
+rem   set CARDS_ROOT=D:\migrated\cards
+rem   set CHAIN_ROOT=D:\migrated\topics
+if not defined CARDS_ROOT set "CARDS_ROOT=%USERPROFILE%\.workbuddy\knowledge\cards"
+if not defined CHAIN_ROOT set "CHAIN_ROOT=%USERPROFILE%\.workbuddy\knowledge\topics"
 if not exist "%CARDS_ROOT%" mkdir "%CARDS_ROOT%"
 start "harvester api-serve :8765" /D "%SRV%" %PY% -m harvester api-serve --db "%SRV%\harvester.db" --cards-root "%CARDS_ROOT%" --topics-meta "%SRV%\topics_meta.db" --keywords-meta "%SRV%\keywords_meta.db" --suggestions-meta "%SRV%\suggestions_meta.db"
 rem P2: local action surface (whitelisted A-tier actions) + read-only data.
@@ -36,7 +45,7 @@ rem v0.49：**必须传 --exports-root**。会话抑制（session_suppress）要
 rem exports 旧副本；不传的话 cfg.exports_root=None，预演只能警告"本次不清副本"，
 rem 而旧副本还在 → 下次 sync/update 会把它重新索引回来（= 抑制看起来"没生效"）。
 rem `tests/test_v41_suppress_view.py` 有一条门读本文件，断言这一行在。
-start "harvester actions-serve :8766" /D "%~dp0" %PY% -m actions.actionsserve --db "%SRV%\harvester.db" --cards-root "%CARDS_ROOT%" --topics-meta "%SRV%\topics_meta.db" --artifacts-meta "%SRV%\artifacts_meta.db" --keywords-meta "%SRV%\keywords_meta.db" --suggestions-meta "%SRV%\suggestions_meta.db" --chain-root "%USERPROFILE%\.workbuddy\knowledge\topics" --exports-root "%SRV%\exports"
+start "harvester actions-serve :8766" /D "%~dp0" %PY% -m actions.actionsserve --db "%SRV%\harvester.db" --cards-root "%CARDS_ROOT%" --topics-meta "%SRV%\topics_meta.db" --artifacts-meta "%SRV%\artifacts_meta.db" --keywords-meta "%SRV%\keywords_meta.db" --suggestions-meta "%SRV%\suggestions_meta.db" --chain-root "%CHAIN_ROOT%" --exports-root "%SRV%\exports"
 start "harvester-view :8088" /D "%~dp0" %PY% view.py --no-open
 timeout /t 3 /nobreak >nul
 start "" http://127.0.0.1:8088/

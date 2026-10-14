@@ -403,10 +403,8 @@ def _cards_pending_items(g) -> list[dict]:
             "cardpending:" + Path(p).name, Path(p).name,
             facts=[("路径", str(p.parent))],
             detail="已生成脚手架、还没定稿入卡片仓。",
-            suggestion="按卡片规范补齐锚点（出处标记）和证据原文，跑一次下面的卡片校验，过了就能入库。",
-            commands=[_cmd("校验卡片目录",
-                           "含刚定稿的这张；错误与警告分列。",
-                           cli=_cards_cli(g))]))
+            suggestion="按卡片规范补齐锚点（出处标记）和证据原文，跑一次下面"
+                       "命令包里的卡片校验，过了就能入库。"))
     return items
 
 
@@ -643,15 +641,20 @@ def _cards_cli(g) -> str:
     return _cli(parts)
 
 
-#: 卡片校验命令的说明（用户 2026-10-14 批注：--root 是哪来的、为什么在
-#: .workbuddy\knowledge 下）。抽成常量随命令包三处共用，改一处全同步。
+#: 卡片校验命令的说明（用户 2026-10-14 两轮批注：--root 哪来的；同一命令
+#: 为啥逐条记录重复出现）。抽成常量随命令包三处共用，改一处全同步。
+#: 关键事实：`cards validate` 是**目录级**校验——一条命令扫整个卡片仓，
+#: 跑一次就覆盖全部卡片，不需要每张卡片跑一遍（所以明细行不逐条挂它）。
 CARD_VALIDATE_NOTE = (
-    "只读；错误与警告分列。命令里的 --root 不是探测出来的：是 start-viewv2.cmd "
-    "起服时定死传给后端的卡片仓路径（WorkBuddy 知识库卡片仓 "
-    "%USERPROFILE%\\.workbuddy\\knowledge\\cards），页面生成命令时原样填入，"
-    "点「在命令台打开」也会自动带上，不用手抄。卡片仓放 .workbuddy\\knowledge"
-    "下是因为 WorkBuddy 主程序的知识库就从这加载——本工具与主程序共用同一份"
-    "卡片，另放仓根会出现两份对不上。")
+    "只读；错误与警告分列。这是**目录级**校验：一条命令扫整个卡片仓，"
+    "跑一次即覆盖全部卡片，不用每张卡片跑一遍。命令里的 --root 不是探测"
+    "出来的：默认取本机 WorkBuddy 知识库卡片仓"
+    "（%USERPROFILE%\\.workbuddy\\knowledge\\cards），由 start-viewv2.cmd "
+    "起服时传给后端，页面生成命令时原样填入，点「在命令台打开」会自动带上，"
+    "不用手抄；换机器或卡片仓另放时，先设环境变量 CARDS_ROOT 再跑启动脚本"
+    "即可整体改向，页面命令会跟着变。卡片仓放 .workbuddy\\knowledge 下是因为"
+    "WorkBuddy 主程序的知识库界面就从这读——本工具蒸馏出的卡片与主程序共用"
+    "同一份，另放仓根会出现两份对不上。")
 
 
 def _card_items(g) -> list[dict]:
@@ -666,10 +669,8 @@ def _card_items(g) -> list[dict]:
             facts=[("错误", str(len(errs))), ("警告", str(len(warns)))],
             detail="；".join(errs + warns)[:400],
             suggestion="警告里最常见的是「证据行未在锚点原文中找到」——要么改证据"
-                       "引用，要么接受它是改写并人工复核。校验器只报警，不改卡片。",
-            commands=[_cmd("校验卡片目录",
-                           CARD_VALIDATE_NOTE,
-                           cli=_cards_cli(g))]))
+                       "引用，要么接受它是改写并人工复核。校验器只报警，不改卡片。"
+                       "校验命令在下方命令包里（目录级，跑一次覆盖全部）。"))
     return items
 
 

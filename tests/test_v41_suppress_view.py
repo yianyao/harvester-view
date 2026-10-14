@@ -243,6 +243,34 @@ class SuppressPlanTest(unittest.TestCase):
                       "actions-serve 没传 --exports-root → 抑制清不掉 exports 旧副本"
                       "（下次 sync 会把会话收回来）")
 
+    def test_start_scripts_are_host_portable(self):
+        """启动脚本必须**不绑定宿主**（用户铁律 2026-10-14：项目必须可迁移）。
+
+        三条红线：①不许出现任何具体用户名/盘符绝对路径（换机即断）；
+        ②机器相关的路径（卡片仓/主题链）必须可用环境变量覆盖——迁移时
+        `set CARDS_ROOT=...` 就能整体改向，不用改脚本；③默认值只许基于
+        `%~dp0`（随项目走）或 `%USERPROFILE%`（随用户走）这类**换机会重解**的引用。
+        """
+        for name in ("start-viewv2.cmd", "start.cmd", "start-system.cmd"):
+            path = ROOT / name
+            if not path.is_file():
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            self.assertNotIn(":\\Users\\", text.replace("%USERPROFILE%", ""),
+                             "%s 出现硬编码用户目录（绑定宿主，违反可迁移铁律）" % name)
+            self.assertNotIn("yianyao", text,
+                             "%s 出现具体用户名（绑定宿主，违反可迁移铁律）" % name)
+            for var in self._machine_vars(name):
+                self.assertIn("if not defined %s" % var, text,
+                              "%s 的 %s 没有环境变量覆盖口（迁移时无法改向）" % (name, var))
+
+    @staticmethod
+    def _machine_vars(name: str) -> tuple:
+        """各脚本里「机器相关路径」应有的覆盖口清单。"""
+        if name == "start-viewv2.cmd":
+            return ("CARDS_ROOT", "CHAIN_ROOT")
+        return ("CARDS_ROOT",)
+
     def test_plan_lists_export_copies_to_delete(self):
         """`deleted` 是**逐文件一条记录**（sid + json + md），不是裸文件名。
 

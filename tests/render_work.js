@@ -68,7 +68,8 @@ function renderCmdParams() { cmdState.params = true; }
 function loadCmdData() { return Promise.resolve(null); }
 
 for (const [n, sig] of [
-  ["renderWorkHead", "d"], ["workRows", "d"], ["renderWorkPkg", "d"],
+  ["cmdKey", "c"], ["renderWorkHead", "d"], ["workRows", "d"],
+  ["renderWorkPkg", "d"],
   ["renderWorkItems", "d"], ["openInCmd", "actionId,params"],
 ]) {
   eval(extract(n, sig));
@@ -165,7 +166,7 @@ check("摊平后的行保留来源项（知道这条命令是针对哪条的）"
   rows.some(r => r.src === WI.items[0].title));
 renderWorkPkg(WI);
 const pkg = $("work-pkg").innerHTML;
-check("命令包显示条数", pkg.includes("批量 " + rows.length + " 条命令"));
+check("命令包显示条数", pkg.includes("（" + rows.length + " 条命令"));
 check("命令行文本逐条渲染（可复制粘贴）",
   pkg.includes(esc(WI.package[0].cli)) &&
   pkg.includes(esc(WI.items[0].commands[0].cli)));
@@ -177,6 +178,41 @@ check("纯 CLI 命令不给假的执行按钮",
   (pkg.match(/data-wact=/g) || []).length === 1);
 check("「在命令台打开」带上了预填参数",
   pkg.includes("data-wparams=") && pkg.includes("status"));
+
+/* ②b 整批通用命令必须去重（用户 2026-10-14 批注：几个命令从头到脚完全
+   一样，需要反反复复执行?）——目录级命令（如 cards validate）逐条明细
+   重复出现是数据形状问题，渲染层按 命令行+动作+参数 去重并标注「跑一次」。 */
+const DUP = {package: [], items: [
+  {item_id: "a", title: "卡片甲", metrics: {count: 1}, facts: [], anchor: null,
+   detail: "", suggestion: "", level: "warn", owner: "",
+   commands: [{label: "校验卡片目录", note: "目录级", tier: null,
+               action_id: null, params: {}, cli: "python -m harvester cards validate --root X"}]},
+  {item_id: "b", title: "卡片乙", metrics: {count: 1}, facts: [], anchor: null,
+   detail: "", suggestion: "", level: "warn", owner: "",
+   commands: [{label: "校验卡片目录", note: "目录级", tier: null,
+               action_id: null, params: {}, cli: "python -m harvester cards validate --root X"}]},
+  {item_id: "c", title: "卡片丙", metrics: {count: 1}, facts: [], anchor: null,
+   detail: "", suggestion: "", level: "warn", owner: "",
+   commands: [{label: "校验卡片目录", note: "目录级", tier: null,
+               action_id: null, params: {}, cli: "python -m harvester cards validate --root Y"}]},
+]};
+const drows = workRows(DUP);
+check("完全相同的命令去重后只留一条（不同参数的保留）",
+  drows.length === 2 && drows[0].same === 2 && drows[1].same === 1,
+  "整批通用命令重复 N 遍会让用户以为要跑 N 遍——必须合并成一条");
+check("去重行标注「整批通用，跑一次即可」",
+  drows.some(r => (r.shared_note||"").includes("跑一次即可")));
+renderWorkPkg(DUP);
+check("命令包摘要点名合并了几条相同命令",
+  $("work-pkg").innerHTML.includes("完全相同的合并"));
+renderWorkItems(DUP);
+const dupItems = $("work-items").innerHTML;
+check("明细里整批通用命令只给提示不重复贴命令行",
+  (dupItems.match(/cards validate --root X/g) || []).length === 0 &&
+  dupItems.includes("整批通用"),
+  "明细区再贴一遍同一条命令=换着地方继续误导（重复的 X 应只在命令包出现一次）");
+check("参数不同的同类命令不去重（--root X 与 --root Y 都在）",
+  dupItems.includes("--root Y"));
 
 /* ③ 明细区：只渲染服务端那一批 + 每条都带建议 + 锚点可点 */
 renderWorkItems(WI);

@@ -44,7 +44,9 @@ if not exist "%SRV%\harvester.db" (
 rem v0.22 P0-4: cards-root aligned to the REAL card library (knowledge\cards).
 rem The old cards_pending stub directory is deprecated (0 files, G3 showed
 rem an empty cabinet); the main library is now the validation target.
-set "CARDS_ROOT=%USERPROFILE%\.workbuddy\knowledge\cards"
+rem v0.65 portable: env var CARDS_ROOT wins (migrate = set it to the
+rem carried-over copy); default stays this machine's WorkBuddy knowledge dir.
+if not defined CARDS_ROOT set "CARDS_ROOT=%USERPROFILE%\.workbuddy\knowledge\cards"
 if not exist "%CARDS_ROOT%" mkdir "%CARDS_ROOT%"
 rem v0.22 topics/keywords/suggestions: meta libs live next to harvester.db.
 rem api-serve degrades gracefully if one is missing (hint, no crash).

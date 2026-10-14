@@ -421,15 +421,23 @@ h3.sec{font-size:14px;margin:18px 0 6px}
       keywords_meta / suggestions_meta 四本账、exports\（导出包）。
       命令里写 <code>--db harvester.db</code> 只写文件名，就是因为库与命令行惯例
       的当前目录（仓根）同目录。<br>
-      ② <b>WorkBuddy 知识库</b>（%USERPROFILE%\.workbuddy\knowledge\）——凡是
-      WorkBuddy 主程序自己要加载的东西都住这：cards\（知识卡片）、
-      cards_pending\（草稿卡片）、topics\（主题 chain 长文），以及主程序自己的
-      feedback\、handoffs\、INDEX.md。卡片与 chain 放这里<b>不是乱放</b>：
-      WorkBuddy 主程序的知识库界面就从这读，本工具只是把同一份卡片/chain
-      拿来校验与蒸馏——若另放仓根，就会有两份卡片、两边对不上。<br>
-      ③ 命令里的路径<b>不是运行时探测的</b>：是 start-viewv2.cmd 起服时写死
-      传给后端的配置（--cards-root / --chain-root），页面生成命令时把配置值
-      原样填进去；点「在命令台打开」参数也会自动带上，不用手抄。
+      ② <b>WorkBuddy 知识库</b>（%USERPROFILE%\.workbuddy\knowledge\）——
+      cards\（知识卡片）、cards_pending\（草稿卡片）、topics\（主题 chain 长文）
+      住这里；同层的 feedback\、handoffs\、INDEX.md 是 WorkBuddy 主程序自己的，
+      与本工具无关。<b>这些知识的来龙去脉</b>：源头是<b>你自己的 AI 会话</b>
+      （采集进 harvester.db），由本工具蒸馏成卡片/chain 写到这里——
+      <b>不是 WorkBuddy 主程序生成的</b>；放这里是<b>消费方</b>决定的位置：
+      WorkBuddy 主程序的知识库界面（侧栏「资料库/知识库」）从这读同一份，
+      本工具也拿它来校验与蒸馏——来源是本工具，使用是两边共用，
+      另放仓根就会有两份卡片、两边对不上。<br>
+      ③ 命令里的路径<b>不是运行时探测的</b>：默认取本机 WorkBuddy 知识库位置，
+      由 start-viewv2.cmd 起服时传给后端（--cards-root / --chain-root），
+      页面生成命令时原样填进去；点「在命令台打开」参数也会自动带上，不用手抄。
+      <b>换机器/迁移怎么办</b>：采集仓（①）随项目目录整体拷走即可；
+      知识库（②）二选一——把旧机的 knowledge\cards 与 knowledge\topics
+      拷到新机同路径（新机装了 WorkBuddy 就归位），或拷到任意位置后
+      先设环境变量 CARDS_ROOT / CHAIN_ROOT 指过去，再跑 start-viewv2.cmd，
+      页面里的命令会跟着新路径走（启动脚本支持覆盖，不写死）。
       </div></details>
     <div id="work-head"><div class="empty">从「今日工作台」点任意数字进入。</div></div>
     <div id="work-pkg"></div>
@@ -3451,16 +3459,34 @@ function renderWorkHead(d){
     "</div>";
 }
 /* 把 target 的「命令包 + 每条明细自带的命令」摊平成一份可复制/可执行的清单。
-   纯函数（只读参数），故渲染门能单独 extract 执行。 */
+   v0.65（用户 2026-10-14 批注：几个命令从头到脚完全一样，需要反反复复执行？）：
+   目录级/整批级的命令（如 cards validate 校验整个卡片仓）会在每条明细上重复
+   出现——这里按「命令行+动作+参数」**去重**：完全相同的只保留一条，并标注它
+   覆盖几条明细（跑一次即可）。纯函数（只读参数），渲染门能单独 extract 执行。 */
+function cmdKey(c){
+  return (c.cli||"")+"|"+(c.action_id||"")+"|"+JSON.stringify(c.params||{});
+}
 function workRows(d){
-  const rows=[];
+  const rows=[],seen={};
+  const put=c=>{
+    const k=cmdKey(c);
+    if(seen[k]){seen[k].same++;if(c.src)seen[k].srcs.push(c.src);return;}
+    const r={label:c.label,note:c.note,cli:c.cli,action_id:c.action_id,
+      params:c.params||{},tier:c.tier,src:c.src||"",same:1,srcs:[]};
+    seen[k]=r;rows.push(r);
+  };
   for(const c of d.package||[])
-    rows.push({label:c.label,note:c.note,cli:c.cli,action_id:c.action_id,
+    put({label:c.label,note:c.note,cli:c.cli,action_id:c.action_id,
       params:c.params||{},tier:c.tier,src:""});
   for(const i of d.items||[])
     for(const c of (i.commands||[]))
-      rows.push({label:c.label,note:c.note,cli:c.cli,action_id:c.action_id,
+      put({label:c.label,note:c.note,cli:c.cli,action_id:c.action_id,
         params:c.params||{},tier:c.tier,src:i.title});
+  for(const r of rows){
+    if(r.src)r.srcs.unshift(r.src);
+    if(r.same>1)r.shared_note="整批通用：这 "+r.srcs.length+
+      " 条明细共用同一条命令——跑一次即可，不用每条记录跑一遍。";
+  }
   return rows;
 }
 function renderWorkPkg(d){
@@ -3472,7 +3498,10 @@ function renderWorkPkg(d){
     return;
   }
   const shown=rows.slice(0,60);
-  let h="<details open><summary>处理命令包（批量 "+rows.length+" 条命令）</summary>";
+  const dup=rows.reduce((a,r)=>a+(r.same>1?r.same-1:0),0);
+  let h="<details open><summary>处理命令包（"+rows.length+" 条命令"+
+    (dup?("；已把 "+dup+" 条完全相同的合并——一条命令覆盖整批的，跑一次即可"):"")+
+    "</summary>";
   h+="<p class='sub2'>纪律：执行只发生在冻结白名单内。命令行可复制到仓根目录"+
      "核对后执行；带「在命令台打开」的可就地执行——B 档两段提交："+
      "先预演、你确认、才写。</p>"+
@@ -3482,7 +3511,12 @@ function renderWorkPkg(d){
     h+="<div class='wi-item'><h4>"+esc(r.label||"命令")+
       (r.tier?" <span class='tierbadge "+esc(r.tier)+"'>"+esc(r.tier)+" 档</span>":"")+
       (r.action_id?" <span class='sub2'>可在命令台执行</span>":"")+"</h4>"+
-      (r.src?"<div class='wd'>针对："+esc(r.src)+"</div>":"")+
+      (r.srcs&&r.srcs.length>1
+        ?("<div class='wd'>针对：整批通用（覆盖 "+r.srcs.length+
+          " 条明细： "+esc(r.srcs.slice(0,3).join("、")+
+          (r.srcs.length>3?" 等":""))+"）</div>")
+        :(r.src?"<div class='wd'>针对："+esc(r.src)+"</div>":""))+
+      (r.shared_note?"<div class='wd'><b>"+esc(r.shared_note)+"</b></div>":"")+
       (r.note?"<div class='wd'>"+esc(r.note)+"</div>":"")+
       "<div class='wi-cmd'>"+esc(r.cli||"（服务端未给命令行文本）")+"</div>"+
       (r.action_id?("<button class='xbtn' data-wact=\""+esc(r.action_id)+
@@ -3508,11 +3542,20 @@ function renderWorkItems(d){
     return;
   }
   let h="<h3 class='sec'>待处理记录（"+items.length+" 条，与上面的数字同源）</h3>";
+  /* 整批通用命令（workRows 去重判定 same>1 的）：明细行不再重复贴同一条命令，
+     改成一句提示——用户批注「完全一样的命令需要反反复复执行?」：不需要。 */
+  const seen={},sharedKeys=new Set();
+  for(const i of items)for(const c of (i.commands||[])){
+    const k=cmdKey(c);
+    if(seen[k])sharedKeys.add(k);else seen[k]=1;
+  }
   h+=items.map(it=>{
     const facts=(it.facts||[]).map(f=>"<span>"+esc(f[0])+"："+esc(f[1])+
       "</span>").join("");
-    const cmds=(it.commands||[]).map(c=>"<div class='wi-cmd'>"+
-      esc(c.cli||"")+"</div>"+
+    const cmds=(it.commands||[]).map(c=>
+      (sharedKeys.has(cmdKey(c))
+        ?"<div class='wd sub2'>ⓘ 这条命令整批通用（在上方命令包里，跑一次即覆盖全部明细），不逐条重复。</div>"
+        :"<div class='wi-cmd'>"+esc(c.cli||"")+"</div>")+
       (c.action_id?("<button class='xbtn' data-wact=\""+esc(c.action_id)+
         "\" data-wparams='"+esc(JSON.stringify(c.params||{}))+
         "'>在命令台打开（已预填）</button>"):"")).join("");

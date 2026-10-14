@@ -171,8 +171,9 @@ if (bcSum === 0 || pats.length === 0) {
   /* P1-5 验收口径：模式明细条数求和 ≡ by_class 求和（同库同源） */
   check("对账②：patterns 求和 " + patSum + " = by_class 求和 " + bcSum,
     patSum === bcSum);
-  /* 对账③：与真实总错误数（AGENTS.md 快照 2026-10-12 = 381）比对 */
-  check("对账③：全库错误总数 = 381（快照口径，2026-10-12）", bcSum === 381);
+  /* 对账③：与真实总错误数（AGENTS.md 快照 2026-10-14 = 362，抑制 161 条
+     会话后重定基线；旧快照 2026-10-12 = 381）比对 */
+  check("对账③：全库错误总数 = 362（快照口径，2026-10-14）", bcSum === 362);
 }
 
 console.log("\nok " + ok + " / n/a " + na + " / FAIL " + fails);

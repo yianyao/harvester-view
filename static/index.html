@@ -2223,7 +2223,8 @@ function renderDualtrack(d,out){
   h+=band.length
     ?("<div class='dt-band'>"+band.map((p,i)=>
       "<details class='dt-cand'><summary>#"+(i+1)+" "+esc(p.sid)+
-      " <span class='sub2'>jaccard="+esc(String(p.jaccard))+"</span></summary>"+
+      " <span class='sub2'>相似度 J="+esc(String(p.jaccard))+
+      "（两段文字的重复度：1=逐字相同，≥0.9 即基本同文副本）</span></summary>"+
       "<div class='dt-cmp'><div><b>前轮</b><pre class='dt-pre'>"+
       esc((p.a&&p.a.preview)||"")+"</pre></div><div><b>后轮</b>"+
       "<pre class='dt-pre'>"+esc((p.b&&p.b.preview)||"")+

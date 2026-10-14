@@ -421,23 +421,22 @@ h3.sec{font-size:14px;margin:18px 0 6px}
       keywords_meta / suggestions_meta 四本账、exports\（导出包）。
       命令里写 <code>--db harvester.db</code> 只写文件名，就是因为库与命令行惯例
       的当前目录（仓根）同目录。<br>
-      ② <b>WorkBuddy 知识库</b>（%USERPROFILE%\.workbuddy\knowledge\）——
-      cards\（知识卡片）、cards_pending\（草稿卡片）、topics\（主题 chain 长文）
-      住这里；同层的 feedback\、handoffs\、INDEX.md 是 WorkBuddy 主程序自己的，
-      与本工具无关。<b>这些知识的来龙去脉</b>：源头是<b>你自己的 AI 会话</b>
-      （采集进 harvester.db），由本工具蒸馏成卡片/chain 写到这里——
-      <b>不是 WorkBuddy 主程序生成的</b>；放这里是<b>消费方</b>决定的位置：
-      WorkBuddy 主程序的知识库界面（侧栏「资料库/知识库」）从这读同一份，
-      本工具也拿它来校验与蒸馏——来源是本工具，使用是两边共用，
-      另放仓根就会有两份卡片、两边对不上。<br>
-      ③ 命令里的路径<b>不是运行时探测的</b>：默认取本机 WorkBuddy 知识库位置，
-      由 start-viewv2.cmd 起服时传给后端（--cards-root / --chain-root），
-      页面生成命令时原样填进去；点「在命令台打开」参数也会自动带上，不用手抄。
-      <b>换机器/迁移怎么办</b>：采集仓（①）随项目目录整体拷走即可；
-      知识库（②）二选一——把旧机的 knowledge\cards 与 knowledge\topics
-      拷到新机同路径（新机装了 WorkBuddy 就归位），或拷到任意位置后
-      先设环境变量 CARDS_ROOT / CHAIN_ROOT 指过去，再跑 start-viewv2.cmd，
-      页面里的命令会跟着新路径走（启动脚本支持覆盖，不写死）。
+      ② <b>知识正本</b>（仓内 session-harvester\knowledge\）——cards\（知识
+      卡片）、topics\（主题 chain 长文）的<b>正本</b>住这里，随项目走：拷走
+      项目=带走全部知识（不入 git：evidence 引用会话原文，随目录拷贝迁移）。
+      源头是<b>你自己的 AI 会话</b>（采集进 harvester.db），由本工具蒸馏而成
+      ——不是 WorkBuddy 主程序生成的。<br>
+      ③ <b>WorkBuddy 知识库</b>（%USERPROFILE%\.workbuddy\knowledge\）——
+      只是<b>发布镜像</b>：主程序资料库界面只认它的私有位置、改不了它，所以
+      本工具用「发布镜像」命令（kb-publish）把正本<b>单向</b>喂过去——只喂
+      不收，永不删镜像里的多余文件。同层的 feedback\、handoffs\、INDEX.md
+      是主程序自己的，与本工具无关，发布也不碰。<br>
+      ④ 命令里的路径<b>不是运行时探测的</b>：--root 默认=项目正本（②），由
+      start-viewv2.cmd 起服时传给后端，页面生成命令时原样填进去；点「在命令台
+      打开」参数也会自动带上，不用手抄；要指到别处，先设环境变量
+      CARDS_ROOT / CHAIN_ROOT 再跑启动脚本即可整体改向。
+      <b>换机器/迁移怎么办</b>：整个项目目录拷走即完成迁移（正本②全在里面）；
+      新机要让 WorkBuddy 资料库看到知识，跑一次「发布镜像」（kb-publish）即可。
       </div></details>
     <div id="work-head"><div class="empty">从「今日工作台」点任意数字进入。</div></div>
     <div id="work-pkg"></div>

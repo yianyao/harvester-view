@@ -641,20 +641,31 @@ def _cards_cli(g) -> str:
     return _cli(parts)
 
 
-#: 卡片校验命令的说明（用户 2026-10-14 两轮批注：--root 哪来的；同一命令
-#: 为啥逐条记录重复出现）。抽成常量随命令包三处共用，改一处全同步。
-#: 关键事实：`cards validate` 是**目录级**校验——一条命令扫整个卡片仓，
-#: 跑一次就覆盖全部卡片，不需要每张卡片跑一遍（所以明细行不逐条挂它）。
+#: 卡片校验命令的说明（用户 2026-10-14 两轮批注后定稿：正本/镜像架构）。
+#: 抽成常量随命令包两处共用，改一处全同步。
+#: 关键事实：① `cards validate` 是**目录级**校验——一条命令扫整个卡片仓，
+#: 跑一次就覆盖全部卡片（所以明细行不逐条挂它）；
+#: ② --root 指的是**项目正本**（session-harvester\knowledge\cards，随项目
+#: 迁移）；WorkBuddy 资料库读的是镜像位，由 kb-publish 单向喂（v0.66 裁决）。
 CARD_VALIDATE_NOTE = (
     "只读；错误与警告分列。这是**目录级**校验：一条命令扫整个卡片仓，"
-    "跑一次即覆盖全部卡片，不用每张卡片跑一遍。命令里的 --root 不是探测"
-    "出来的：默认取本机 WorkBuddy 知识库卡片仓"
-    "（%USERPROFILE%\\.workbuddy\\knowledge\\cards），由 start-viewv2.cmd "
-    "起服时传给后端，页面生成命令时原样填入，点「在命令台打开」会自动带上，"
-    "不用手抄；换机器或卡片仓另放时，先设环境变量 CARDS_ROOT 再跑启动脚本"
-    "即可整体改向，页面命令会跟着变。卡片仓放 .workbuddy\\knowledge 下是因为"
-    "WorkBuddy 主程序的知识库界面就从这读——本工具蒸馏出的卡片与主程序共用"
-    "同一份，另放仓根会出现两份对不上。")
+    "跑一次即覆盖全部卡片，不用每张卡片跑一遍。命令里的 --root 指向"
+    "**项目正本**（仓内 knowledge\\cards，随项目走、拷项目即带走）；"
+    "WorkBuddy 资料库界面读的是镜像位"
+    "（%USERPROFILE%\\.workbuddy\\knowledge\\cards），由下方「发布镜像」"
+    "命令单向喂——正本改了重跑一次发布即可，镜像位不手工改。")
+
+#: 发布镜像命令的说明（v0.66：正本/镜像架构的操作口）。
+CARD_PUBLISH_NOTE = (
+    "把项目正本（仓内 knowledge\\ 的 cards+topics）单向复制到 WorkBuddy "
+    "知识库镜像位：只喂不收（镜像里正本没有的文件不删）、正本没变时重跑="
+    "零复制。什么时候跑：正本新增/修改了卡片或 chain，想让 WorkBuddy "
+    "资料库界面看到时。迁移到新机后跑一次即可让主程序看到全部知识。")
+
+
+def _publish_cli() -> str:
+    """kb-publish 命令行（cwd=仓根，两个缺省参数都能省）。"""
+    return _cli(["kb-publish"])
 
 
 def _card_items(g) -> list[dict]:
@@ -803,7 +814,9 @@ def _targets_all(g) -> list[dict]:
          "suggestion": "补齐 frontmatter 的锚点与证据，校验过后入库。",
          "package": [c for c in [_cmd(
              "校验卡片目录", CARD_VALIDATE_NOTE,
-             cli=_cards_cli(g))] if c],
+             cli=_cards_cli(g)),
+             _cmd("发布镜像到 WorkBuddy 知识库", CARD_PUBLISH_NOTE,
+                  cli=_publish_cli())] if c],
          "metrics": [_metric("cards", "待做卡片数", "items")],
          "primary": "cards", "items": cardsp},
         {"target_id": "queue:verify.evaluable", "group": "detail",
@@ -952,7 +965,9 @@ def _targets_all(g) -> list[dict]:
          "suggestion": "警告多是「证据行与锚点原文对不上」：改引用，"
                        "或人工复核后接受。",
          "package": [_cmd("校验卡片目录", CARD_VALIDATE_NOTE,
-                          cli=_cards_cli(g))],
+                          cli=_cards_cli(g)),
+                    _cmd("发布镜像到 WorkBuddy 知识库", CARD_PUBLISH_NOTE,
+                         cli=_publish_cli())],
          "metrics": [_metric("cards", "待确认卡片数", "items")],
          "primary": "cards", "items": cards},
     ]

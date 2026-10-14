@@ -112,6 +112,9 @@ COMMAND_CARD: dict[str, str] = {
     "artifacts": "artifacts",
     "cards": "kb", "cards validate": "kb", "cards new": "kb",
     "kb-init": "kb", "kb-stats": "kb",
+    # v0.66 正本→镜像发布（用户裁决：正本随项目走，WorkBuddy 位只作镜像）。
+    # 档位在 TIER_OVERRIDE 定为 B（写镜像位文件，仓外写→两段提交；幂等不删）。
+    "kb-publish": "kb",
     "keywords": "keywords", "keywords-gc": "keywords",
     "deadcode-scan": "service", "regress": "service",
     "mcp-serve": "service", "api-serve": "service",
@@ -131,6 +134,8 @@ TIER_OVERRIDE: dict[str, str] = {
     "suggest-agents": "B", "suggest-status": "B", "ledger-sync": "B",
     "topic": "B", "topic-consolidate": "B", "artifacts": "B",
     "kb-init": "B", "cards new": "B",
+    # v0.66 kb-publish：写镜像位文件（仓外写）→ B；幂等、不删镜像文件
+    "kb-publish": "B",
     # 长驻/需人亲手登录 → C（永不执行）
     "mcp-serve": "C", "api-serve": "C",
     # v0.49 会话抑制：查抑制表是只读 → A；其余三个写库/删副本 → B

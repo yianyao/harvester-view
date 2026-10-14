@@ -199,9 +199,10 @@ check("三张结论卡真接线到动作面（tools/errors=A 档直执，agents=
 check("报告页四个标签共用窗口口径声明（与工作台全库口径对账）",
   html.includes("口径=近 ") && html.includes("全库口径见工作台") &&
   html.includes("两边数字不同是口径不同不是账错"));
-check("处理单页常驻「数据都在哪」路径速查（用户 2026-10-14：数据乱放咋找）",
+check("处理单页常驻「数据都在哪」路径速查（v0.66 正本/镜像架构）",
   html.includes("数据都在哪") && html.includes("不是运行时探测的") &&
-  html.includes("两个\"家\""));
+  html.includes("知识正本") && html.includes("发布镜像") &&
+  html.includes("kb-publish"));
 
 /* --- v0.22 T3-5 主题 tab（H22：动态性 + 接线断言） ---
  * 主题必须数据驱动：渲染 /api/topics 返回什么就显示什么，绝无写死主题名。

@@ -301,7 +301,7 @@
      "choices": null,
      "src": "server",
      "negates": null,
-     "help": "topic-chain 长文目录（可选；默认 ~/.workbuddy/knowledge/topics）",
+     "help": "topic-chain 长文目录（可选；默认 knowledge/topics，项目正本）",
      "note": null
     },
     {
@@ -1260,6 +1260,40 @@
    "nested": false
   },
   {
+   "cmd": "kb-publish",
+   "card_id": "kb",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--root",
+     "dest": "root",
+     "kind": "str",
+     "default": "knowledge",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "正本根目录（缺省 knowledge，相对仓根跑）",
+     "note": null
+    },
+    {
+     "name": "--dest",
+     "dest": "dest",
+     "kind": "str",
+     "default": "~/.workbuddy/knowledge",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "镜像位（缺省 WorkBuddy 知识库位置）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
    "cmd": "kb-stats",
    "card_id": "kb",
    "tier": "A",
@@ -1592,7 +1626,7 @@
      "choices": null,
      "src": "server",
      "negates": null,
-     "help": "topic-chain 长文目录（缺省 ~/.workbuddy/knowledge/topics）",
+     "help": "topic-chain 长文目录（缺省 knowledge/topics，项目正本）",
      "note": null
     },
     {

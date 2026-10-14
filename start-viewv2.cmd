@@ -28,16 +28,13 @@ if not exist "%SRV%\harvester.db" (
   pause
   exit /b 1
 )
-rem v0.65 portable (user rule 2026-10-14: project MUST stay host-agnostic
-rem and migratable; never hardcode user names or machine-specific paths).
-rem Cards/topics default to this machine's WorkBuddy knowledge dir, but
-rem env vars win. To migrate: copy old machine's knowledge\cards and
-rem knowledge\topics to the same path on the new machine, OR put them
-rem anywhere and set env vars before running this script, e.g.
-rem   set CARDS_ROOT=D:\migrated\cards
-rem   set CHAIN_ROOT=D:\migrated\topics
-if not defined CARDS_ROOT set "CARDS_ROOT=%USERPROFILE%\.workbuddy\knowledge\cards"
-if not defined CHAIN_ROOT set "CHAIN_ROOT=%USERPROFILE%\.workbuddy\knowledge\topics"
+rem v0.66 master-in-project (user ruling 2026-10-14: the data MASTER lives
+rem in the repo's knowledge\ dir and migrates WITH the project; the WorkBuddy
+rem dir is only a publish MIRROR fed by: python -m harvester kb-publish).
+rem Env vars still win for exotic layouts, e.g.
+rem   set CARDS_ROOT=D:\elsewhere\cards
+if not defined CARDS_ROOT set "CARDS_ROOT=%SRV%\knowledge\cards"
+if not defined CHAIN_ROOT set "CHAIN_ROOT=%SRV%\knowledge\topics"
 if not exist "%CARDS_ROOT%" mkdir "%CARDS_ROOT%"
 start "harvester api-serve :8765" /D "%SRV%" %PY% -m harvester api-serve --db "%SRV%\harvester.db" --cards-root "%CARDS_ROOT%" --topics-meta "%SRV%\topics_meta.db" --keywords-meta "%SRV%\keywords_meta.db" --suggestions-meta "%SRV%\suggestions_meta.db"
 rem P2: local action surface (whitelisted A-tier actions) + read-only data.

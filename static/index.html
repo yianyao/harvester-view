@@ -1040,7 +1040,7 @@ async function openSession(sid){
     "<button class='xbtn' id='btn-sess-export' "+
     "title='拉取全部回合全文并导出 Markdown（回合多时较慢，纯浏览器本地完成）'>导出 md</button>"+
     "<button class='xbtn' id='btn-sess-suppress' "+
-    "title='把这条会话从**仓内副本**里移出（库内三表行 + exports 副本）；不删采集源。走命令台的两段提交：先预演看清将删什么，再确认才写。'>删除（抑制）</button></h2>"+
+    "title='把这条会话从仓内副本里移出（删库内三张表——会话/消息/工具步——的行，加 exports 下的副本文件）；不删采集源。走命令台的两段提交：先预演看清将删什么，再确认才写。'>删除（抑制）</button></h2>"+
     "<div class='sub'>"+esc(m.source||"")+" · "+esc(m.model||"（未知）")+
     " · "+d.n_turns+" 回合 · 更新 "+esc(m.updated_at||"")+"</div>"+
     (d.turns||[]).map(t=>

@@ -189,6 +189,16 @@ check("结论卡数字全部来自 API 现算（renderRepConcl 存在）",
   html.includes("function renderRepConcl"));
 check("导语来自 glossary 而非散落文案（panelIntro 消费 glossary）",
   html.includes("function panelIntro"));
+/* --- v0.64（用户 2026-10-14 批注）：报告页结论卡「在命令台打开」真接线 --- */
+check("结论卡「在命令台打开」不再是 P2 占位（占位文案清零）",
+  !html.includes("P2 接入（占位）"));
+check("三张结论卡真接线到动作面（tools/errors=A 档直执，agents=B 档两段提交）",
+  html.includes('openInCmd("report_tools",{})') &&
+  html.includes('openInCmd("report_errors",{})') &&
+  html.includes('openInCmd("suggest_agents",{})'));
+check("报告页四个标签共用窗口口径声明（与工作台全库口径对账）",
+  html.includes("口径=近 ") && html.includes("全库口径见工作台") &&
+  html.includes("两边数字不同是口径不同不是账错"));
 
 /* --- v0.22 T3-5 主题 tab（H22：动态性 + 接线断言） ---
  * 主题必须数据驱动：渲染 /api/topics 返回什么就显示什么，绝无写死主题名。

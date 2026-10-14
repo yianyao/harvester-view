@@ -25,6 +25,26 @@ sys.path.insert(0, str(ROOT))
 from actions import actionsserve as AS  # noqa: E402
 from actions import commandgen as CG  # noqa: E402
 from actions import registrygen as RG  # noqa: E402
+from actions import workitems as WI  # noqa: E402
+
+
+class WhereSemantics(unittest.TestCase):
+    """v0.64（用户 2026-10-14 截图批注）：「去处理」去向与「明细同步在」
+    语义混淆 + 362/343 两边数字对不上没解释。钉三件事：
+    ① where 常量的语义=对账（不是按钮去向）；② 错误环的口径说明必须
+    讲清「报告页=窗口内、此处=全库」及对账方法；③ 所有 where 都自证语义。"""
+
+    def test_all_where_state_their_purpose(self):
+        for name in ("WHERE_REPORTS_AGENTS", "WHERE_REPORTS_ERRORS",
+                     "WHERE_REPORTS_SKILL", "WHERE_TRIAGE", "WHERE_TOPICS",
+                     "WHERE_CARDS"):
+            text = getattr(WI, name)
+            self.assertIn("同源可对账", text,
+                          "%s 必须写明这是同源对账视图" % name)
+
+    def test_errors_where_explains_window_gap(self):
+        self.assertIn("30 天", WI.WHERE_REPORTS_ERRORS)
+        self.assertIn("全库", WI.WHERE_REPORTS_ERRORS)
 
 
 class WhitelistCoversAllATier(unittest.TestCase):

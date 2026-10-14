@@ -110,6 +110,15 @@ class ReconcileLogicTest(unittest.TestCase):
         self.assertEqual(len(ids), len(set(ids)), "target_id 必须唯一")
         self.assertEqual(len(ids), len(WI.target_ids(self.g)))
 
+    def test_errors_ring_definition_explains_window_gap(self):
+        """v0.64（用户 2026-10-14 批注：362/343 两边数字对不上）：
+        错误环第一段的口径说明必须讲清「报告页=窗口内、此处=全库」，
+        并给出对账方法（把报告页窗口调成 0）。"""
+        t = next(x for x in self.index if x["target_id"] == "ring:errors.0")
+        for needle in ("口径不同", "全库", "调成 0", "30 天"):
+            self.assertIn(needle, t["definition"],
+                          "ring:errors.0 定义缺「%s」——窗口/全库口径没讲清" % needle)
+
     def test_target_ids_are_url_safe(self):
         """target id 必须**不做转义就能放进 URL 查询串**。
 

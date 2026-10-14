@@ -1253,10 +1253,10 @@ function renderRepConcl(kind,d){
         "失败数次之的第一名。",
       actions:[{id:"root",label:"看根因",title:"跳到本页根因明细"},
         {id:"bench",label:"起草班规",title:"打开建议池（agents 报告）"},
-        {id:"cmd",label:"在命令台打开",title:"P2 接入（占位）"}]});
+        {id:"cmd",label:"在命令台打开",title:"把 report-tools 装到命令台就地执行（A 档只读，结果与本页同源）"}]});
     handlers={root:()=>$("rep-out").scrollIntoView({behavior:"smooth"}),
       bench:()=>{$("rep-kind").value="agents";loadReport(true).catch(()=>{});},
-      cmd:()=>showBanner("warn","命令台在 P2 阶段接入（占位）")};
+      cmd:()=>openInCmd("report_tools",{})};
   }else if(kind==="errors"){
     const m=d.meta||{};
     const bc=d.by_class||{};
@@ -1271,10 +1271,10 @@ function renderRepConcl(kind,d){
       sub:"机械事实：由 /api/reports/errors 现算；类别口径见「怎么读」。",
       actions:[{id:"root",label:"看根因",title:"跳到本页模式明细"},
         {id:"bench",label:"起草班规",title:"打开建议池（agents 报告）"},
-        {id:"cmd",label:"在命令台打开",title:"P2 接入（占位）"}]});
+        {id:"cmd",label:"在命令台打开",title:"把 report-errors 装到命令台就地执行（A 档只读，结果与本页同源；窗口在命令台参数里调）"}]});
     handlers={root:()=>$("rep-out").scrollIntoView({behavior:"smooth"}),
       bench:()=>{$("rep-kind").value="agents";loadReport(true).catch(()=>{});},
-      cmd:()=>showBanner("warn","命令台在 P2 阶段接入（占位）")};
+      cmd:()=>openInCmd("report_errors",{})};
   }else if(kind==="agents"){
     const entries=d.entries||[];
     const todo=entries.filter(e=>(e.unresolved_count||0)>=1).length;
@@ -1288,11 +1288,11 @@ function renderRepConcl(kind,d){
       sub:"机械事实：由 /api/reports/agents 现算；「自愈」=同一模式后来没再失败。",
       actions:[{id:"root",label:"看根因",title:"跳到待修清单"},
         {id:"bench",label:"起草班规",title:"规则句即草稿，复制后人工并入配置"},
-        {id:"cmd",label:"在命令台打开",title:"P2 接入（占位）"}]});
+        {id:"cmd",label:"在命令台重算建议条目",title:"把 suggest-agents 装到命令台（B 档：先预演要写什么，你确认后才重算并写入建议条目）"}]});
     handlers={root:()=>$("rep-out").scrollIntoView({behavior:"smooth"}),
       bench:()=>showBanner("warn","本视图绝不写配置：复制规则句，"+
         "在 CLI 侧人工并入并 suggest-status 落账"),
-      cmd:()=>showBanner("warn","命令台在 P2 阶段接入（占位）")};
+      cmd:()=>openInCmd("suggest_agents",{})};
   }
   box.innerHTML=(cc?"<div class='p-fact'>"+pTag("fact")+cc+"</div>":"")+
     panelIntro(introKey);
@@ -1465,6 +1465,13 @@ async function loadReport(manual){
     bindAnchors(out);
     renderRepConcl(kind,d);
     if(glossary.loaded)applyTermTooltips(out);
+    /* v0.64（用户批注 362/343）：本页四个报告默认都是**窗口口径**——在 meta 行
+       统一声明，并写明与工作台（全库口径）的对账方法；不用每个报告各自重复。 */
+    const win=daysVal("rep-days");
+    $("rep-meta").textContent=(win
+      ?("口径=近 "+win+" 天窗口内（全库口径见工作台「闭环健康」，两边数字不同是口径不同不是账错）｜")
+      :"口径=全部数据（与工作台「闭环健康」同口径）｜")
+      +$("rep-meta").textContent;
     $("rep-meta").textContent+=($("rep-meta").textContent?"｜":"")+
       "生成于 "+new Date().toLocaleTimeString("zh-CN",{hour12:false})+
       "（"+((Date.now()-t0)/1000).toFixed(1)+"s）";
@@ -1594,9 +1601,21 @@ function renderErrors(d,out){
     ["tool_interface","用法：参数错/先改后读/盲猜行号，改用法即消"],
     ["context","目标状态：文件已删/资产失效，需重新侦察"],
     ["unclassified","未命中规则，需人工归因后补规则"]];
-  let html="<h3 class='sec'>三分类分布</h3><table><thead><tr><th>类别</th>"+
-    "<th class='num'>次数</th><th class='num'>占比</th><th>语义</th>"+
-    "</tr></thead><tbody>"+CLS.map(c=>"<tr><td>"+c[0]+"</td><td class='num'>"+
+  /* v0.64（用户 2026-10-14 批注：这些最好有悬停弹窗提示一下啥意思、怎么做）：
+     每行悬停给「怎么做」，表头悬停给口径；类名列表头悬停给语义。 */
+  const HOW={env:"怎么做：先判断是不是沙箱/权限的硬限制——能配置就配置好；配置不了的写进班规提醒，别让 agent 反复撞同一堵墙。",
+    tool_interface:"怎么做：把正确用法写成班规或卡片（先读后写、确认行号再改），agent 下次照规矩做即可消。",
+    context:"怎么做：环境可能已变——重新侦察（重新列目录、重读文件），别拿旧记忆当现状。",
+    unclassified:"怎么做：人工抽几条原始错误回看原文，归纳出新规则补进归类表，下次自动归对类。"};
+  const CLS_TIP={};CLS.forEach(c=>CLS_TIP[c[0]]=c[1]);
+  let html="<h3 class='sec'>三分类分布</h3>"+
+    "<p class='sub2'>每行悬停可看「怎么做」；窗口/全库口径见页头 meta 行。</p>"+
+    "<table><thead><tr><th title='错误按出错形状归并成的四大类'>类别</th>"+
+    "<th class='num' title='窗口内这类错误的错误步骤条数（与下方明细的类别 chips 同源）'>次数</th>"+
+    "<th class='num' title='这类次数 ÷ 窗口内错误总数'>占比</th>"+
+    "<th title='这类坑通常是什么'>语义</th>"+
+    "</tr></thead><tbody>"+CLS.map(c=>"<tr title='"+esc(HOW[c[0]]||"")+
+    "'><td>"+c[0]+"</td><td class='num'>"+
     (cls[c[0]]||0)+"</td><td class='num'>"+
     (n?((cls[c[0]]||0)/n*100).toFixed(0):0)+"%</td><td class='sub2'>"+
     c[1]+"</td></tr>").join("")+"</tbody></table>";
@@ -1607,8 +1626,10 @@ function renderErrors(d,out){
   const srcs=d.by_source||{};
   if(Object.keys(srcs).length>1){
     html+="<h3 class='sec'>按 Agent（数据源）分布</h3><table><thead><tr>"+
-      "<th>数据源</th><th class='num'>env</th><th class='num'>tool_interface</th>"+
-      "<th class='num'>context</th><th class='num'>unclassified</th></tr></thead><tbody>"+
+      "<th>数据源</th><th class='num' title='"+esc(CLS_TIP.env||"")+"'>env</th>"+
+      "<th class='num' title='"+esc(CLS_TIP.tool_interface||"")+"'>tool_interface</th>"+
+      "<th class='num' title='"+esc(CLS_TIP.context||"")+"'>context</th>"+
+      "<th class='num' title='"+esc(CLS_TIP.unclassified||"")+"'>unclassified</th></tr></thead><tbody>"+
       Object.entries(srcs).map(e=>"<tr><td>"+esc(e[0])+"</td><td class='num'>"+
       (e[1].env||0)+"</td><td class='num'>"+(e[1].tool_interface||0)+
       "</td><td class='num'>"+(e[1].context||0)+"</td><td class='num'>"+
@@ -1618,9 +1639,10 @@ function renderErrors(d,out){
   const cross=d.cross||[];
   if(cross.length){
     html+="<h3 class='sec'>数据源 × model × 错误类别交叉表</h3><table><thead><tr>"+
-      "<th>数据源</th><th>model</th><th class='num'>env</th>"+
-      "<th class='num'>tool_interface</th><th class='num'>context</th>"+
-      "<th class='num'>unclassified</th><th class='num'>合计</th>"+
+      "<th>数据源</th><th>model</th><th class='num' title='"+esc(CLS_TIP.env||"")+"'>env</th>"+
+      "<th class='num' title='"+esc(CLS_TIP.tool_interface||"")+"'>tool_interface</th>"+
+      "<th class='num' title='"+esc(CLS_TIP.context||"")+"'>context</th>"+
+      "<th class='num' title='"+esc(CLS_TIP.unclassified||"")+"'>unclassified</th><th class='num'>合计</th>"+
       "</tr></thead><tbody>"+cross.map(r=>"<tr><td>"+esc(r.source)+
       "</td><td>"+esc(r.model||"（未知）")+"</td><td class='num'>"+(r.env||0)+
       "</td><td class='num'>"+(r.tool_interface||0)+"</td><td class='num'>"+
@@ -3259,8 +3281,8 @@ function renderQueues(d){
       "<div class='qh'><span class='ql'>"+esc(q.label)+"</span>"+
       "<span class='qn'>"+q.count+"</span></div>"+
       "<div class='qq'>"+esc(q.question)+"</div>"+
-      "<div class='qgo'>去处理 →</div> "+
-      "<span class='sub2'>"+esc(q.where||"")+"</span>"+
+      "<div class='qgo' title='点整张卡进「处理单」：正好这一批的明细＋逐条建议＋命令包（可在命令台就地执行）。不是跳报告页——报告页只是同一批数字的同源视图，对账用。'>去处理 → 进处理单</div> "+
+      "<span class='sub2'>明细同步在："+esc(q.where||"")+"</span>"+
       (q.suggestion?"<div class='qd'>建议："+esc(q.suggestion)+"</div>":"")+
       "<div class='qd'>口径："+esc(q.definition||"")+"</div>"+
       "<div class='qs' title='真源=这个数由哪个函数现算出来（备查）。平时不用管；两处数字打架时以真源那处为准。'>真源 "+esc(q.source||"")+"</div>"+
@@ -3325,7 +3347,7 @@ function armHtml(a){
     "<div class='ad'>"+esc(a.definition||"")+"</div>"+
     ms+
     "<div class='as' title='真源=这个数由哪个函数现算出来（备查）。平时不用管；两处数字打架时以真源那处为准。'>真源 "+esc(a.source||"")+"</div>"+
-    (a.where?"<div class='ad'>去："+esc(a.where)+"</div>":"")+
+    (a.where?"<div class='ad' title='这是同一批数字在别的页面的同源视图，供对账；「去处理」按钮去的是处理单。'>明细同步在："+esc(a.where)+"</div>":"")+
     (a.aggregate?"<div class='ad'>聚合数（不派活）</div>":"")+
     (a.target?("<button class='xbtn' data-wgo=\""+esc(a.target)+
       "\">去处理</button>"):"")+

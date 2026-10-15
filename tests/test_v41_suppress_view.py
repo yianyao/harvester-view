@@ -264,6 +264,21 @@ class SuppressPlanTest(unittest.TestCase):
                 self.assertIn("if not defined %s" % var, text,
                               "%s 的 %s 没有环境变量覆盖口（迁移时无法改向）" % (name, var))
 
+    def test_start_scripts_are_pure_ascii(self):
+        """v0.73（用户截图：start-viewv2.cmd 执行满屏乱码，注释还被当成
+        命令跑出「'xxx' 不是内部或外部命令」）。cmd.exe 按 ANSI（GBK）码页
+        解析 .cmd 文件——UTF-8 中文注释必乱码，且多字节序列会吞掉行结构。
+        启动脚本必须**纯 ASCII**（说明文字一律英文）。"""
+        for name in ("start-viewv2.cmd", "start.cmd", "start-system.cmd"):
+            path = ROOT / name
+            if not path.is_file():
+                continue
+            text = path.read_text(encoding="utf-8")
+            self.assertTrue(
+                text.isascii(),
+                "%s 含非 ASCII 字符——cmd 按 GBK 解析会乱码并把注释当命令跑"
+                % name)
+
     @staticmethod
     def _machine_vars(name: str) -> tuple:
         """各脚本里「机器相关路径」应有的覆盖口清单。"""

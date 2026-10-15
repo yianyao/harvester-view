@@ -27,11 +27,12 @@ WORKITEMS = VIEW_ROOT / "actions" / "workitems.py"
 class TestV072UxGates(unittest.TestCase):
     """v0.72 四截图批注的结构门（先红后绿）。
 
-    ① 数据源账本：发布镜像（WorkBuddy 知识库）是内部机制，不再与①②
-       并列编号标出——收进默认折叠的「内部机制」条。
+    ① 数据源账本：发布镜像属内部机制，用户裁决（2026-10-15）**内容直接删**
+       ——页面上只保留迁移句里「发布镜像（kb-publish）」一笔带过的操作口。
     ③ 「从库里选」面板上下文感知：只有当前命令参数确实要 sid/topic 时
        才渲染，且只出需要的那种清单；用不到整个不渲染。
-    ② 处置进度可视：已处置/已驳回条目灰显（.wi-item.done/.rejected）。
+    ② 处置进度可视：已处置/已驳回条目用**实底高对比**背景与徽章区分
+       （用户裁决：要鲜明，否则看都看不清——禁用低透明度灰显）。
     """
 
     @classmethod
@@ -39,12 +40,14 @@ class TestV072UxGates(unittest.TestCase):
         cls.html = (Path(__file__).resolve().parent.parent /
                     "static" / "index.html").read_text(encoding="utf-8")
 
-    def test_publish_mirror_demoted_from_headline_list(self):
-        self.assertNotIn("③ <b>WorkBuddy 知识库", self.html,
-                         "发布镜像不得再与①②并列编号标出")
-        self.assertIn("发布镜像（内部机制", self.html,
-                      "须收进折叠条（summary 带「内部机制」字样）")
-        self.assertIn("kb-publish", self.html, "内容保留，只是降级")
+    def test_publish_mirror_content_deleted(self):
+        """v0.73（用户裁决：内容直接删了，留来干嘛）：镜像段落整段删，
+        只留迁移句里 kb-publish 操作口一笔带过。"""
+        self.assertNotIn("发布镜像（内部机制", self.html)
+        self.assertNotIn("只是<b>发布镜像</b>", self.html)
+        self.assertNotIn("%USERPROFILE%\\.workbuddy\\knowledge", self.html,
+                         "镜像位路径不该再出现在给读者看的页面上")
+        self.assertIn("kb-publish", self.html, "迁移句保留操作口")
 
     def test_browse_panel_context_aware(self):
         self.assertIn("function cmdNeededPick()", self.html)
@@ -53,9 +56,16 @@ class TestV072UxGates(unittest.TestCase):
                       self.html, "用不到的命令面板必须整个不渲染")
 
     def test_disposition_visual_distinction(self):
-        self.assertIn(".wi-item.done{", self.html)
-        self.assertIn(".wi-item.rejected{", self.html)
-        self.assertIn("已处置", self.html)
+        """v0.73（用户裁决：要鲜明，否则看都看不清）：实底背景+高对比徽章，
+        禁用 opacity 灰显。"""
+        self.assertIn(".wi-item.done{border-left-color:var(--ok-ink);"
+                      "background:var(--ok-bg)}", self.html)
+        self.assertIn(".wi-item.partial{border-left-color:var(--warn-ink);"
+                      "background:var(--warn-bg)}", self.html)
+        self.assertIn("background:var(--ok-ink);color:var(--ok-bg)", self.html,
+                      "徽章实底（反色对，明暗主题都可读）")
+        done_rule = self.html.split(".wi-item.done{")[1].split("}")[0]
+        self.assertNotIn("opacity", done_rule, "done 不得再用 opacity 灰显")
 
 
 class TestHtmlTailClean(unittest.TestCase):

@@ -229,15 +229,15 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 .wi-item.bad{border-left-color:var(--err-ink)}
 .wi-item.warn{border-left-color:var(--warn-ink)}
 .wi-item.ok{border-left-color:var(--ok-ink)}
-/* v0.72（用户批注：已处置的要能用背景/字体颜色区分）：done/rejected 灰显 +
-   徽章；partial 半透但不褪字（还有补批注的活）。open 不加任何样式。 */
-.wi-item.done{border-left-color:var(--ok-ink);opacity:.62}
-.wi-item.rejected{opacity:.45}
-.wi-item.partial{border-left-color:var(--warn-ink);opacity:.85}
-.wi-disp{font-size:11px;border:1px solid var(--ok-ink);color:var(--ok-ink);
-  border-radius:9px;padding:0 8px;font-weight:600;flex:none}
-.wi-item.rejected .wi-disp{border-color:var(--ink2);color:var(--ink2)}
-.wi-item.partial .wi-disp{border-color:var(--warn-ink);color:var(--warn-ink)}
+/* v0.73（用户裁决：要鲜明，否则看都看不清）：实底高对比——done/partial
+   整条换底色、徽章反色实底；弃用 v0.72 的 opacity 灰显（暗底上几乎看不见）。 */
+.wi-item.done{border-left-color:var(--ok-ink);background:var(--ok-bg)}
+.wi-item.rejected{border-left-color:var(--ink2)}
+.wi-item.partial{border-left-color:var(--warn-ink);background:var(--warn-bg)}
+.wi-disp{font-size:12px;border-radius:9px;padding:1px 9px;font-weight:700;
+  background:var(--ok-ink);color:var(--ok-bg);border:0;flex:none}
+.wi-item.rejected .wi-disp{background:var(--ink2);color:var(--bg)}
+.wi-item.partial .wi-disp{background:var(--warn-ink);color:var(--warn-bg)}
 .wi-item h4{margin:0 0 4px;font-size:13.5px;display:flex;gap:8px;
   align-items:baseline;flex-wrap:wrap}
 .wi-facts{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0;font-size:11.5px}
@@ -441,15 +441,8 @@ h3.sec{font-size:14px;margin:18px 0 6px}
       CARDS_ROOT / CHAIN_ROOT 再跑启动脚本即可整体改向。
       <b>换机器/迁移怎么办</b>：整个项目目录拷走即完成迁移（正本②全在里面）；
       新机要让 WorkBuddy 资料库看到知识，跑一次「发布镜像」（kb-publish）即可。
-      <!-- v0.72（用户批注：这项不用特意标出来，难道发布出去也让人家看这个？
-           没啥意义！）：发布镜像属内部机制，不再与①②③并列编号标出——
-           收进默认折叠条，平时看不见，迁移/排查时再展开。 -->
-      <details class="sub2"><summary>发布镜像（内部机制，平时不用管；点开才展开）</summary>
-      WorkBuddy 知识库（%USERPROFILE%\.workbuddy\knowledge\）只是<b>发布镜像</b>：
-      主程序资料库界面只认它的私有位置、改不了它，所以本工具用「发布镜像」命令
-      （kb-publish）把正本②<b>单向</b>喂过去——只喂不收，永不删镜像里的多余文件。
-      同层的 feedback\、handoffs\、INDEX.md 是主程序自己的，与本工具无关，
-      发布也不碰。</details>
+      <!-- v0.73（用户裁决：发布镜像内容直接删了，留来干嘛）：镜像段落
+           整段删除，只在上面迁移句留一笔带过的操作口。 -->
       </div></details>
     <div id="work-head"><div class="empty">从「今日工作台」点任意数字进入。</div></div>
     <div id="work-pkg"></div>

@@ -74,6 +74,7 @@ function actApi(path) {
   return Promise.resolve(r);
 }
 
+eval(extract("packLevel", ""));
 eval(extract("dualtrackLevel", ""));
 eval(extract("runDualtrack", ""));
 eval(extract("pollDualJob", "jid"));
@@ -114,13 +115,25 @@ const FIXTURE = {
 };
 
 async function main() {
-  /* ⑥ level 兜底 */
+  /* ⑥ level 兜底（v0.74：下拉已删 chain/fine/artifact，只留可直接跑的
+     三档；这里用历史/异常值钉 packLevel 白名单与 dualtrackLevel 降档） */
   $("topic-level").value = "chain";
-  eq(dualtrackLevel(), "coarse", "选择器=chain → dualtrackLevel() 兜底 coarse");
+  eq(packLevel(), "title", "packLevel: chain（历史遗留值）→ 兜底 title");
+  eq(dualtrackLevel(), "coarse", "选择器=chain → 兜底 coarse");
   $("topic-level").value = "mid";
+  eq(packLevel(), "mid", "packLevel: mid 原样通过");
   eq(dualtrackLevel(), "mid", "选择器=mid → 原样通过");
   $("topic-level").value = "fine";
-  eq(dualtrackLevel(), "coarse", "选择器=fine（按需档）→ 兜底 coarse");
+  eq(packLevel(), "title", "packLevel: fine（按需档，已不在下拉）→ 兜底 title");
+  eq(dualtrackLevel(), "coarse", "选择器=fine → 兜底 coarse");
+
+  /* ⑥b 结构门：分层下拉只许出现可直接跑的三档（chain 不是 pack 分层；
+     fine/artifact 是按需档，在命令台选——那边会出 sid 字段） */
+  const selBody = (html.match(/<select id="topic-level">([\s\S]*?)<\/select>/)
+    || [])[1] || "";
+  ok(selBody && !/value="chain"|value="fine"|value="artifact"/.test(selBody) &&
+     /value="title" selected/.test(selBody),
+     "分层下拉只含 title（默认）/coarse/mid 三档");
 
   /* ⑦ 作业链路真跑：入队 + 轮询 + 渲染 */
   jobResponses = [{ status: "queued" }, { status: "done", result: FIXTURE }];

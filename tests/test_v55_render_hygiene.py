@@ -194,6 +194,56 @@ class TestEnvprobeAndCopyButtons(unittest.TestCase):
         self.assertIn("写哪个库", self.html)
 
 
+class TestTopicLevelPackGate(unittest.TestCase):
+    """v0.74（用户 2026-10-15 截图：命令台跑 topic pack 报
+    level='chain' 不在五档——「为啥还会到这里去找，完全不能理解」）.
+
+    根因：主题页分层下拉第一项是 chain（演进链），但演进链长文在
+    openTopic 里是**自动**拉取展示的，这个选项没有任何查看类消费方；
+    它唯一会去的地方是「复制命令 / 去命令台」的 topic pack --level——
+    而 pack 只认 title/coarse/mid/fine/artifact 五档，必报错。
+    且 chain 是默认选中项 → 不碰下拉直接点「去命令台」必踩。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.html = INDEX.read_text(encoding="utf-8")
+        m = re.search(r'<select id="topic-level">([\s\S]*?)</select>', cls.html)
+        assert m, "index.html 缺 #topic-level 下拉"
+        cls.select_body = m.group(1)
+
+    def test_dropdown_has_no_chain_option(self):
+        self.assertNotIn('value="chain"', self.select_body,
+                         "chain 不是 pack 分层，不该出现在分层下拉里")
+        self.assertNotIn('value="artifact"', self.select_body,
+                         "artifact 档需先跑 artifacts extract，页面不给选")
+
+    def test_dropdown_defaults_to_title(self):
+        first = self.select_body.split("<option", 1)[1]
+        self.assertIn('value="title"', first, "默认档必须是 title")
+        self.assertIn("selected", first)
+
+    def test_go_cmd_guards_level(self):
+        """前端兜底：进命令台前 level 必须过 packLevel() 白名单。"""
+        self.assertIn("function packLevel()", self.html)
+        self.assertIn("level:packLevel()", self.html,
+                      "topicGoCmd 预填 level 必须走 packLevel() 兜底")
+
+    def test_cmd_params_sync_select_state(self):
+        """预填值不在下拉选项里时，state 必须跟着界面走——不许「看着是
+        title、执行带 chain」（显示与执行分家）。"""
+        self.assertIn("select[data-p]", self.html)
+        self.assertIn("渲染完立刻把 state 同步成下拉实际选中值", self.html)
+
+    def test_topic_pack_action_level_has_choices(self):
+        """命令台参数面板用 choices 渲染下拉——level 只能选五档之一。"""
+        from actions import actionsserve as AS
+        lvl = AS.ACTIONS["topic_pack"]["params"]["level"]
+        self.assertEqual(lvl.get("choices"),
+                         ["title", "coarse", "mid", "fine", "artifact"])
+        self.assertEqual(lvl.get("default"), "title")
+
+
 class TestPlanDeterminism(unittest.TestCase):
     """v0.71（用户 2026-10-15 截图：两段提交永远「预览指纹不匹配」死循环）.
 

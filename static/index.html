@@ -563,14 +563,13 @@ h3.sec{font-size:14px;margin:18px 0 6px}
   </div>
   <div id="topics-mid">
     <div class="toolbar" id="topics-toolbar" style="display:none">
-      <label>分层 <select id="topic-level">
-        <option value="chain">chain 演进链（已生成）</option>
-        <option value="title">title 极粗（~2K）</option>
+      <label>分层（打包/双轨用） <select id="topic-level">
+        <option value="title" selected>title 极粗（~2K）</option>
         <option value="coarse">coarse 粗（~10K）</option>
         <option value="mid">mid 中（~30K）</option>
-        <option value="fine">fine 细</option>
-        <option value="artifact">artifact 产物</option>
       </select></label>
+      <span class="sub2">演进链长文打开主题即自动展示，不占这里；fine/artifact
+细档在命令台选（需指定成员会话）。</span>
       <button id="btn-topic-cmd" class="xbtn" disabled
         title="复制到剪贴板，请自行开终端粘贴执行（本视图绝不执行命令）">复制命令</button>
       <button id="btn-topic-gocmd" class="xbtn" disabled
@@ -2136,6 +2135,13 @@ async function gotoTopicAnchor(sid,turn){
     showBanner("err","锚点跳转失败："+e.message); }
 }
 /* 复制命令（红线 3：视图绝不执行，只给文本） */
+/* packLevel 兜底（v0.74）：分层下拉只剩可直接跑的三档，但历史值/异常值
+   一律按 title 兜底——不许再把非法 level 预填进命令台（2026-10-15 用户
+   实测：下拉选 chain → topic pack --level chain 必报错）。 */
+function packLevel(){
+  const v=$("topic-level").value;
+  return ["title","coarse","mid"].includes(v)?v:"title";
+}
 function topicPackCmd(id,level,sid){
   let cmd="python -m harvester topic pack --id "+id+" --level "+level+
     " --meta topics_meta.db --db harvester.db";
@@ -2150,7 +2156,7 @@ function updateTopicCmd(){
   $("btn-topic-gocmd").disabled=off;
   $("btn-topic-dual").disabled=off;
   if(cur)$("btn-topic-cmd").dataset.cmd=
-    topicPackCmd(cur.id,$("topic-level").value);
+    topicPackCmd(cur.id,packLevel());
 }
 /* 主题页 → 命令台直跳（2026-10-13 用户要求：分层选完不用手抄命令）。
    红线不变：这里只是**预填参数跳页**，执行仍发生在命令台的 A 档动作
@@ -2161,7 +2167,7 @@ async function topicGoCmd(){
   if(!cur){showBanner("warn","先在左侧选一个主题");return;}
   state.cmdCard="topic";state.actionId="topic";
   state.cmdParams={cmd:"pack",id:cur.id,id_:cur.id,
-    level:$("topic-level").value};
+    level:packLevel()};
   /* 动作面没就绪先拉齐（抢先于 switchTab 的自动加载，避免重复拉取） */
   if(!state.act.loaded)await loadCmdData().catch(()=>{});
   renderCmdCards();renderCmdActions();renderCmdParams();updateCmdPreview();
@@ -2178,7 +2184,7 @@ async function topicGoCmd(){
    + 轮询——大主题 timeline 实测 ~90s（FTS 虚表逐会话查询），同步 GET
    会吊死页面（铁律 6.5）。本页只渲染作业结果，执行器只认冻结注册表。 */
 function dualtrackLevel(){
-  const lv=$("topic-level").value;
+  const lv=packLevel();
   return (lv==="coarse"||lv==="mid")?lv:"coarse";
 }
 async function runDualtrack(){
@@ -2838,6 +2844,14 @@ function renderCmdParams(){
        "确定（命令台不暴露路径，免得把库指错）："+
        esc(skipped.map(a=>a.name).join(" / "))+"</div>";
   box.innerHTML=h;
+  /* 下拉与 state 对账（v0.74）：预填值不在选项里时（如历史遗留 chain），
+     界面显示第一项而 state 还揣着旧值 → 看着是 title、执行带 chain。
+     渲染完立刻把 state 同步成下拉实际选中值，显示与执行永不分家。 */
+  for(const el of box.querySelectorAll("select[data-p]")){
+    const v=el.value;
+    if(v==="")delete state.cmdParams[el.dataset.p];
+    else state.cmdParams[el.dataset.p]=v;
+  }
   for(const el of box.querySelectorAll("[data-p]")){
     const ev=el.tagName==="SELECT"?"change":"input";
     el.addEventListener(ev,()=>{

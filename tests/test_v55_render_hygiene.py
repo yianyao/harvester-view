@@ -244,6 +244,49 @@ class TestTopicLevelPackGate(unittest.TestCase):
         self.assertEqual(lvl.get("default"), "title")
 
 
+class TestSessionsTopicMergeGate(unittest.TestCase):
+    """v0.75（用户 2026-10-15 问：可否在会话检索中勾选会话，合并生成主题；
+    用户拍板本轮实施）：勾选放开给所有会话 + 「并入主题」入口。
+
+    后端 B 档动作（topic_register / topic_add，两段提交）早已就绪
+    （writeactions.WRITE_ACTIONS），本门只钉 view 入口三件事：
+    ① 勾选不再限于异常会话（disabled 徽标删除，全选提示语同步改）；
+    ② pager 区有「并入主题 / 注册新主题」两个入口按钮，title 交代
+       写主题台账、走两段提交（预演→确认才写）；
+    ③ 两按钮接 openInCmd 预填通道（B 档动作 id 冻结注册表内）。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.html = INDEX.read_text(encoding="utf-8")
+
+    def test_selection_open_to_all_sessions(self):
+        self.assertNotIn("该会话无错误步骤", self.html,
+                         "勾选不再限于异常会话（合并主题需要任意会话）")
+        self.assertNotIn("仅勾选含异常的会话", self.html,
+                         "全选提示语必须随语义放宽")
+
+    def test_merge_buttons_present_with_two_phase_note(self):
+        for bid in ("btn-sel-topic", "btn-sel-topic-new"):
+            self.assertIn('id="%s"' % bid, self.html)
+        self.assertIn("两段提交", self.html.split('id="btn-sel-topic"')[1][:400],
+                      "入口按钮必须交代写主题台账走两段提交")
+
+    def test_merge_buttons_wire_open_in_cmd(self):
+        self.assertIn('openInCmd("topic_add"', self.html)
+        self.assertIn('openInCmd("topic_register"', self.html)
+
+    def test_update_sel_info_controls_merge_buttons(self):
+        self.assertIn('$("btn-sel-topic").disabled=!n', self.html)
+        self.assertIn('$("btn-sel-topic-new").disabled=!n', self.html)
+
+    def test_topic_write_actions_in_frozen_registry(self):
+        reg = json.loads(REG.read_text(encoding="utf-8"))
+        ids = {a["action_id"] for a in reg["write_actions"]}
+        self.assertIn("topic_add", ids)
+        self.assertIn("topic_register", ids)
+
+
 class TestPlanDeterminism(unittest.TestCase):
     """v0.71（用户 2026-10-15 截图：两段提交永远「预览指纹不匹配」死循环）.
 

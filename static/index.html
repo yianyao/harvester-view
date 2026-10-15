@@ -471,7 +471,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
     <div id="suppressed-panel" style="display:none"></div>
     <table id="sess-table">
       <thead><tr><th style="width:26px"><input type="checkbox" id="sel-all"
-        title="全选/全不选本页（仅勾选含异常的会话）"></th>
+        title="全选/全不选本页（勾选用于批量导出、并入主题）"></th>
         <th style="width:150px">更新时间</th><th style="width:90px">来源</th>
         <th style="width:130px">模型</th><th>标题</th></tr></thead>
       <tbody id="rows"><tr><td colspan="5" class="empty">加载中…</td></tr></tbody>
@@ -481,9 +481,13 @@ h3.sec{font-size:14px;margin:18px 0 6px}
       <button id="btn-next">下一页</button>
       <span id="pageinfo"></span>
       <button id="btn-batch-md" class="xbtn" disabled
-        title="勾选多个会话后，批量拉取全文并合并导出 Markdown（每会话一节，标注会话ID+异常类型；浏览器本地完成）">导出所选异常会话 md</button>
+        title="勾选多个会话后，批量拉取全文并合并导出 Markdown（每会话一节，标注会话ID+异常类型；浏览器本地完成）">导出所选会话 md</button>
       <button id="btn-batch-json" class="xbtn" disabled
         title="勾选多个会话后，导出机器可读 JSON：错误按归一模式跨会话去重聚合，可直接交给 Agent 分析">导出所选机器可读 JSON</button>
+      <button id="btn-sel-topic" class="xbtn" disabled
+        title="把勾选的会话挂进某个主题的成员清单（写主题台账；B 档两段提交：预演→你确认才写）。目标主题在命令台从清单里选，不用手抄 id">勾选 → 并入主题</button>
+      <button id="btn-sel-topic-new" class="xbtn" disabled
+        title="用勾选的会话新建主题：先把主题名注册进台账（B 档两段提交），注册完再用「并入主题」把会话挂进去">勾选 → 注册新主题</button>
       <span class="sub2" id="selinfo"></span>
     </div>
   </div>
@@ -1027,7 +1031,7 @@ async function loadSessions(){
     "<tr data-sid=\""+esc(it.sid)+"\">"+
     "<td><input type='checkbox' class='selbox' data-sid=\""+esc(it.sid)+"\""+
     (state.sel.has(it.sid)?" checked":"")+
-    (it.error_count?"":" disabled title='该会话无错误步骤'")+"></td>"+
+    "></td>"+
     "<td class='t-date'>"+esc(it.updated_at)+"</td>"+
     "<td class='t-src'>"+esc(it.source)+"</td>"+
     "<td class='t-model'>"+esc(it.model||"（未知）")+"</td>"+
@@ -1054,6 +1058,8 @@ function updateSelInfo(){
   $("selinfo").textContent=n?("已勾选 "+n+" 个会话（跨页累计）"):"";
   $("btn-batch-md").disabled=!n;
   $("btn-batch-json").disabled=!n;
+  $("btn-sel-topic").disabled=!n;
+  $("btn-sel-topic-new").disabled=!n;
 }
 function toggleSel(sid,on){
   if(on)state.sel.add(sid);else state.sel.delete(sid);
@@ -3880,6 +3886,16 @@ $("btn-batch-md").onclick=()=>exportAnalysis("sessions","md")
   .catch(e=>showBanner("err","批量导出失败："+e.message));
 $("btn-batch-json").onclick=()=>exportAnalysis("sessions","json")
   .catch(e=>showBanner("err","批量导出失败："+e.message));
+/* 勾选 → 并入主题 / 注册新主题（v0.75；用户 2026-10-15 拍板实施）。
+   纪律同会话抑制：**不新造写路径**——只把 B 档动作（topic_add /
+   topic_register，冻结注册表白名单内）装到命令台走两段提交（预演→
+   你确认才写）+ 台账留痕。sids 预填勾选集合（跨页累计），topic_id
+   留空——命令台「从库里选」面板会出主题清单，选一下就填上。 */
+function selSidsJoined(){ return [...state.sel].join(","); }
+$("btn-sel-topic").onclick=()=>openInCmd("topic_add",
+  {topic_id:"",sids:selSidsJoined(),evidence:""}).catch(()=>{});
+$("btn-sel-topic-new").onclick=()=>openInCmd("topic_register",
+  {name:"",keywords:""}).catch(()=>{});
 /* 报告/队列的本地过滤：不重新请求上游，直接重渲染（triage 需重取后本地过滤） */
 function rerenderReport(){
   if(!state.repLast)return;

@@ -293,6 +293,20 @@ def _unresolved_entries(g) -> list[dict]:
             if (e.get("unresolved_count") or 0) >= 1]
 
 
+def _repair_note_of(g, title) -> str:
+    """台账里这条建议句的备注（无记录或空 → ""）。"""
+    r = g["records"].get(title) or {}
+    return (r.get("note") or "").strip()
+
+
+def _repair_verdict_of(g, title) -> str:
+    """效果评估给这条建议句的结论（没评估/没对上号 → ""）。"""
+    for e in g["ev"].get("entries") or []:
+        if str(e.get("key")) == title:
+            return str(e.get("verdict") or "")
+    return ""
+
+
 def _repair_items(g) -> list[dict]:
     items = []
     for e in _unresolved_entries(g):
@@ -302,42 +316,91 @@ def _repair_items(g) -> list[dict]:
         if first and normalize_error:
             pattern = normalize_error(first.get("error") or "")
         un = e.get("unresolved_count") or 0
+        title = e["title"]
+        note = _repair_note_of(g, title)
+        has_note = note.startswith("pattern:")
+        verdict = _repair_verdict_of(g, title)
+        status = e.get("status") or "—"
+        if has_note:
+            note_fact = "已补：" + note
+        else:
+            note_fact = "没补（效果评估盯不住这条）"
+        if status == "adopted" and has_note:
+            suggestion = (
+                "这条你**已经处置过**：台账已采纳 ✓、pattern 批注已补 ✓"
+                "（效果评估能把它和错误对上号）。上面的数字统计的是"
+                "**历史会话里的坑**——处置不会让它变少，跑下面的命令也不会；"
+                "它退场只有两条路：重采数据后坑不再出现，或效果评估判定改善。"
+                + ("当前评估结论：" + verdict + "。"
+                   if verdict else "还没跑过评估（下面命令包可跑）。"))
+        elif status == "adopted":
+            suggestion = ("坑还在，且台账已采纳但**没补 pattern 批注**——"
+                          "没这一行，效果评估盯不住这条规矩。先点锚点回原文"
+                          "确认，再用下面的命令补批注。要改规矩内容请人工改 "
+                          "AGENTS.md；补了批注，本数字也不会立刻变——"
+                          "它统计历史坑，退场要等评估判定改善。")
+        elif status == "rejected":
+            suggestion = ("这条你已**驳回**：坑还挂着，但你不打算用班规拦它。"
+                          "改主意用下面命令改回；不改就当挂账。同样，"
+                          "任何命令都不会让本条数字变化——它统计历史坑。")
+        else:
+            suggestion = ("坑还在：先点锚点回原文确认，再看 AGENTS.md 里那条"
+                          "规矩写得够不够清楚。要改内容请人工改 AGENTS.md；"
+                          "工具只负责补一行 `pattern: 错误名` 的批注，让效果"
+                          "评估能把规矩和错误对上号。")
         items.append(_item(
-            "agent:" + e["title"], e["title"],
+            "agent:" + title, title,
             metrics={"count": un, "unresolved": un},
             facts=[("实测次数", "x%d" % (e.get("total") or 0)),
                    ("未解决次数", str(un)),
                    ("责任方", e.get("owner") or "—"),
-                   ("台账状态", e.get("status") or "—")],
+                   ("台账状态", status),
+                   ("pattern 批注", note_fact),
+                   ("效果评估", verdict or "还没跑（或没对上号）")],
             anchor=_anchor(first and first.get("sid"), first and first.get("seq"),
                            first and first.get("error")),
             detail=e.get("body") or "",
-            suggestion="坑还在：先点锚点回原文确认，再看 AGENTS.md 里那条规矩写得够不够清楚。"
-                       "要改内容请人工改 AGENTS.md；工具只负责补一行 "
-                       "`pattern: 错误名` 的批注，让效果评估能把规矩和错误对上号。",
-            commands=_repair_commands(g, e["title"], pattern, first),
+            suggestion=suggestion,
+            commands=_repair_commands(g, title, pattern, first,
+                                      has_note=has_note),
             level="bad", owner=e.get("owner") or ""))
     return items
 
 
-def _repair_commands(g, title, pattern, sample) -> list[dict]:
+def _repair_commands(g, title, pattern, sample, has_note=False) -> list[dict]:
     cfg = g["cfg"]
     meta = _rel(cfg.suggestions_meta, cfg)
     out = []
     if meta:
         note = ("pattern: " + pattern) if pattern else "pattern: <错误模式>"
-        out.append(_cmd(
-            "在命令台补 pattern 批注（采纳并留痕）",
-            "备注里带一行 `pattern: 错误名`，效果评估才能把这条规矩与"
-            "错误对上号；不补这一行，评估会一直显示『未评估』。",
-            cli=_cli(["suggest-status", "--meta", _q(meta), "--key", _q(title),
-                      "--status", "adopted", "--note", _q(note)]),
-            action_id="suggest_status",
-            params={"key": title, "status": "adopted", "note": note}, tier="B"))
+        if has_note:
+            out.append(_cmd(
+                "在命令台更新 pattern 批注（已有批注，重写会覆盖备注）",
+                "这条已批注过；此命令把备注覆盖为新的一行 `pattern: 错误名`。"
+                "注意：补/改批注**不改变**「待修补」数字——它统计历史坑。",
+                cli=_cli(["suggest-status", "--meta", _q(meta), "--key",
+                          _q(title), "--status", "adopted",
+                          "--note", _q(note)]),
+                action_id="suggest_status",
+                params={"key": title, "status": "adopted", "note": note},
+                tier="B"))
+        else:
+            out.append(_cmd(
+                "在命令台补 pattern 批注（采纳并留痕）",
+                "备注里带一行 `pattern: 错误名`，效果评估才能把这条规矩与"
+                "错误对上号；不补这一行，评估会一直显示『未评估』。补完"
+                "**不改变**「待修补」数字——它统计历史坑。",
+                cli=_cli(["suggest-status", "--meta", _q(meta), "--key",
+                          _q(title), "--status", "adopted",
+                          "--note", _q(note)]),
+                action_id="suggest_status",
+                params={"key": title, "status": "adopted", "note": note},
+                tier="B"))
     if sample and sample.get("sid"):
         out.append(_cmd(
-            "打包这一条命中的会话原文（蒸馏包）",
-            "自包含 md：会话原文 + 卡片规范 + 指令，直接喂 Agent 起草修订。",
+            "打包这一条命中的会话原文（蒸馏包，取材动作）",
+            "自包含 md：会话原文 + 卡片规范 + 指令，直接喂 Agent 起草修订。"
+            "取材动作：只产材料，**不改变**本条数字。",
             cli=_cli(["draft", "--sid", _q(sample["sid"]), "--type", "pitfall"])))
     return out
 

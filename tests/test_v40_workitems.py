@@ -604,5 +604,113 @@ class WorkitemsHttpTest(unittest.TestCase):
             self.assertTrue(d2["reconcile_ok"], (tid, d2["reconcile"]))
 
 
+class RepairDispositionGate(unittest.TestCase):
+    """v0.69（用户 2026-10-15 批注：「在处理页里处理了这一条，为啥好像没反映一样」）。
+
+    根因：「待修补」口径 = 历史错误统计（unresolved>=1），处置动作（看原文/
+    打包/补批注）天然**不会让它变少**；而条目明细既不显示处置进度（台账状态/
+    pattern 批注/评估结论），命令说明也没写「哪些命令改变数字、哪些不改变」——
+    用户处理完看不到任何回响。
+
+    本门钉三件事：
+    1. 明细 facts 必须亮出处置进度：`pattern 批注`（已补/没补）与 `效果评估`
+       （结论或"还没跑"）。
+    2. suggestion 按处置状态分流：已采纳+已批注 → 必须明说「数字为何不变、
+       退场条件是什么」；已采纳+没批注 → 指向补批注；已驳回 → 挂账说法。
+    3. 命令说明确定化：已批注时批注命令改「更新」口径；取材命令必须写明
+       「只产材料，不改变本条数字」。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls._td = tempfile.TemporaryDirectory()
+        cls.cfg = _Cfg(Path(cls._td.name))
+        t1 = "子代理嵌套深度受 maxDepth 限制，深任务改平铺编排。"
+        t2 = "权限被撤销的工具不要原地重试。"
+        t3 = "browser 工具报实例失效时先重建实例再继续。"
+        cls.g = _empty_g(cls.cfg)
+        cls.g["records"] = {
+            t1: {"key": t1, "status": "adopted", "updated_at": "u",
+                 "adopted_at": "a", "note": "pattern: subagent depth"},
+            t2: {"key": t2, "status": "adopted", "updated_at": "u",
+                 "adopted_at": "a", "note": ""},
+            t3: {"key": t3, "status": "rejected", "updated_at": "u",
+                 "adopted_at": None, "note": None},
+        }
+        cls.g["ev"] = {"counts": {}, "adopted_total": 1, "skipped": 0,
+                       "skipped_topic": 0,
+                       "entries": [{"key": t1, "verdict": "无变化"}]}
+        cls.g["agents"] = {"entries": [
+            {"title": t1, "total": 6, "unresolved_count": 6,
+             "owner": "harness", "status": "adopted", "body": "b1",
+             "samples": [{"sid": "s1", "seq": 1, "error": "boom"}]},
+            {"title": t2, "total": 4, "unresolved_count": 4,
+             "owner": "harness", "status": "adopted", "body": "b2",
+             "samples": []},
+            {"title": t3, "total": 2, "unresolved_count": 2,
+             "owner": "harness", "status": "rejected", "body": "b3",
+             "samples": []},
+        ]}
+        items = WI._repair_items(cls.g)
+        cls.by_title = {i["title"]: i for i in items}
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._td.cleanup()
+
+    def _fact(self, title, name):
+        for k, v in self.by_title[title]["facts"]:
+            if k == name:
+                return v
+        return None
+
+    def test_facts_show_annotation_state(self):
+        t1 = "子代理嵌套深度受 maxDepth 限制，深任务改平铺编排。"
+        t2 = "权限被撤销的工具不要原地重试。"
+        v1 = self._fact(t1, "pattern 批注")
+        v2 = self._fact(t2, "pattern 批注")
+        self.assertIsNotNone(v1, "已处置条目缺「pattern 批注」fact")
+        self.assertIn("已补", v1)
+        self.assertIn("pattern: subagent depth", v1)
+        self.assertIsNotNone(v2, "缺批注条目缺「pattern 批注」fact")
+        self.assertIn("没补", v2)
+
+    def test_facts_show_eval_verdict(self):
+        t1 = "子代理嵌套深度受 maxDepth 限制，深任务改平铺编排。"
+        t2 = "权限被撤销的工具不要原地重试。"
+        self.assertEqual(self._fact(t1, "效果评估"), "无变化")
+        self.assertTrue(self._fact(t2, "效果评估"),
+                        "没评估的条目也要有占位说明，不能留空")
+
+    def test_suggestion_tells_why_number_wont_move(self):
+        """已处置条目必须明说：数字统计历史坑、处置不减它、退场条件是什么。"""
+        t1 = "子代理嵌套深度受 maxDepth 限制，深任务改平铺编排。"
+        s = self.by_title[t1]["suggestion"]
+        self.assertIn("已经处置过", s)
+        self.assertIn("不会", s) and self.assertIn("变少", s)
+        self.assertIn("评估", s)
+
+    def test_suggestion_points_missing_annotation_at_fix(self):
+        t2 = "权限被撤销的工具不要原地重试。"
+        s = self.by_title[t2]["suggestion"]
+        self.assertIn("批注", s)
+
+    def test_suggestion_rejected_is_honest_about_ligament(self):
+        t3 = "browser 工具报实例失效时先重建实例再继续。"
+        s = self.by_title[t3]["suggestion"]
+        self.assertIn("驳回", s)
+
+    def test_command_labels_are_deterministic(self):
+        """已批注 → 命令叫「更新」；取材命令必须写明不改数字。"""
+        t1 = "子代理嵌套深度受 maxDepth 限制，深任务改平铺编排。"
+        labels = [c["label"] for c in self.by_title[t1]["commands"]]
+        self.assertTrue(any("更新 pattern 批注" in x for x in labels),
+                        labels)
+        drafts = [c for c in self.by_title[t1]["commands"]
+                  if "蒸馏包" in c.get("label", "")]
+        self.assertTrue(drafts)
+        self.assertIn("不改变", drafts[0]["note"] + drafts[0].get("label", ""))
+
+
 if __name__ == "__main__":
     unittest.main()

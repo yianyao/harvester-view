@@ -1262,7 +1262,9 @@ async function applySessChipFilter(){
 function renderRepConcl(kind,d){
   const box=$("rep-concl");
   let cc="", handlers=null;
-  const introKey=kind;
+  /* v0.71：这里**不再追挂 panelIntro**——rep-intro（loadReport 里按 kind
+     挂的那份）已经渲染了同一个导语，两边都挂 = 页面出现两个一模一样的
+     「怎么读」（用户截图批注：几个意思？）。导语只在 rep-intro 一处。 */
   if(kind==="tools"){
     const tot=(d.tools||[]).reduce((a,t)=>a+t.calls,0);
     const err=(d.tools||[]).reduce((a,t)=>a+t.error,0);
@@ -1321,8 +1323,7 @@ function renderRepConcl(kind,d){
         "在 CLI 侧人工并入并 suggest-status 落账"),
       cmd:()=>openInCmd("suggest_agents",{})};
   }
-  box.innerHTML=(cc?"<div class='p-fact'>"+pTag("fact")+cc+"</div>":"")+
-    panelIntro(introKey);
+  box.innerHTML=(cc?"<div class='p-fact'>"+pTag("fact")+cc+"</div>":"");
   if(handlers)bindConcl(box,handlers);
   if(glossary.loaded)applyTermTooltips(box);
 }

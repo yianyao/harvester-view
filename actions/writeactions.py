@@ -353,9 +353,12 @@ def _plan_suggest_status(p: dict, cfg) -> dict:
     before = cur or {"status": None}
     after = dict(before)
     after["status"] = status
+    # v0.71：预演必须**确定性**——两段提交的确认段会重新预演并比对指纹，
+    # 时钟进了 preview 就是死循环（用户实测：永远「预览指纹不匹配」）。
+    # 故"执行时才定的 adopted_at"在预演里用固定哨兵 @now 占位，
+    # 真执行时由上游 set_status 取当前时间（_exec_suggest_status 传 None）。
     if status == "adopted":
-        after["adopted_at"] = adopted_at or before.get("adopted_at") \
-            or time.strftime("%Y-%m-%d %H:%M:%S")
+        after["adopted_at"] = adopted_at or before.get("adopted_at") or "@now"
     else:
         after["adopted_at"] = None
     if note is not None:
@@ -367,7 +370,8 @@ def _plan_suggest_status(p: dict, cfg) -> dict:
                      "harvest-eval 的 A/B 分界随之消失")
     elif status == "adopted":
         human.append("adopted_at=%s（A/B 评估的分界 T）"
-                     % after["adopted_at"])
+                     % (after["adopted_at"] if after["adopted_at"] != "@now"
+                        else "写入时自动取当前时间"))
     if note is not None:
         human.append("note 写入：%s" % note)
     return {

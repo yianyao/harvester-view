@@ -13,6 +13,8 @@
 """
 import json
 import re
+import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -144,6 +146,75 @@ class TestEnvprobeAndCopyButtons(unittest.TestCase):
     def test_target_line_speaks_human(self):
         self.assertIn("function targetHuman(t)", self.html)
         self.assertIn("写哪个库", self.html)
+
+
+class TestPlanDeterminism(unittest.TestCase):
+    """v0.71（用户 2026-10-15 截图：两段提交永远「预览指纹不匹配」死循环）.
+
+    两段提交的确认段会**重新预演**并与 token 冻结的预览比对指纹——所以
+    预演必须**确定性**：任何「执行时才定」的字段（当前时间等）进了 preview，
+    重演结果必然不同 → 用户永远被拒、永远被要求重新预览。
+
+    根因实例：_plan_suggest_status 对新 key 把 adopted_at 预演成
+    time.strftime(now)——每秒都不同。修后预演用固定哨兵 `@now`，
+    真执行时才由上游 set_status 取当前时间。
+
+    本类钉三道防线：
+    1. suggest_status 对**新 key** 连跑两次 plan，指纹必须相等（哨兵生效）；
+    2. 源码扫描门：所有 `_plan_*` 函数体内禁用时钟（time.strftime /
+       time.time / datetime）——防止未来任何动作再把时钟冻进预览；
+    3. 报告页「怎么读」导语不得重复挂载（rep-concl 内不再追挂，
+       只保留 rep-intro 一处）。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls._td = tempfile.TemporaryDirectory()
+        d = Path(cls._td.name)
+        cls.cfg = type("P", (), {"suggestions_meta": d / "suggestions_meta.db"})()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._td.cleanup()
+
+    def test_plan_suggest_status_is_deterministic(self):
+        from actions.writeactions import _plan_suggest_status
+        from actions.runlib import preview_fingerprint
+        p = {"key": "新建议句（台账里还没有）", "status": "adopted"}
+        p1 = _plan_suggest_status(dict(p), self.cfg)
+        time.sleep(1.1)          # 跨过 1 秒边界——旧实现 here 必挂
+        p2 = _plan_suggest_status(dict(p), self.cfg)
+        self.assertEqual(preview_fingerprint(p1), preview_fingerprint(p2),
+                         "两次预演指纹不同 → 两段提交会永远被拒（时钟进了预览）")
+        self.assertEqual(p1["after"]["adopted_at"], "@now",
+                         "新 key 的 adopted_at 预演必须是固定哨兵 @now")
+        self.assertIn("写入时自动取当前时间",
+                      "；".join(p1["human"]),
+                      "human 文案必须交代 adopted_at 是执行时才定")
+
+    def test_plan_bodies_have_no_clock(self):
+        src = (VIEW_ROOT / "actions" / "writeactions.py").read_text(
+            encoding="utf-8")
+        lines = src.splitlines()
+        bad = []
+        cur = None
+        for i, l in enumerate(lines, 1):
+            m = re.match(r"def (_plan_\w+)", l)
+            if m:
+                cur = m.group(1)
+                continue
+            if cur and re.match(r"^(def |\S)", l) and not l.startswith((" ", "\t")):
+                cur = None       # 出了函数体
+                continue
+            if cur and re.search(r"time\.strftime|time\.time\(|datetime\.", l):
+                bad.append((cur, i, l.strip()[:80]))
+        self.assertEqual(bad, [],
+                         "预演函数体里用了时钟 → 两段提交必挂死循环：%r" % (bad,))
+
+    def test_report_intro_mounted_once(self):
+        html = INDEX.read_text(encoding="utf-8")
+        self.assertNotIn("panelIntro(introKey)", html,
+                         "rep-concl 里又追挂了一次导语 → 「怎么读」重复渲染")
 
 
 if __name__ == "__main__":

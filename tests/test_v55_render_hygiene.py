@@ -112,8 +112,17 @@ class TestEnvprobeAndCopyButtons(unittest.TestCase):
         p = probe()
         for k in ("uv", "python", "cli_prefix", "repo_root", "repo_root_ok"):
             self.assertIn(k, p)
-        self.assertTrue(p["cli_prefix"].startswith(("uv run python", "python", '"')),
-                        "前缀必须是三种合法形态之一: %r" % p["cli_prefix"])
+        self.assertTrue(
+            p["cli_prefix"].startswith(
+                ("uv run python -m harvester", "python -m harvester", '"')),
+            "前缀必须是三种合法形态之一: %r" % p["cli_prefix"])
+        # v0.70（用户 2026-10-15 截图：`uv run python draft` 报 can't open
+        # file '...\draft'）——cli_prefix 的消费方（_cli / 前端 cmdLine）
+        # 直接拼**裸子命令**，所以前缀必须自带 `-m harvester` 模块入口。
+        # 少了它，"draft" 会被 python 当成脚本文件名 → Errno 2。
+        self.assertTrue(p["cli_prefix"].endswith("-m harvester"),
+                        "cli_prefix 缺 '-m harvester' 模块入口: %r"
+                        % p["cli_prefix"])
         self.assertTrue(p["repo_root"].endswith("session-harvester"))
 
     def test_cli_prefix_not_hardcoded(self):

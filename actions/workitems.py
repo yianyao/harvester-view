@@ -104,9 +104,12 @@ def _q(value) -> str:
 
 
 def _cli(parts) -> str:
-    """命令行前缀按本机环境现探测（envprobe）：有 uv 给 `uv run python`，
-    有 python 给 `python`，都没有给本服务解释器绝对路径——复制到用户终端
-    要能直接跑，不写死 `python`（用户机器可能 python 不在 PATH）。"""
+    """命令行前缀按本机环境现探测（envprobe）：有 uv 给 `uv run python -m
+    harvester`，有 python 给 `python -m harvester`，都没有给本服务解释器
+    绝对路径——复制到用户终端要能直接跑，不写死 `python`（用户机器可能
+    python 不在 PATH）。parts 首元素是裸子命令（"draft ..."）；`-m harvester`
+    模块入口由 cli_prefix 自带（v0.70 修正：少了它 python 会把子命令当
+    脚本文件名，Errno 2）。"""
     from . import envprobe
     return envprobe.probe()["cli_prefix"] + " " + " ".join(parts)
 

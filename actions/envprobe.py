@@ -9,6 +9,13 @@
 判据优先级：uv → python → sys.executable。每次现探测不缓存：which() 开销
 极小，且改 PATH / 装 uv 后无需重启服务。
 
+**cli_prefix 必须自带 `-m harvester` 模块入口**（v0.70 修正，用户截图踩的
+坑：`uv run python draft` → python 把 "draft" 当脚本文件名 → Errno 2）。
+消费方约定：`workitems._cli(parts)` 与前端 `cmdLine()` 都直接拼**裸子命令**
+（"draft --sid ..."），前缀必须是「解释器入口 + -m harvester」的完整形态。
+三案分别是：`uv run python -m harvester` / `python -m harvester` /
+`"<sys.executable>" -m harvester`。
+
 另回 `repo_root`：命令必须在**上游仓根**（session-harvester）目录下执行——
 `--db` 等参数都是仓根相对路径；页面据此提示"在哪个目录粘贴"，避免用户踩过
 的坑（在上级目录 `uv run` 报 No module named harvester）。
@@ -26,11 +33,11 @@ def probe() -> dict:
     uv = shutil.which("uv") is not None
     py = shutil.which("python") is not None
     if uv:
-        prefix = "uv run python"
+        prefix = "uv run python -m harvester"
     elif py:
-        prefix = "python"
+        prefix = "python -m harvester"
     else:
-        prefix = '"%s"' % sys.executable
+        prefix = '"%s" -m harvester' % sys.executable
     root = upstream_root()
     return {
         "uv": uv,

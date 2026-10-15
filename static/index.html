@@ -2844,8 +2844,9 @@ function renderCmdParams(){
 
 /* 预演命令行：与真实 CLI 同形（页面不执行它，只是让人核对参数对不对）。
    前缀来自 envprobe（服务端 /api/commands 透出 cli_prefix）：本机有 uv 给
-   `uv run python`，python 可用给 `python`，都没有给解释器绝对路径——
-   写死 `python` 在没有它的机器上必挂（用户实测）。 */
+   `uv run python -m harvester`，python 可用给 `python -m harvester`，都没有
+   给解释器绝对路径——前缀自带 `-m harvester` 模块入口（v0.70 修正：少了它
+   python 会把子命令当脚本文件名，Errno 2），这里直接拼裸子命令。 */
 function cmdLine(c,params){
   let s=(state.cliPrefix||"python -m harvester")+" "+c.cmd;
   /* 聚合命令（topic 等）的子动作是位置参数：选了就带进预演行，

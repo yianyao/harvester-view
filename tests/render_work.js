@@ -71,6 +71,9 @@ for (const [n, sig] of [
   ["cmdKey", "c"], ["renderWorkHead", "d"], ["workRows", "d"],
   ["renderWorkPkg", "d"],
   ["renderWorkItems", "d"], ["openInCmd", "actionId,params"],
+  /* 2026-10-15：命令悬停说明（处理单两处命令框都要有 title） */
+  ["stripMd", "s"], ["cmdNameOf", "cli"], ["argsHelp", "c"],
+  ["cmdHoverTitle", "row"],
 ]) {
   eval(extract(n, sig));
 }
@@ -178,6 +181,19 @@ check("纯 CLI 命令不给假的执行按钮",
   (pkg.match(/data-wact=/g) || []).length === 1);
 check("「在命令台打开」带上了预填参数",
   pkg.includes("data-wparams=") && pkg.includes("status"));
+
+/* ②c 悬停说明（用户 2026-10-15 批注：命令最好有个悬停提示其作用——
+   所有命令，不仅这一条，也不仅这个页面）+ 真源行白话解释 */
+check("命令包每条命令框带悬停说明",
+  pkg.includes("class='wi-cmd' title=") && pkg.includes("这条命令干嘛用"),
+  "裸命令行没有解释=谜语；hover 必须给出「干嘛用+怎么用+参数含义」");
+renderWorkItems(WI);
+const wiItems = $("work-items").innerHTML;
+check("明细区命令框同样带悬停说明（不是只有命令包有）",
+  wiItems.includes("class='wi-cmd' title=") &&
+  wiItems.includes("在命令台打开」就地执行"));
+check("头部真源行带白话解释（机器键是给人对账用的，不是谜语）",
+  head.includes("真源 ") && head.includes("跨页对账"));
 
 /* ②b 整批通用命令必须去重（用户 2026-10-14 批注：几个命令从头到脚完全
    一样，需要反反复复执行?）——目录级命令（如 cards validate）逐条明细

@@ -2698,10 +2698,11 @@ function selectCmdCommand(name){
    topics_api / sessions_api 由"浏览数据"面板给可选项（见 renderCmdBrowsable）。 */
 function renderCmdParams(){
   const box=$("cmd-params");
-  const cur=cmdCommands().find(c=>c.cmd===state.actionId);
-  const wspec=currentWriteSpec();
+  const sel=resolveActionSel();
+  const cur=sel.c;
+  const wspec=(sel.direct||!sel.spec||sel.spec.tier!=="B")?null:sel.spec;
   if(!cur&&!wspec){box.innerHTML="";$("cmd-runbar").style.display="none";return;}
-  if(!cur&&wspec){
+  if(wspec){
     /* 写动作：参数来自注册表（不是 CLI 参数表） */
     let wh="<h3 class='sec'>参数（写动作 "+esc(wspec.action_id)+"）</h3>";
     for(const k of Object.keys(wspec.params||{})){
@@ -2817,11 +2818,15 @@ function cmdLine(c,params){
   return s;
 }
 function updateCmdPreview(){
-  const c=cmdCommands().find(x=>x.cmd===state.actionId);
-  const wspec=currentWriteSpec();
+  const sel=resolveActionSel();
+  const c=sel.c;
+  /* 写动作面板只认「动作 id 形态且 B 档」：命令名直选的 B 命令仍走下方
+     命令行预览（act 的 B 分支给预演按钮），与历史行为一致；动作 id 形态
+     的 A 档（报告页/处理单装进来的 report_tools 等）也走命令行预览。 */
+  const wspec=(sel.direct||!sel.spec||sel.spec.tier!=="B")?null:sel.spec;
   const bar=$("cmd-runbar"),banner=$("cmd-banner");
   if(!c&&!wspec){bar.style.display="none";banner.innerHTML="";return;}
-  if(!c&&wspec){   /* 写动作：不给"命令行预演"（参数名与 CLI 不同名），
+  if(wspec){   /* 写动作：不给"命令行预演"（参数名与 CLI 不同名），
                      只给风险/目标与"先预演"按钮 */
     bar.style.display="";
     if(writeDisabled()){
@@ -2835,7 +2840,10 @@ function updateCmdPreview(){
         (wspec.risk==="destructive"?"破坏性：会丢信息":"可逆")+
         "｜两段提交 + 台账留痕";
     }
-    banner.innerHTML="<div class='cmd-cli'>目标库："+
+    banner.innerHTML="<div class='cmd-cli' title=\""+
+      esc("写动作不显示命令行预览（写动作的参数名与命令行参数不同名）。"+
+          "点「预演」先看清将写什么，你确认后才真正写；预演本身只读。")+
+      "\">目标库："+
       esc(wspec.target_path||"")+"　动作："+esc(wspec.cmd)+
       (wspec.subaction?(" "+esc(wspec.subaction)):"")+"</div>";
     return;
@@ -2853,8 +2861,12 @@ function updateCmdPreview(){
   const subAct=subAid?A_ACTIONS()[subAid]:null;
   const act=(subAct&&subAct.tier==="A")?subAct:A_ACTIONS()[actionForCommand(c.cmd)];
   const canRun=!!act&&act.tier==="A"&&(c.tier==="A"||(subAct&&subAct.tier==="A"));
-  const cmdHtml="<div class='cmd-cli'>"+esc(cmdLine(c,state.cmdParams))+
-    "</div>";
+  const cmdHtml="<div class='cmd-cli' title=\""+
+    esc("命令行预览（与真实 CLI 同形，供核对参数；本行自己不会执行）。"+
+        (canRun?"点「执行」在本页就地跑（进程内调用，非 shell）。":
+         (c.tier==="C"?"C 档只生成命令，不代执行。":"按下方按钮/提示操作。"))+
+        (argsHelp(c)?" "+argsHelp(c):""))+"\">"+
+    esc(cmdLine(c,state.cmdParams))+"</div>";
   bar.style.display="";
   if(act&&act.tier==="B"&&!writeDisabled()){
     $("btn-cmd-run").disabled=false;
@@ -2940,8 +2952,59 @@ function A_ACTIONS(){
   return m;
 }
 
+/* ---------- 双形态选中解析 + 命令悬停说明（2026-10-15） ---------- */
+/* state.actionId 有两种形态：① 命令名（命令卡里点选，selectCmdCommand
+   直接存 cmd）；② 动作 id（处理单/报告页「在命令台打开」，openInCmd 存
+   action_id）。以前 runCmdAction / updateCmdPreview / renderCmdParams
+   各自只认命令名形态——动作 id 进来全走错分支（明明动作已装进命令台，
+   点预演却报"没有已实现的动作"，用户批注「玩人哪」的根因）。这里统一解析：
+   direct=是否命令名直选；c=命令注册表条目（动作 id 形态按 spec.cmd 反查，
+   注册表缺条目时给最小伪条目，保证命令行预览/执行入口不丢）；
+   spec=动作注册表条目或 null。 */
+function resolveActionSel(){
+  const direct=cmdCommands().find(x=>x.cmd===state.actionId)||null;
+  if(direct)return {direct:true,c:direct,spec:actionSpec(direct.cmd)};
+  const spec=actionSpec(state.actionId);
+  if(spec)return {direct:false,
+    c:cmdCommands().find(x=>x.cmd===spec.cmd)||
+      {cmd:spec.cmd,tier:spec.tier,args:[],subactions:null,
+       nested:false,help:null,card_id:null},
+    spec:spec};
+  return {direct:false,c:null,spec:null};
+}
+/* 命令行的悬停说明（用户批注：命令最好有个悬停提示其作用——所有命令、
+   所有页面）。拼四段：这条命令是干嘛的（label+note，去 markdown 星号）→
+   怎么用（就地执行还是复制自跑）→ 参数含义（命令注册表 args[].help，
+   路径类参数除外）。纯文本，进 title 属性。 */
+function stripMd(s){return String(s==null?"":s).replace(/\*\*/g,"");}
+function cmdNameOf(cli){
+  const m=String(cli||"").match(/python -m harvester (\S+)/);
+  return m?m[1]:"";
+}
+function argsHelp(c){
+  const hs=((c&&(c.args||[]))||[]).filter(a=>a.help&&a.src!=="server")
+    .map(a=>a.name+"："+a.help);
+  return hs.length?("参数含义："+hs.join("；")):"";
+}
+function cmdHoverTitle(row){
+  const parts=[];
+  if(row.label)parts.push("这条命令干嘛用："+stripMd(row.label));
+  if(row.note)parts.push(stripMd(row.note));
+  parts.push(row.action_id
+    ?"可点「在命令台打开」就地执行（A 档直接跑；B 档先预演、你确认才写）；也可复制到仓根目录自己跑。"
+    :"复制到仓根目录粘贴执行（本条暂不能在页面就地执行）。");
+  const c=cmdCommands().find(x=>x.cmd===cmdNameOf(row.cli));
+  const h=argsHelp(c);
+  if(h)parts.push(h);
+  return parts.join(" —— ");
+}
+
 async function runCmdAction(){
-  const c=cmdCommands().find(x=>x.cmd===state.actionId);
+  /* 2026-10-15 修（用户截图批注「玩人哪」）：统一走 resolveActionSel
+     双形态解析——动作 id 形态（处理单/报告页装进来的）不再被误判成
+     "没有已实现的动作"。 */
+  const sel=resolveActionSel();
+  const c=sel.c;
   /* 2026-10-13：子动作感知（用户要求主题页分层直接跳命令台跑 pack）。
      聚合命令（topic）的子动作在动作注册表里是独立条目（"topic pack"→
      topic_pack）；state.cmdParams.cmd 是位置子动作选择器。只对 **A 档**
@@ -2951,9 +3014,11 @@ async function runCmdAction(){
     (c.cmd+" "+state.cmdParams.cmd):null;
   const subAid=subKey?cmdActionMap()[subKey]:null;
   const subSpec=subAid?actionSpec(subAid):null;
-  const aid=(subSpec&&subSpec.tier==="A")?subAid:actionForCommand(c&&c.cmd);
+  const aid=(subSpec&&subSpec.tier==="A")?subAid
+    :(c?actionForCommand(c.cmd):null)||(sel.spec?sel.spec.action_id:null);
   const spec=aid?actionSpec(aid):null;
-  if(!c||!aid){showBanner("warn","这条命令没有已实现的动作");return;}
+  if(!aid){showBanner("warn","这条命令还没有可就地执行的实现——"+
+    "命令行可复制到仓根目录粘贴执行，效果一样。");return;}
   if(spec&&spec.tier==="B"){await runWriteAction(spec,c);return;}
   const act=A_ACTIONS()[aid]||spec;
   if(!act){showBanner("warn","动作面没有这条动作的实现");return;}
@@ -2971,7 +3036,7 @@ async function runCmdAction(){
     view_actions_api:1});
   if(r.__err){showBanner("err","执行失败："+r.__err);
     $("job-out").innerHTML=errorBox(r.__err);return;}
-  state.job={id:r.job_id,est:r.est_sec,t0:started,label:c.cmd};
+  state.job={id:r.job_id,est:r.est_sec,t0:started,label:(c&&c.cmd)||aid};
   $("job-out").innerHTML="<div class='sub2'>已入队 "+esc(r.job_id)+
     "（预估 ~"+esc(String(r.est_sec))+"s）——页面可关，回来还能查</div>";
   pollCmdJob(r.job_id);
@@ -3447,7 +3512,11 @@ function renderWorkHead(d){
     "<span class='sub2'>责任方："+esc(d.owner||"—")+"</span></div>"+
     (ms?"<div class='wi-facts'>"+ms+"</div>":"")+
     "<div class='wd'>口径："+esc(d.definition||"")+"</div>"+
-    "<div class='qs'>"+esc(d.source||"")+"</div>"+
+    "<div class='qs' title=\""+
+    esc("真源=这页数字从哪本账现算出来的标记（机器键，供跨页对账用）："+
+        "点号前是后端的账本/函数名，方括号里是筛选条件。平时不用读懂它；"+
+        "两页数字打架时，看两页的真源键是否一致，就知道是不是同一本账。")+
+    "\">真源 "+esc(d.source||"")+"</div>"+
     "<div class='wi-recon"+(rc.length?" bad":"")+"'>"+
       (rc.length?("⚠ **对账断了**：数字与明细对不上（"+esc(rc.map(r=>r.metric)
         .join("、"))+"）——先别照着下面的清单派活，回头查 workitems。")
@@ -3517,7 +3586,8 @@ function renderWorkPkg(d){
         :(r.src?"<div class='wd'>针对："+esc(r.src)+"</div>":""))+
       (r.shared_note?"<div class='wd'><b>"+esc(r.shared_note)+"</b></div>":"")+
       (r.note?"<div class='wd'>"+esc(r.note)+"</div>":"")+
-      "<div class='wi-cmd'>"+esc(r.cli||"（服务端未给命令行文本）")+"</div>"+
+      "<div class='wi-cmd' title=\""+esc(cmdHoverTitle(r))+"\">"+
+      esc(r.cli||"（服务端未给命令行文本）")+"</div>"+
       (r.action_id?("<button class='xbtn' data-wact=\""+esc(r.action_id)+
         "\" data-wparams=\""+esc(JSON.stringify(r.params))+
         "\">在命令台打开</button>"):"")+
@@ -3554,7 +3624,8 @@ function renderWorkItems(d){
     const cmds=(it.commands||[]).map(c=>
       (sharedKeys.has(cmdKey(c))
         ?"<div class='wd sub2'>ⓘ 这条命令整批通用（在上方命令包里，跑一次即覆盖全部明细），不逐条重复。</div>"
-        :"<div class='wi-cmd'>"+esc(c.cli||"")+"</div>")+
+        :"<div class='wi-cmd' title=\""+esc(cmdHoverTitle(c))+"\">"+
+         esc(c.cli||"")+"</div>")+
       (c.action_id?("<button class='xbtn' data-wact=\""+esc(c.action_id)+
         "\" data-wparams='"+esc(JSON.stringify(c.params||{}))+
         "'>在命令台打开（已预填）</button>"):"")).join("");
@@ -3593,8 +3664,12 @@ async function openInCmd(actionId,params){
   state.cmdParams=Object.assign({},params||{});
   state.chain=[];
   renderCmdCards();renderCmdActions();renderCmdParams();
-  showBanner("warn","已把动作装到命令台："+String(spec.summary||actionId)+
-    "　—— 点「预演」看清将写什么，确认后才写。");
+  const cc=cmdCommands().find(x=>x.cmd===spec.cmd);
+  showBanner("warn","已把动作装到命令台："+
+    String(spec.summary||spec.desc||(cc&&cc.help)||spec.cmd||actionId)+
+    (spec.tier==="B"
+      ?"　—— 点「预演」看清将写什么，确认后才写。"
+      :"　—— A 档只读，点「执行」就地跑。"));
   return true;
 }
 
@@ -3898,5 +3973,3 @@ initUpstreams().then(()=>{
 </script>
 </body>
 </html>
-
-/* ===== P5-3 空态与确认流统一 ===== */

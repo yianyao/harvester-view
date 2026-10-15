@@ -76,6 +76,8 @@ const COMMANDS = {
       desc: "G2 错误三分类与失败翼报告。", writes: "" },
     { card_id: "service", label: "长驻服务", tier: "C", order: 13,
       desc: "要占端口常驻——只生成命令。", writes: "占用端口" },
+    { card_id: "ledger", label: "台账裁决", tier: "B", order: 14,
+      desc: "建议台账裁决（写动作走两段提交）。", writes: "suggestions_meta.db" },
   ],
   commands: [
     { cmd: "report-errors", card_id: "errors", tier: "A", subactions: null,
@@ -101,17 +103,31 @@ const COMMANDS = {
       ] },
     { cmd: "mcp-serve", card_id: "service", tier: "C", subactions: null,
       help: "MCP stdio server", nested: false, args: [] },
+    { cmd: "suggest-status", card_id: "ledger", tier: "B", subactions: null,
+      help: "改建议台账里一条建议的状态", nested: false,
+      args: [
+        { name: "--meta", dest: "meta", kind: "str",
+          default: "suggestions_meta.db", required: false, choices: null,
+          src: "server", negates: null, help: "建议台账 meta 库路径",
+          note: null },
+      ] },
   ],
 };
 
 ACT_RESP["/api/actions"] = {
   view_actions_api: 1, harvester_version: "0.46.0",
   actions: [
-    { action_id: "report_errors", tier: "A", label: "错误验尸（G2 错误三分类）",
+    { action_id: "report_errors", tier: "A", cmd: "report-errors",
+      label: "错误验尸（G2 错误三分类）",
       desc: "错误三分类 + 归一模式聚类。",
       params: { days: { type: "days", src: "chips", default: null,
         label: "时间窗" } },
       est_sec: 3, reversible: "幂等（可重跑覆盖，不写任何库）", writes: "" },
+    { action_id: "suggest_status", tier: "B", cmd: "suggest-status",
+      summary: "在建议台账里把一条建议的状态改为 {status}",
+      params: { key: { label: "建议句", type: "str" },
+                status: { label: "新状态", type: "str" } },
+      target: "suggestions_meta.db", reversible: "reversible" },
   ],
   tiers: { A: "只读直接执行", B: "写 meta 两段提交", C: "只生成命令" },
 };
@@ -131,6 +147,9 @@ for (const [n, sig] of [
   ["currentWriteSpec", ""], ["renderVersionBar", ""], ["writeDisabled", ""],
   /* v0.49：会话抑制的 view 侧（「已抑制」清单 + 恢复） */
   ["loadSuppressed", "manual"], ["renderSuppressed", "d"],
+  /* 2026-10-15：双形态选中解析 + 命令悬停说明 */
+  ["resolveActionSel", ""], ["stripMd", "s"], ["cmdNameOf", "cli"],
+  ["argsHelp", "c"], ["cmdHoverTitle", "row"],
 ]) {
   eval(extract(n, sig));
 }
@@ -200,6 +219,65 @@ check("B 档理由指向两段提交", $("cmd-est").textContent.includes("B 档"
 selectCmdCommand("report-errors");
 check("A 档命令映射到动作", actionForCommand("report-errors") === "report_errors");
 check("A 档有动作时执行按钮可用", $("btn-cmd-run").disabled === false);
+
+/* ⑤b 动作 id 形态（处理单/报告页「在命令台打开」装进来的是 action_id，
+   不是命令名）。2026-10-15 修：以前 runCmdAction/updateCmdPreview 只认
+   命令名形态——动作已装进命令台，点预演却报"没有已实现的动作"
+   （用户截图批注「玩人哪」的根因）。 */
+state.cmdCard = "errors";
+state.actionId = "report_errors";
+state.cmdParams = { since: 7 };
+const selA = resolveActionSel();
+check("动作 id 形态反查到命令条目",
+  selA.c && selA.c.cmd === "report-errors" &&
+  selA.spec && selA.spec.action_id === "report_errors");
+updateCmdPreview();
+check("动作 id 形态的 A 档走命令行预览（不再错走写面板）",
+  $("cmd-banner").innerHTML.includes("--since 7"));
+check("动作 id 形态的 A 档有执行入口", $("btn-cmd-run").disabled === false);
+
+/* ⑤c 动作 id 形态的 B 档：走写面板（预演按钮可点），参数区用注册表参数 */
+state.cmdCard = "ledger";
+state.actionId = "suggest_status";
+state.cmdParams = { key: "k1", status: "adopted" };
+const selB = resolveActionSel();
+check("B 档动作 id 反查到命令 suggest-status",
+  selB.c && selB.c.cmd === "suggest-status" &&
+  selB.direct === false);
+updateCmdPreview();
+check("B 档动作 id 走写面板（预演按钮可点，不再报没有动作）",
+  $("btn-cmd-run").textContent.includes("预演") &&
+  $("btn-cmd-run").disabled === false);
+renderCmdParams();
+check("B 档动作 id 的参数区用注册表参数（写动作面板）",
+  $("cmd-params").innerHTML.includes("参数（写动作 suggest_status）"));
+
+/* ⑤d 命令注册表缺条目时给最小伪条目——命令行预览/执行入口不丢 */
+state.act.actions.push({ action_id: "lonely_act", cmd: "no-such-cmd",
+  tier: "A", params: {}, est_sec: 1, reversible: "幂等" });
+state.actionId = "lonely_act";
+const selL = resolveActionSel();
+check("注册表缺命令条目时反查给伪条目（入口不丢）",
+  selL.c && selL.c.cmd === "no-such-cmd" && selL.c.tier === "A" &&
+  Array.isArray(selL.c.args) && selL.c.args.length === 0);
+state.act.actions.pop();
+
+/* ⑤e 命令悬停说明（用户批注：所有命令都要有悬停提示其作用） */
+const ht = cmdHoverTitle({ label: "跑一次效果评估", note: "**两指标**都要不升",
+  cli: "python -m harvester harvest-eval --db x", action_id: null });
+check("悬停说明含去星号的作用与自跑退路",
+  ht.includes("这条命令干嘛用：跑一次效果评估") && ht.includes("两指标") &&
+  !ht.includes("**") && ht.includes("复制到仓根目录"));
+const ht2 = cmdHoverTitle({ label: "补 pattern 批注", note: "",
+  cli: "python -m harvester suggest-status --meta m",
+  action_id: "suggest_status" });
+check("带动作的悬停说明指向「在命令台打开」", ht2.includes("在命令台打开"));
+check("argsHelp 汇总非路径参数的帮助（路径参数不进悬停）",
+  argsHelp({ args: [
+      { name: "--since", help: "只统计最近 N 天", src: "chips" },
+      { name: "--db", help: "索引库路径", src: "server" }] })
+    .includes("--since") &&
+  !argsHelp({ args: [{ name: "--db", help: "索引库路径", src: "server" }] }));
 
 /* ⑥ 结果渲染：数字皆门（模式次数可点） */
 const job = { status: "done", label: "report-errors", elapsed_ms: 1200,

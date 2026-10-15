@@ -157,6 +157,9 @@ for (const [n, sig] of [
   ["resolveActionSel", ""], ["stripMd", "s"], ["cmdNameOf", "cli"],
   ["argsHelp", "c"], ["cmdHoverTitle", "row"],
   ["targetHuman", "t"], ["displayPath", "p"],
+  /* v0.72：renderCmdParams 出口会调 renderCmdBrowsable（上下文感知选值面板），
+     被提取函数的新依赖必须同步进提取清单（会话 10 铁教训），一并真执行。 */
+  ["cmdNeededPick", ""], ["renderCmdBrowsable", ""],
 ]) {
   eval(extract(n, sig));
 }

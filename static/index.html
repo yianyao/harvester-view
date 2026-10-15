@@ -229,6 +229,15 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 .wi-item.bad{border-left-color:var(--err-ink)}
 .wi-item.warn{border-left-color:var(--warn-ink)}
 .wi-item.ok{border-left-color:var(--ok-ink)}
+/* v0.72（用户批注：已处置的要能用背景/字体颜色区分）：done/rejected 灰显 +
+   徽章；partial 半透但不褪字（还有补批注的活）。open 不加任何样式。 */
+.wi-item.done{border-left-color:var(--ok-ink);opacity:.62}
+.wi-item.rejected{opacity:.45}
+.wi-item.partial{border-left-color:var(--warn-ink);opacity:.85}
+.wi-disp{font-size:11px;border:1px solid var(--ok-ink);color:var(--ok-ink);
+  border-radius:9px;padding:0 8px;font-weight:600;flex:none}
+.wi-item.rejected .wi-disp{border-color:var(--ink2);color:var(--ink2)}
+.wi-item.partial .wi-disp{border-color:var(--warn-ink);color:var(--warn-ink)}
 .wi-item h4{margin:0 0 4px;font-size:13.5px;display:flex;gap:8px;
   align-items:baseline;flex-wrap:wrap}
 .wi-facts{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0;font-size:11.5px}
@@ -426,17 +435,21 @@ h3.sec{font-size:14px;margin:18px 0 6px}
       项目=带走全部知识（不入 git：evidence 引用会话原文，随目录拷贝迁移）。
       源头是<b>你自己的 AI 会话</b>（采集进 harvester.db），由本工具蒸馏而成
       ——不是 WorkBuddy 主程序生成的。<br>
-      ③ <b>WorkBuddy 知识库</b>（%USERPROFILE%\.workbuddy\knowledge\）——
-      只是<b>发布镜像</b>：主程序资料库界面只认它的私有位置、改不了它，所以
-      本工具用「发布镜像」命令（kb-publish）把正本<b>单向</b>喂过去——只喂
-      不收，永不删镜像里的多余文件。同层的 feedback\、handoffs\、INDEX.md
-      是主程序自己的，与本工具无关，发布也不碰。<br>
-      ④ 命令里的路径<b>不是运行时探测的</b>：--root 默认=项目正本（②），由
+      ③ 命令里的路径<b>不是运行时探测的</b>：--root 默认=项目正本（②），由
       start-viewv2.cmd 起服时传给后端，页面生成命令时原样填进去；点「在命令台
       打开」参数也会自动带上，不用手抄；要指到别处，先设环境变量
       CARDS_ROOT / CHAIN_ROOT 再跑启动脚本即可整体改向。
       <b>换机器/迁移怎么办</b>：整个项目目录拷走即完成迁移（正本②全在里面）；
       新机要让 WorkBuddy 资料库看到知识，跑一次「发布镜像」（kb-publish）即可。
+      <!-- v0.72（用户批注：这项不用特意标出来，难道发布出去也让人家看这个？
+           没啥意义！）：发布镜像属内部机制，不再与①②③并列编号标出——
+           收进默认折叠条，平时看不见，迁移/排查时再展开。 -->
+      <details class="sub2"><summary>发布镜像（内部机制，平时不用管；点开才展开）</summary>
+      WorkBuddy 知识库（%USERPROFILE%\.workbuddy\knowledge\）只是<b>发布镜像</b>：
+      主程序资料库界面只认它的私有位置、改不了它，所以本工具用「发布镜像」命令
+      （kb-publish）把正本②<b>单向</b>喂过去——只喂不收，永不删镜像里的多余文件。
+      同层的 feedback\、handoffs\、INDEX.md 是主程序自己的，与本工具无关，
+      发布也不碰。</details>
       </div></details>
     <div id="work-head"><div class="empty">从「今日工作台」点任意数字进入。</div></div>
     <div id="work-pkg"></div>
@@ -2731,7 +2744,8 @@ function renderCmdParams(){
   const sel=resolveActionSel();
   const cur=sel.c;
   const wspec=(sel.direct||!sel.spec||sel.spec.tier!=="B")?null:sel.spec;
-  if(!cur&&!wspec){box.innerHTML="";$("cmd-runbar").style.display="none";return;}
+  if(!cur&&!wspec){box.innerHTML="";$("cmd-runbar").style.display="none";
+    renderCmdBrowsable();return;}
   if(wspec){
     /* 写动作：参数来自注册表（不是 CLI 参数表） */
     let wh="<h3 class='sec'>参数（写动作 "+esc(wspec.action_id)+"）</h3>";
@@ -2785,6 +2799,7 @@ function renderCmdParams(){
       });
     }
     updateCmdPreview();
+    renderCmdBrowsable();
     return;
   }
   const vis=(cur.args||[]).filter(a=>a.src!=="server"&&a.kind!=="switch");
@@ -2841,6 +2856,7 @@ function renderCmdParams(){
     });
   }
   updateCmdPreview();
+  renderCmdBrowsable();
 }
 
 /* 预演命令行：与真实 CLI 同形（页面不执行它，只是让人核对参数对不对）。
@@ -3337,19 +3353,45 @@ function startThreeHop(sid,seq,errText){
 }
 
 /* 浏览数据：给参数区提供"从库里来的选择器"（SOP §5.5）。
-   只读、按需取；不可达时退化为无面板（参数仍可手输，但页面会提示）。 */
+   只读、按需取；不可达时退化为无面板（参数仍可手输，但页面会提示）。
+   v0.72（用户批注：问题在于不知道啥时候用主题/会话）：面板改成**上下文
+   感知**——只有当前命令的参数确实要「会话 id / 主题 id」时才出现，且只出
+   需要的那一种清单；用不到的命令整个面板不渲染（不再常驻让人猜）。 */
+function cmdNeededPick(){
+  const need={sid:false,topic:false};
+  const sel=resolveActionSel();
+  const wspec=(sel.direct||!sel.spec||sel.spec.tier!=="B")?null:sel.spec;
+  let names=[];
+  if(wspec)names=Object.keys(wspec.params||{});
+  else if(sel.c){
+    names=(sel.c.args||[]).map(a=>a.dest||a.name);
+    const sub=(sel.c.subactions||[]).find(s=>s.name===state.cmdParams.cmd);
+    if(sub)names=names.concat((sub.args||[]).map(a=>a.dest||a.name));
+  }
+  for(const k of names){
+    const s=String(k);
+    if(/^(sids?|session)$/.test(s))need.sid=true;
+    if(/^(id_?|topic_id|topic)$/.test(s))need.topic=true;
+  }
+  return need;
+}
 function renderCmdBrowsable(){
   const box=$("cmd-browsable");
   if(!box)return;
+  const need=cmdNeededPick();
+  if(!need.sid&&!need.topic){box.innerHTML="";return;}
+  const what=need.sid&&need.topic?"会话或主题":(need.sid?"会话":"主题");
   box.innerHTML="<h3 class='sec'>从库里选（只读）</h3>"+
-    "<div class='sub2'>啥时候用：命令参数需要「指定某个主题/某条会话」时——"+
-    "点下面按钮把清单取回来，挑一条，它的 id 会自动填进上方参数框，"+
-    "不用手抄。用不到指定主题/会话的命令，这个面板可以整个不理。</div>"+
-    "<div class='toolbar'><button id='btn-cmd-topics'>载入主题清单</button>"+
-    "<button id='btn-cmd-sids'>载入最近异常会话</button></div>"+
+    "<div class='sub2'>这个命令的参数需要指定"+esc(what)+"——点下面按钮取"+
+    "清单，挑一条，它的 id 会自动填进上方参数框，不用手抄。</div>"+
+    "<div class='toolbar'>"+
+    (need.topic?"<button id='btn-cmd-topics'>载入主题清单</button>":"")+
+    (need.sid?"<button id='btn-cmd-sids'>载入最近异常会话</button>":"")+
+    "</div>"+
     "<div id='cmd-pick' class='sub2'>还没取：点上面按钮开始——"+
     "取回来的只是清单，不选不动任何数据。</div>";
-  $("btn-cmd-topics").onclick=async()=>{
+  const btnTopics=$("btn-cmd-topics");
+  if(btnTopics)btnTopics.onclick=async()=>{
     $("cmd-pick").textContent="取主题…";
     try{
       const d=await api("/api/topics");
@@ -3370,7 +3412,8 @@ function renderCmdBrowsable(){
               :"，上方命令行预览可直接核对")+"）");};
     }catch(e){$("cmd-pick").textContent="取主题失败："+e.message;}
   };
-  $("btn-cmd-sids").onclick=async()=>{
+  const btnSids=$("btn-cmd-sids");
+  if(btnSids)btnSids.onclick=async()=>{
     $("cmd-pick").textContent="取会话…";
     try{
       const d=await api("/api/sessions?errors_only=1&limit=20");
@@ -3677,7 +3720,12 @@ function renderWorkItems(d){
                   :"（明细为空，且与数字对不上，见上方对账结论）")+"</div>";
     return;
   }
-  let h="<h3 class='sec'>待处理记录（"+items.length+" 条，与上面的数字同源）</h3>";
+  let h="<h3 class='sec'>待处理记录（"+items.length+" 条，与上面的数字同源";
+  /* v0.72：已处置（done/rejected）条目灰显+徽章——数字不会因处置变少，
+     但视觉上必须能一眼分办哪些已经办完。 */
+  const dispN=items.filter(i=>i.disposition==="done"||i.disposition==="rejected").length;
+  if(dispN)h+="——其中 "+dispN+" 条已处置过，灰显区分";
+  h+="）</h3>";
   /* 整批通用命令（workRows 去重判定 same>1 的）：明细行不再重复贴同一条命令，
      改成一句提示——用户批注「完全一样的命令需要反反复复执行?」：不需要。 */
   const seen={},sharedKeys=new Set();
@@ -3699,8 +3747,11 @@ function renderWorkItems(d){
       (c.action_id?("<button class='xbtn' data-wact=\""+esc(c.action_id)+
         "\" data-wparams='"+esc(JSON.stringify(c.params||{}))+
         "'>在命令台打开（已预填）</button>"):"")).join("");
-    return "<div class='wi-item "+esc(it.level||"")+"'>"+
+    const dispLabel={done:"已处置",partial:"处置一半",rejected:"已驳回"}[it.disposition];
+    const dispCls=(it.disposition&&it.disposition!=="open")?" "+it.disposition:"";
+    return "<div class='wi-item "+esc(it.level||"")+dispCls+"'>"+
       "<h4>"+esc(it.title)+
+      (dispLabel?" <span class='wi-disp'>"+dispLabel+"</span>":"")+
       (it.owner?" <span class='sub2'>"+esc(it.owner)+"</span>":"")+"</h4>"+
       (facts?"<div class='wi-facts'>"+facts+"</div>":"")+
       (it.anchor?("<div class='wd'>证据锚点（点开回原文）："+

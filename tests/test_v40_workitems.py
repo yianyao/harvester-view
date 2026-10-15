@@ -664,6 +664,33 @@ class RepairDispositionGate(unittest.TestCase):
                 return v
         return None
 
+    def test_disposition_field_v072(self):
+        """v0.72（用户批注：已处置的条目要能一眼看出来）：
+        每条待修补条目必须带 disposition 四态，供前端灰显/徽章分流。"""
+        t1 = "子代理嵌套深度受 maxDepth 限制，深任务改平铺编排。"
+        t2 = "权限被撤销的工具不要原地重试。"
+        t3 = "browser 工具报实例失效时先重建实例再继续。"
+        self.assertEqual(self.by_title[t1]["disposition"], "done")
+        self.assertEqual(self.by_title[t2]["disposition"], "partial")
+        self.assertEqual(self.by_title[t3]["disposition"], "rejected")
+
+    def test_done_suggestion_explains_how_eval_works_v072(self):
+        """v0.72（用户批注：评估咋做？）：已处置条目的建议必须讲清
+        效果评估的机制（按采纳日期分前后两段对比），不能只说「等评估」。"""
+        t1 = "子代理嵌套深度受 maxDepth 限制，深任务改平铺编排。"
+        sug = self.by_title[t1]["suggestion"]
+        self.assertIn("评估咋做", sug)
+        self.assertIn("采纳日期", sug)
+
+    def test_done_item_has_eval_command_v072(self):
+        """v0.72：已批注（可评估）的条目必须给一条能直接跑的评估命令，
+        且写明「不改变待修补数字」——否则「下面命令包可跑」是空话。"""
+        t1 = "子代理嵌套深度受 maxDepth 限制，深任务改平铺编排。"
+        evs = [c for c in self.by_title[t1]["commands"]
+               if "harvest-eval" in (c.get("cli") or "")]
+        self.assertTrue(evs, "已处置条目缺 harvest-eval 评估命令")
+        self.assertIn("不改变", json.dumps(evs[0], ensure_ascii=False))
+
     def test_facts_show_annotation_state(self):
         t1 = "子代理嵌套深度受 maxDepth 限制，深任务改平铺编排。"
         t2 = "权限被撤销的工具不要原地重试。"

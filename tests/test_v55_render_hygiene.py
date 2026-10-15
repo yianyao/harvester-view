@@ -24,6 +24,40 @@ REG = VIEW_ROOT / "actions" / "actions_registry.json"
 WORKITEMS = VIEW_ROOT / "actions" / "workitems.py"
 
 
+class TestV072UxGates(unittest.TestCase):
+    """v0.72 四截图批注的结构门（先红后绿）。
+
+    ① 数据源账本：发布镜像（WorkBuddy 知识库）是内部机制，不再与①②
+       并列编号标出——收进默认折叠的「内部机制」条。
+    ③ 「从库里选」面板上下文感知：只有当前命令参数确实要 sid/topic 时
+       才渲染，且只出需要的那种清单；用不到整个不渲染。
+    ② 处置进度可视：已处置/已驳回条目灰显（.wi-item.done/.rejected）。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.html = (Path(__file__).resolve().parent.parent /
+                    "static" / "index.html").read_text(encoding="utf-8")
+
+    def test_publish_mirror_demoted_from_headline_list(self):
+        self.assertNotIn("③ <b>WorkBuddy 知识库", self.html,
+                         "发布镜像不得再与①②并列编号标出")
+        self.assertIn("发布镜像（内部机制", self.html,
+                      "须收进折叠条（summary 带「内部机制」字样）")
+        self.assertIn("kb-publish", self.html, "内容保留，只是降级")
+
+    def test_browse_panel_context_aware(self):
+        self.assertIn("function cmdNeededPick()", self.html)
+        self.assertIn("这个命令的参数需要指定", self.html)
+        self.assertIn('if(!need.sid&&!need.topic){box.innerHTML="";return;}',
+                      self.html, "用不到的命令面板必须整个不渲染")
+
+    def test_disposition_visual_distinction(self):
+        self.assertIn(".wi-item.done{", self.html)
+        self.assertIn(".wi-item.rejected{", self.html)
+        self.assertIn("已处置", self.html)
+
+
 class TestHtmlTailClean(unittest.TestCase):
     """</html> 之后不许有任何非空白内容（浏览器会把它当正文渲染）。"""
 
@@ -79,8 +113,10 @@ class TestActionIdFormsResolved(unittest.TestCase):
                    "function updateCmdPreview(){",
                    "function renderCmdParams(){"):
             self.assertIn(fn, self.html)
-        self.assertEqual(self.html.count("resolveActionSel()"), 4,
-                         "定义 1 处 + 消费 3 处，漏一处就是又回到单形态判断")
+        # v0.72 +1 消费方：cmdNeededPick（上下文感知选值面板）也走统一解析
+        self.assertIn("function cmdNeededPick(){", self.html)
+        self.assertEqual(self.html.count("resolveActionSel()"), 5,
+                         "定义 1 处 + 消费 4 处，漏一处就是又回到单形态判断")
 
     def test_pinned_invariants_still_hold(self):
         # test_v38 钉的两条 enable 分支不变式必须原样保留

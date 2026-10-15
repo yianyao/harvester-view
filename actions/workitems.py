@@ -147,15 +147,19 @@ def _sample(s):
 
 
 def _item(item_id, title, *, metrics=None, facts=None, anchor=None, detail="",
-          suggestion="", commands=None, level="warn", owner="") -> dict:
+          suggestion="", commands=None, level="warn", owner="",
+          disposition=None) -> dict:
     m = {"count": 1}
     m.update(metrics or {})
-    return {"item_id": str(item_id), "title": str(title),
-            "metrics": {k: int(v or 0) for k, v in m.items()},
-            "facts": [list(f) for f in (facts or [])], "anchor": anchor,
-            "detail": str(detail), "suggestion": str(suggestion),
-            "commands": list(commands or []), "level": level,
-            "owner": str(owner)}
+    out = {"item_id": str(item_id), "title": str(title),
+           "metrics": {k: int(v or 0) for k, v in m.items()},
+           "facts": [list(f) for f in (facts or [])], "anchor": anchor,
+           "detail": str(detail), "suggestion": str(suggestion),
+           "commands": list(commands or []), "level": level,
+           "owner": str(owner)}
+    if disposition:
+        out["disposition"] = str(disposition)
+    return out
 
 
 def _metric(name, label, mode, sum_field="count", unit=None, source=None) -> dict:
@@ -310,6 +314,17 @@ def _repair_verdict_of(g, title) -> str:
     return ""
 
 
+def _repair_disposition(status: str, has_note: bool) -> str:
+    """处置进度四态（v0.72，用户批注：已处置的要能一眼看出来）：
+    done=已采纳且 pattern 批注已补；partial=已采纳没批注；
+    rejected=已驳回；open=还没进台账。前端据此灰显/挂徽章。"""
+    if status == "adopted":
+        return "done" if has_note else "partial"
+    if status == "rejected":
+        return "rejected"
+    return "open"
+
+
 def _repair_items(g) -> list[dict]:
     items = []
     for e in _unresolved_entries(g):
@@ -332,10 +347,14 @@ def _repair_items(g) -> list[dict]:
             suggestion = (
                 "这条你**已经处置过**：台账已采纳 ✓、pattern 批注已补 ✓"
                 "（效果评估能把它和错误对上号）。上面的数字统计的是"
-                "**历史会话里的坑**——处置不会让它变少，跑下面的命令也不会；"
-                "它退场只有两条路：重采数据后坑不再出现，或效果评估判定改善。"
+                "**历史会话里的坑**——处置不会让它变少，跑下面的命令也不会。"
+                "它退场有两条路：① 重采数据后坑不再出现；② 效果评估判定"
+                "改善——评估咋做：harvest-eval 按台账的**采纳日期**把历史"
+                "错误分成采纳前/后两段，对比这条坑在班规生效后还犯不犯"
+                "（未解决率与复发率都不升才算改善）。"
                 + ("当前评估结论：" + verdict + "。"
-                   if verdict else "还没跑过评估（下面命令包可跑）。"))
+                   if verdict else "还没跑过评估——下面命令包里就有，跑一次" 
+                   "就有结论。"))
         elif status == "adopted":
             suggestion = ("坑还在，且台账已采纳但**没补 pattern 批注**——"
                           "没这一行，效果评估盯不住这条规矩。先点锚点回原文"
@@ -366,7 +385,8 @@ def _repair_items(g) -> list[dict]:
             suggestion=suggestion,
             commands=_repair_commands(g, title, pattern, first,
                                       has_note=has_note),
-            level="bad", owner=e.get("owner") or ""))
+            level="bad", owner=e.get("owner") or "",
+            disposition=_repair_disposition(status, has_note)))
     return items
 
 
@@ -405,6 +425,16 @@ def _repair_commands(g, title, pattern, sample, has_note=False) -> list[dict]:
             "自包含 md：会话原文 + 卡片规范 + 指令，直接喂 Agent 起草修订。"
             "取材动作：只产材料，**不改变**本条数字。",
             cli=_cli(["draft", "--sid", _q(sample["sid"]), "--type", "pitfall"])))
+    if has_note and meta:
+        db = _rel(cfg.db, cfg)
+        if db:
+            out.append(_cmd(
+                "跑效果评估（验证这条坑改善没有）",
+                "评估咋做：按台账采纳日期把历史错误分成采纳前/后两段，"
+                "对比这条坑还犯不犯（未解决率、复发率都不升=改善）。"
+                "**不改变**「待修补」数字，只更新评估结论。",
+                cli=_cli(["harvest-eval", "--db", _q(db), "--meta", _q(meta)]),
+                action_id="harvest_eval", tier="A"))
     return out
 
 

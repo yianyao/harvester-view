@@ -71,9 +71,9 @@ for (const [n, sig] of [
   ["cmdKey", "c"], ["renderWorkHead", "d"], ["workRows", "d"],
   ["renderWorkPkg", "d"],
   ["renderWorkItems", "d"], ["openInCmd", "actionId,params"],
-  /* 2026-10-15：命令悬停说明（处理单两处命令框都要有 title） */
+  /* 2026-10-15：命令悬停说明（处理单两处命令框都要有 title）+ 仓根提示 */
   ["stripMd", "s"], ["cmdNameOf", "cli"], ["argsHelp", "c"],
-  ["cmdHoverTitle", "row"],
+  ["cmdHoverTitle", "row"], ["displayPath", "p"],
 ]) {
   eval(extract(n, sig));
 }
@@ -187,11 +187,18 @@ check("「在命令台打开」带上了预填参数",
 check("命令包每条命令框带悬停说明",
   pkg.includes("class='wi-cmd' title=") && pkg.includes("这条命令干嘛用"),
   "裸命令行没有解释=谜语；hover 必须给出「干嘛用+怎么用+参数含义」");
+check("命令包每条命令带「复制」按钮（用户批注：复制到终端执行的命令要能一键复制）",
+  (pkg.match(/data-clicopy=/g) || []).length === rows.filter(r => r.cli).length &&
+  pkg.includes("复制到剪贴板"),
+  "每条有 cli 的命令一行一个复制按钮；无 cli 的不给假按钮");
+check("命令包写明粘贴位置（仓根，用户在此前的上级目录踩过 No module 坑）",
+  pkg.includes("仓根") && pkg.includes("session-harvester"));
 renderWorkItems(WI);
 const wiItems = $("work-items").innerHTML;
-check("明细区命令框同样带悬停说明（不是只有命令包有）",
+check("明细区命令框同样带悬停说明与复制按钮（不是只有命令包有）",
   wiItems.includes("class='wi-cmd' title=") &&
-  wiItems.includes("在命令台打开」就地执行"));
+  wiItems.includes("在命令台打开」就地执行") &&
+  wiItems.includes("data-clicopy="));
 check("头部真源行带白话解释（机器键是给人对账用的，不是谜语）",
   head.includes("真源 ") && head.includes("跨页对账"));
 

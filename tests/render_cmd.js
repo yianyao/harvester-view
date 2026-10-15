@@ -52,9 +52,13 @@ function encodeAll(o) { return JSON.stringify(o); }
 function patternPlain() { return ""; }
 function repFilter() { return { q: "", only: false }; }
 function hitQ() { return true; }
+function copyText(t, btn) { if (btn) btn.textContent = "已复制"; }
 const glossary = { loaded: false, data: null };
 const state = { act: { loaded: false, actions: [], commands: null, error: null },
-  cmdCard: null, actionId: null, cmdParams: {}, job: null, chain: [] };
+  cmdCard: null, actionId: null, cmdParams: {}, job: null, chain: [],
+  /* envprobe 透出（服务端 /api/commands 注入）：命令前缀按本机环境现探测 */
+  cliPrefix: "python -m harvester",
+  repoRoot: "C:/Users/u/WorkBuddy/x/session-harvester" };
 /* 第三跳桩：记录 gotoAnchor 的入参，用来断言"三跳确实接上了"，
    而不是只断言"函数没抛错" */
 const hopCalls = [];
@@ -127,7 +131,9 @@ ACT_RESP["/api/actions"] = {
       summary: "在建议台账里把一条建议的状态改为 {status}",
       params: { key: { label: "建议句", type: "str" },
                 status: { label: "新状态", type: "str" } },
-      target: "suggestions_meta.db", reversible: "reversible" },
+      target: "suggestions_meta",
+      target_path: "C:/Users/u/WorkBuddy/x/session-harvester/suggestions_meta.db",
+      reversible: "reversible" },
   ],
   tiers: { A: "只读直接执行", B: "写 meta 两段提交", C: "只生成命令" },
 };
@@ -147,9 +153,10 @@ for (const [n, sig] of [
   ["currentWriteSpec", ""], ["renderVersionBar", ""], ["writeDisabled", ""],
   /* v0.49：会话抑制的 view 侧（「已抑制」清单 + 恢复） */
   ["loadSuppressed", "manual"], ["renderSuppressed", "d"],
-  /* 2026-10-15：双形态选中解析 + 命令悬停说明 */
+  /* 2026-10-15：双形态选中解析 + 命令悬停说明 + 环境探测命令形 */
   ["resolveActionSel", ""], ["stripMd", "s"], ["cmdNameOf", "cli"],
   ["argsHelp", "c"], ["cmdHoverTitle", "row"],
+  ["targetHuman", "t"], ["displayPath", "p"],
 ]) {
   eval(extract(n, sig));
 }
@@ -278,6 +285,36 @@ check("argsHelp 汇总非路径参数的帮助（路径参数不进悬停）",
       { name: "--db", help: "索引库路径", src: "server" }] })
     .includes("--since") &&
   !argsHelp({ args: [{ name: "--db", help: "索引库路径", src: "server" }] }));
+
+/* ⑤f 复制命令 + 粘贴位置（用户批注：复制到终端执行的命令要有复制按钮，
+   且命令形按本机环境探测——本机 python 不在 PATH 而有 uv，实测） */
+state.cmdCard = "errors";
+state.actionId = "report_errors";
+state.cmdParams = { since: 7 };
+updateCmdPreview();
+check("命令行预览带「复制」按钮（复制到剪贴板）",
+  $("cmd-banner").innerHTML.includes("btn-cmd-copy") &&
+  $("cmd-banner").innerHTML.includes("复制到剪贴板"));
+check("命令行预览写明粘贴位置（仓根）",
+  $("cmd-banner").innerHTML.includes("仓根") &&
+  $("cmd-banner").innerHTML.includes("session-harvester"));
+check("cmdLine 用 envprobe 前缀（不写死 python，可整体换 uv 形）",
+  cmdLine({ cmd: "report-errors", args: [] }, {})
+    .startsWith(state.cliPrefix));
+
+/* ⑤g 目标库行说人话：库名 + 它装什么（不再裸甩绝对路径） */
+state.actionId = "suggest_status";
+state.cmdParams = { key: "k1", status: "adopted" };
+updateCmdPreview();
+check("写动作横幅改为「写哪个库」并带人话说明",
+  $("cmd-banner").innerHTML.includes("写哪个库") &&
+  $("cmd-banner").innerHTML.includes("建议台账"));
+check("targetHuman 覆盖四本台账且未知库名有兜底",
+  targetHuman("suggestions_meta").includes("建议台账") &&
+  targetHuman("topics_meta").includes("抑制") &&
+  targetHuman("artifacts_meta").includes("产物") &&
+  targetHuman("keywords_meta").includes("词频") &&
+  targetHuman("no_such_db").length > 0);
 
 /* ⑥ 结果渲染：数字皆门（模式次数可点） */
 const job = { status: "done", label: "report-errors", elapsed_ms: 1200,

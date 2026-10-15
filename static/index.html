@@ -2560,12 +2560,20 @@ async function loadCmdData(manual){
       "命令注册表与选择器仍可用，但执行按钮会保持禁用）";
     const cmds=await actApi("/api/commands");
     state.act.commands=cmds.__err?null:cmds;
+    state.cliPrefix=(state.act.commands&&state.act.commands.cli_prefix)||
+      "python -m harvester";
+    state.repoRoot=state.act.commands&&state.act.commands.repo_root;
     renderCmdActions();renderCmdParams();
     return;
   }
   const cmds=await actApi("/api/commands");
   state.act={loaded:true,actions:reg.actions||[],
              commands:cmds.__err?null:cmds,error:null};
+  /* 命令前缀与仓根（envprobe 现探测，v0.68）：复制到终端的命令必须能在
+     用户终端直接跑——本机可能 python 不在 PATH 而有 uv（实测）。 */
+  state.cliPrefix=(state.act.commands&&state.act.commands.cli_prefix)||
+    "python -m harvester";
+  state.repoRoot=state.act.commands&&state.act.commands.repo_root;
   /* P3-5 版本握手：harvester 版本 ≠ commands.json 适配版本 → 黄条 + 禁 B 档。
      判据**只有一个**：服务端 /api/health.version_ok（页面不自己比版本号，
      否则两处判据会分叉）。A 档不受影响。 */
@@ -2638,19 +2646,30 @@ function renderCmdActions(){
   if(!state.cmdCard){box.innerHTML="";$("cmd-head").textContent="← 选一张动词卡";return;}
   const cmds=cmdCommands().filter(x=>x.card_id===state.cmdCard);
   const wr=writeActionsForCard(state.cmdCard);
-  $("cmd-head").innerHTML="动词卡："+esc((state.act.commands.cards||[])
-    .find(c=>c.card_id===state.cmdCard)?.label||state.cmdCard)+
-    "（"+cmds.length+" 条命令"+(wr.length?("／"+wr.length+" 个写动作"):"")+
-    "）——挑一条查看参数";
-  let h="<div class='chiprow'>"+cmds.map(c=>
-    "<span class='chip"+(state.actionId===c.cmd?" on":"")+"' data-cmd=\""+
-    esc(c.cmd)+"\">"+esc(c.cmd)+" <span class='tierbadge "+esc(c.tier)+"'>"+
-    c.tier+"</span></span>").join("")+"</div>";
+  $("cmd-head").innerHTML="动词卡「"+esc((state.act.commands.cards||[])
+    .find(c=>c.card_id===state.cmdCard)?.label||state.cmdCard)+"」："+
+    "这张卡上有 "+cmds.length+" 条命令"+
+    (wr.length?(" 和 "+wr.length+" 个写动作"):"")+
+    "——点下面任意一条，右边出参数和执行方式。命令=照命令行干活的工具"+
+    "（A 档可在本页直接跑）；写动作=会改库的操作（先预演、你确认才写）。";
+  let h="<div class='chiprow'>"+cmds.map(c=>{
+    /* 悬停说明（用户批注：要有提示，简短接地气，不照搬 doc 文案） */
+    const tip=(c.help?stripMd(c.help)+"；":"")+
+      (c.tier==="A"?"A 档：本页可直接执行"
+        :(c.tier==="B"?"B 档：会写库，先预演、你确认才写"
+          :"C 档：只生成命令，不代执行"));
+    return "<span class='chip"+(state.actionId===c.cmd?" on":"")+
+      "' data-cmd=\""+esc(c.cmd)+"\" title=\""+esc(tip)+"\">"+
+      esc(c.cmd)+" <span class='tierbadge "+esc(c.tier)+"'>"+
+      c.tier+"</span></span>";}).join("")+"</div>";
   if(wr.length){
-    h+="<div class='sub2'>可写动作（点开看「将写什么」；两段提交，先预演）：</div>"+
+    h+="<div class='sub2'>写动作（点了会改库：先「预演」给你看将要写什么，"+
+       "你确认才真的写；预演本身一个字都不写）：</div>"+
       "<div class='chiprow'>"+wr.map(w=>
       "<span class='chip"+(state.actionId===w.spec.action_id?" on":"")+
-      "' data-cmd=\""+esc(w.spec.action_id)+"\">"+esc(w.label)+
+      "' data-cmd=\""+esc(w.spec.action_id)+
+      "\" title=\""+esc(stripMd(w.spec.summary||"")+
+        "（预演 → 你确认 → 才写；预演不写任何东西）")+"\">"+esc(w.label)+
       " <span class='tierbadge "+(w.spec.risk==="destructive"?"C":"B")+"'>"+
       esc(w.spec.risk==="destructive"?"破坏性":"写")+"</span></span>").join("")+
       "</div>";
@@ -2693,6 +2712,16 @@ function selectCmdCommand(name){
   renderCmdActions();renderCmdParams();
 }
 
+/* 写动作的目标库人话名（用户批注：目标库这行得说明白针对的是谁）。
+   meta 库名 → 它装的是什么。台账与 knowledge/ 知识正本无关（正本迁移
+   不动台账）。 */
+function targetHuman(t){
+  return {suggestions_meta:"建议台账——班规裁决、建议状态记录存放处",
+          topics_meta:"抑制/主题台账——会话抑制记录与主题注册表",
+          artifacts_meta:"产物台账——Write/Edit 产物版本记录",
+          keywords_meta:"词频账本——n-gram 关键词统计"}[t]||"meta 台账";
+}
+
 /* 参数选择器：src=none → 文本框；chips → 预设按钮；枚举 → 下拉。
    src=server（路径类）**刻意不渲染**（SOP §5 红线）；
    topics_api / sessions_api 由"浏览数据"面板给可选项（见 renderCmdBrowsable）。 */
@@ -2709,7 +2738,11 @@ function renderCmdParams(){
       const p=wspec.params[k];
       if(p.server)continue;
       const v=state.cmdParams[k];
-      wh+="<div class='prow'><span class='pn'>"+esc(p.label||k)+
+      wh+="<div class='prow' title=\""+
+        esc("带 * = 必填。取值来源：处理单/报告页「在命令台打开」会自动"+
+            "预填，不用手抄；手填的按左侧说明来——写错不匹配时预演会"+
+            "拒绝，不会瞎写。")+"\">"+
+        "<span class='pn'>"+esc(p.label||k)+
         (p.required?" *":"")+"</span>";
       if(p.choices&&p.choices.length){
         wh+="<select data-p=\""+esc(k)+"\">"+(p.choices||[]).map(c=>
@@ -2726,12 +2759,19 @@ function renderCmdParams(){
       wh+="</div>";
     }
     const sk=Object.keys(wspec.params||{}).filter(k=>wspec.params[k].server);
-    if(sk.length)wh+="<div class='sub2'>目标库："+esc(wspec.target_path||"")+
-      "（服务端起服时定，页面不暴露路径）</div>";
+    if(sk.length)wh+="<div class='sub2' title=\""+
+      esc((wspec.target_path||"")+" —— 磁盘上的完整位置（页面只展示，"+
+          "不提供改路径的入口；真要换库在服务端起服参数里改）")+"\">"+
+      "写哪个库：<b>"+esc(wspec.target||"meta 库")+"</b>（"+
+      esc(targetHuman(wspec.target))+
+      "；完整位置见悬停。台账不在 knowledge/ 知识正本里——正本迁移"+
+      "（v0.66）不影响台账位置）</div>";
     wh+="<div class='sub2'>风险："+
       (wspec.risk==="destructive"
-        ?"<span class='errline'>destructive —— 会丢信息（有台账快照，但要人工恢复）</span>"
-        :"reversible —— 可回到原状")+"</div>";
+        ?"<span class='errline'>破坏性 —— 会丢信息（写之前自动留快照，"+
+         "恢复要人工来）</span>"
+        :"可逆 —— 写错了可以再改回来（预演一个字都不写；正式写记台账）")+
+      "</div>";
     box.innerHTML=wh;
     for(const el of box.querySelectorAll("[data-p]")){
       const ev=el.type==="checkbox"?"change":"input";
@@ -2802,9 +2842,12 @@ function renderCmdParams(){
   updateCmdPreview();
 }
 
-/* 预演命令行：与真实 CLI 同形（页面不执行它，只是让人核对参数对不对）。 */
+/* 预演命令行：与真实 CLI 同形（页面不执行它，只是让人核对参数对不对）。
+   前缀来自 envprobe（服务端 /api/commands 透出 cli_prefix）：本机有 uv 给
+   `uv run python`，python 可用给 `python`，都没有给解释器绝对路径——
+   写死 `python` 在没有它的机器上必挂（用户实测）。 */
 function cmdLine(c,params){
-  let s="python -m harvester "+c.cmd;
+  let s=(state.cliPrefix||"python -m harvester")+" "+c.cmd;
   /* 聚合命令（topic 等）的子动作是位置参数：选了就带进预演行，
      否则预演与真实 CLI 不同形（topic pack 会少个 pack）。 */
   if(c.subactions&&c.subactions.length&&params.cmd)s+=" "+params.cmd;
@@ -2836,15 +2879,15 @@ function updateCmdPreview(){
     }else{
       $("btn-cmd-run").disabled=false;
       $("btn-cmd-run").textContent="预演（先看清楚，再确认才写）";
-      $("cmd-est").textContent="写 "+(wspec.target||"meta 库")+"｜"+
-        (wspec.risk==="destructive"?"破坏性：会丢信息":"可逆")+
+      $("cmd-est").textContent="动 "+(wspec.target||"meta 库")+" 的记录｜"+
+        (wspec.risk==="destructive"?"破坏性：会丢信息":"可逆：写错可改回")+
         "｜两段提交 + 台账留痕";
     }
     banner.innerHTML="<div class='cmd-cli' title=\""+
       esc("写动作不显示命令行预览（写动作的参数名与命令行参数不同名）。"+
           "点「预演」先看清将写什么，你确认后才真正写；预演本身只读。")+
-      "\">目标库："+
-      esc(wspec.target_path||"")+"　动作："+esc(wspec.cmd)+
+      "\">写哪个库："+esc(displayPath(wspec.target_path||""))+
+      "（"+esc(targetHuman(wspec.target))+"）　动作："+esc(wspec.cmd)+
       (wspec.subaction?(" "+esc(wspec.subaction)):"")+"</div>";
     return;
   }
@@ -2866,12 +2909,16 @@ function updateCmdPreview(){
         (canRun?"点「执行」在本页就地跑（进程内调用，非 shell）。":
          (c.tier==="C"?"C 档只生成命令，不代执行。":"按下方按钮/提示操作。"))+
         (argsHelp(c)?" "+argsHelp(c):""))+"\">"+
-    esc(cmdLine(c,state.cmdParams))+"</div>";
+    esc(cmdLine(c,state.cmdParams))+"</div>"+
+    "<button class='xbtn' id='btn-cmd-copy' title='复制到剪贴板（到仓根目录的终端里粘贴执行）'>复制</button>"+
+    "<span class='sub2'>粘贴位置：仓根 "+
+    esc(displayPath(state.repoRoot)||"上游 session-harvester 目录")+
+    " 的终端（--db 等路径参数都是仓根相对的）</span>";
   bar.style.display="";
   if(act&&act.tier==="B"&&!writeDisabled()){
     $("btn-cmd-run").disabled=false;
     $("btn-cmd-run").textContent="预演（先看清楚，再确认才写）";
-    $("cmd-est").textContent="写 "+(act.target||"meta 库")+"｜"+
+    $("cmd-est").textContent="动 "+(act.target||"meta 库")+" 的记录｜"+
       (act.reversible||"")+"｜两段提交 + 台账留痕";
   }else if(act&&act.tier==="B"){
     $("btn-cmd-run").disabled=true;
@@ -2894,9 +2941,11 @@ function updateCmdPreview(){
          ? "B 档：会写库，需两段提交确认（预演 → 你确认 → 才写）"
          : "A 档，但动作面的白名单里还没有这条（现有 "+
            Object.keys(A_ACTIONS()).length+" 个）");
-    $("cmd-est").textContent=why+"｜请复制下方命令自行执行";
+    $("cmd-est").textContent=why+"｜请用上方「复制」拿命令到仓根终端执行";
   }
   banner.innerHTML=cmdHtml;
+  const cp=$("btn-cmd-copy");
+  if(cp)cp.onclick=()=>copyText(cmdLine(c,state.cmdParams),cp);
 }
 /* 命令名 → 动作 id。
    P3 起**首选从动作注册表读**（服务端 /api/actions 是唯一真相：注册表加了
@@ -3291,10 +3340,13 @@ function renderCmdBrowsable(){
   const box=$("cmd-browsable");
   if(!box)return;
   box.innerHTML="<h3 class='sec'>从库里选（只读）</h3>"+
+    "<div class='sub2'>啥时候用：命令参数需要「指定某个主题/某条会话」时——"+
+    "点下面按钮把清单取回来，挑一条，它的 id 会自动填进上方参数框，"+
+    "不用手抄。用不到指定主题/会话的命令，这个面板可以整个不理。</div>"+
     "<div class='toolbar'><button id='btn-cmd-topics'>载入主题清单</button>"+
     "<button id='btn-cmd-sids'>载入最近异常会话</button></div>"+
-    "<div id='cmd-pick' class='sub2'>点上面按钮把可选值取回来——"+
-    "命令台的参数不该靠人背（SOP §5.5）。</div>";
+    "<div id='cmd-pick' class='sub2'>还没取：点上面按钮开始——"+
+    "取回来的只是清单，不选不动任何数据。</div>";
   $("btn-cmd-topics").onclick=async()=>{
     $("cmd-pick").textContent="取主题…";
     try{
@@ -3304,10 +3356,16 @@ function renderCmdBrowsable(){
         (d.topics||[]).map(t=>"<span class='chip' data-topicid=\""+
           esc(t.id)+"\">"+esc(t.name)+" ("+t.members_count+")</span>").join(" ");
       for(const el of $("cmd-pick").querySelectorAll("[data-topicid]"))
-        el.onclick=()=>{state.cmdParams["id_"]=el.dataset.topicid;
+        el.onclick=()=>{
+          state.cmdParams["id_"]=el.dataset.topicid;
           state.cmdParams["id"]=el.dataset.topicid;
+          const wsel=currentWriteSpec();
+          updateCmdPreview();renderCmdParams();
           showBanner("warn","已选主题 "+el.dataset.topicid+
-            "（参数已填入下方输入框，可直接核对命令行）");};
+            "（id 已填进上方参数框"+
+            (wsel&&wsel.tier==="B"
+              ?"；写动作没有命令行预览——点「预演」核对将写什么"
+              :"，上方命令行预览可直接核对")+"）");};
     }catch(e){$("cmd-pick").textContent="取主题失败："+e.message;}
   };
   $("btn-cmd-sids").onclick=async()=>{
@@ -3570,8 +3628,10 @@ function renderWorkPkg(d){
   let h="<details open><summary>处理命令包（"+rows.length+" 条命令"+
     (dup?("；已把 "+dup+" 条完全相同的合并——一条命令覆盖整批的，跑一次即可"):"")+
     "</summary>";
-  h+="<p class='sub2'>纪律：执行只发生在冻结白名单内。命令行可复制到仓根目录"+
-     "核对后执行；带「在命令台打开」的可就地执行——B 档两段提交："+
+  h+="<p class='sub2'>纪律：执行只发生在冻结白名单内。命令行可复制到仓根（"+
+     esc(displayPath(state.repoRoot||d.repo_root)||
+       "上游 session-harvester 目录")+"）的终端核对后执行；"+
+     "带「在命令台打开」的可就地执行——B 档两段提交："+
      "先预演、你确认、才写。</p>"+
      "<div class='wi-tools'><button class='xbtn' id='work-copy'>"+
      "复制全部命令</button></div>";
@@ -3587,7 +3647,10 @@ function renderWorkPkg(d){
       (r.shared_note?"<div class='wd'><b>"+esc(r.shared_note)+"</b></div>":"")+
       (r.note?"<div class='wd'>"+esc(r.note)+"</div>":"")+
       "<div class='wi-cmd' title=\""+esc(cmdHoverTitle(r))+"\">"+
-      esc(r.cli||"（服务端未给命令行文本）")+"</div>"+
+      esc(r.cli||"（服务端未给命令行文本）")+
+      (r.cli?" <button class='xbtn' data-clicopy=\""+esc(r.cli)+
+        "\" title='复制到剪贴板（到仓根目录的终端里粘贴执行）'>复制"+
+        "</button>":"")+"</div>"+
       (r.action_id?("<button class='xbtn' data-wact=\""+esc(r.action_id)+
         "\" data-wparams=\""+esc(JSON.stringify(r.params))+
         "\">在命令台打开</button>"):"")+
@@ -3599,6 +3662,8 @@ function renderWorkPkg(d){
   box.innerHTML=h+"</details>";
   const cb=$("work-copy");
   if(cb)cb.onclick=()=>copyText(rows.map(r=>r.cli||"").filter(Boolean).join("\n"),cb);
+  for(const b of box.querySelectorAll("[data-clicopy]"))
+    b.onclick=()=>copyText(b.dataset.clicopy,b);
   for(const b of box.querySelectorAll("[data-wact]"))
     b.onclick=()=>{openInCmd(b.dataset.wact,JSON.parse(b.dataset.wparams||"{}"));};
 }
@@ -3625,7 +3690,10 @@ function renderWorkItems(d){
       (sharedKeys.has(cmdKey(c))
         ?"<div class='wd sub2'>ⓘ 这条命令整批通用（在上方命令包里，跑一次即覆盖全部明细），不逐条重复。</div>"
         :"<div class='wi-cmd' title=\""+esc(cmdHoverTitle(c))+"\">"+
-         esc(c.cli||"")+"</div>")+
+         esc(c.cli||"")+
+         (c.cli?" <button class='xbtn' data-clicopy=\""+esc(c.cli)+
+           "\" title='复制到剪贴板（到仓根目录的终端里粘贴执行）'>复制"+
+           "</button>":"")+"</div>")+
       (c.action_id?("<button class='xbtn' data-wact=\""+esc(c.action_id)+
         "\" data-wparams='"+esc(JSON.stringify(c.params||{}))+
         "'>在命令台打开（已预填）</button>"):"")).join("");
@@ -3641,6 +3709,8 @@ function renderWorkItems(d){
   }).join("");
   box.innerHTML=h;
   bindAnchors(box);
+  for(const b of box.querySelectorAll("[data-clicopy]"))
+    b.onclick=()=>copyText(b.dataset.clicopy,b);
   for(const b of box.querySelectorAll("[data-wact]"))
     b.onclick=()=>{openInCmd(b.dataset.wact,JSON.parse(b.dataset.wparams||"{}"));};
 }

@@ -553,8 +553,8 @@
    "subaction": null,
    "risk": "reversible",
    "target": "suggestions_meta",
-   "summary": "在建议台账里把一条建议的状态改为 {status}",
-   "detail": "影响 harvest-eval 的 A/B 分界（adopted_at）；不是 adopted 时会清空分界。",
+   "summary": "把建议台账里的一条建议标记为「{status}」（记一笔裁决结果）",
+   "detail": "这条动作只动台账里那一条记录的状态，别的不碰。范围交代：效果评估（harvest-eval）按「采纳日期」把错误分成采纳前/后两段，用来对比班规有没有用——标 adopted 就进「采纳后」一侧（可填日期）；标其他状态会清掉采纳日期，这条建议回到「未采纳」一侧。不写主库、不改建议原文、不生成卡片。",
    "params": [
     {
      "name": "key",
@@ -567,7 +567,7 @@
      "choices": null,
      "default": null,
      "note": null,
-     "label": "建议句（台账 key，逐字）"
+     "label": "改哪条建议（台账主键=建议原句，必须逐字一致，错一个字就找不到记录；来源：处理单明细的标题，或效果评估报告里的建议句）"
     },
     {
      "name": "status",
@@ -584,7 +584,7 @@
      ],
      "default": null,
      "note": null,
-     "label": "新状态"
+     "label": "改成什么状态（下拉可选：adopted=采纳、rejected=驳回等，以下拉为准）"
     },
     {
      "name": "adopted_at",
@@ -597,7 +597,7 @@
      "choices": null,
      "default": null,
      "note": null,
-     "label": "采纳分界日（可空）"
+     "label": "采纳分界日 YYYY-MM-DD（可空；效果评估按它划分采纳前/后；不填=不记具体日期）"
     },
     {
      "name": "note",
@@ -610,7 +610,7 @@
      "choices": null,
      "default": null,
      "note": null,
-     "label": "说明（可空）"
+     "label": "备注（写进台账供日后翻账；以 pattern: 开头的备注会被效果评估认作班规挂钩）"
     }
    ],
    "writes": "suggestions_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",

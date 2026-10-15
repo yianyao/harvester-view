@@ -288,11 +288,15 @@ class GeneratedCommandTest(unittest.TestCase):
 
     def test_every_generated_cli_parses_with_real_parser(self):
         from harvester.cli import build_parser
+        # 前缀按本机环境现探测（v0.68 envprobe）：uv / python / 绝对路径，
+        # 不再写死 "python -m harvester"（用户机器可能 python 不在 PATH）。
+        from actions.envprobe import probe
+        prefix = probe()["cli_prefix"] + " "
         parser = build_parser()
         bad = []
         for tid, cli in self._all_cli():
-            self.assertTrue(cli.startswith("python -m harvester "), cli)
-            parts = shlex.split(cli[len("python -m harvester "):], posix=True)
+            self.assertTrue(cli.startswith(prefix), cli)
+            parts = shlex.split(cli[len(prefix):], posix=True)
             try:
                 parser.parse_args(parts)
             except SystemExit as e:  # argparse 出错会 SystemExit(2)

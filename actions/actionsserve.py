@@ -15,6 +15,9 @@ CORS 头、POST 405 全部不变（additive）；顶层 `viewserver.py` 退化�
                               与 commands.json 的适配版本，D4）；
 - `GET /api/commands`         静态命令注册表（§5.4 动词卡 + §5.5 参数数据源）；
 - `GET /api/actions`          A 档动作注册表（冻结白名单，非万能 shell，§5.6）；
+- `GET /api/envprobe`         本机执行环境探测（命令前缀用 uv/python/绝对路径
+                              哪个，及仓根位置——2026-10-15，复制到终端的命令
+                              必须能在用户终端直接跑）；
 - `POST /api/actions/run`     **入队**执行一个白名单动作（进程内线程调
                               harvester 函数，非 shell），立刻返回 job_id；
 - `GET /api/actions/job/<id>` 轮询作业状态/进度/结果（长任务不阻塞页面）；
@@ -43,6 +46,7 @@ from types import SimpleNamespace
 from urllib.parse import parse_qs, unquote, urlparse
 
 from . import ensure_harvester_importable, upstream_root
+from . import envprobe
 from . import runlib
 from . import writeactions as wa
 
@@ -1568,6 +1572,9 @@ def make_handler(cfg: Config):
                 if path == "/api/commands":
                     self._commands()
                     return
+                if path == "/api/envprobe":
+                    self._json(envprobe.probe())
+                    return
                 if path == "/api/actions":
                     self._json(self._registry_payload())
                     return
@@ -1729,7 +1736,13 @@ def make_handler(cfg: Config):
 
         def _commands(self):
             try:
-                self._json(load_commands(cfg.commands_json))
+                payload = load_commands(cfg.commands_json)
+                # 命令前缀与仓根随包透出（envprobe）：页面据此渲染可复制、
+                # 在用户终端能直接跑的命令形，并提示粘贴位置。
+                env = envprobe.probe()
+                payload["cli_prefix"] = env["cli_prefix"]
+                payload["repo_root"] = env["repo_root"]
+                self._json(payload)
             except (OSError, json.JSONDecodeError, ValueError) as e:
                 self._json({"error": "commands.json 不可读/损坏（fail loud）: %s"
                                      % e}, 500)
@@ -2040,7 +2053,10 @@ def make_handler(cfg: Config):
                             "available": ids}, 400)
                 return
             try:
-                self._json(_wi.build_workitems(cfg, tid))
+                payload = _wi.build_workitems(cfg, tid)
+                # 处理单命令包的粘贴位置提示用（envprobe 现探测，v0.68）
+                payload["repo_root"] = envprobe.probe()["repo_root"]
+                self._json(payload)
             except KeyError:
                 g = _wi.collect(cfg)
                 self._json({"error": "未知 target：%s" % tid,

@@ -101,5 +101,41 @@ class TestWorkitemsActionIdsRegistered(unittest.TestCase):
                          "注册表缺这些动作（页面按钮会打脸）: %s" % (used - known))
 
 
+class TestEnvprobeAndCopyButtons(unittest.TestCase):
+    """环境探测命令形 + 一键复制（2026-10-15 用户批注三项的收口门）。"""
+
+    def setUp(self):
+        self.html = INDEX.read_text(encoding="utf-8")
+
+    def test_envprobe_probe_shape(self):
+        from actions.envprobe import probe
+        p = probe()
+        for k in ("uv", "python", "cli_prefix", "repo_root", "repo_root_ok"):
+            self.assertIn(k, p)
+        self.assertTrue(p["cli_prefix"].startswith(("uv run python", "python", '"')),
+                        "前缀必须是三种合法形态之一: %r" % p["cli_prefix"])
+        self.assertTrue(p["repo_root"].endswith("session-harvester"))
+
+    def test_cli_prefix_not_hardcoded(self):
+        # workitems._cli 不许再写死 "python -m harvester "
+        src = (VIEW_ROOT / "actions" / "workitems.py").read_text(encoding="utf-8")
+        self.assertNotIn('return "python -m harvester " + " ".join(parts)', src)
+        self.assertIn("envprobe.probe()", src)
+
+    def test_copy_buttons_present(self):
+        # 命令台预览行 + 处理单两处命令框都要有一键复制
+        self.assertIn("btn-cmd-copy", self.html)
+        self.assertGreaterEqual(self.html.count("data-clicopy="), 2)
+        # 三处按钮的 title 都带「复制到剪贴板」标记（test_v51 白名单按行扫
+        # 「复制命令」，按钮文案用「复制」不触雷；title 标记保证白名单成立）
+        self.assertGreaterEqual(self.html.count("复制到剪贴板"), 3)
+        # 每处按钮 title 都要交代粘贴位置（仓根），不只是一颗孤零零的按钮
+        self.assertGreaterEqual(self.html.count("到仓根目录的终端里粘贴执行"), 3)
+
+    def test_target_line_speaks_human(self):
+        self.assertIn("function targetHuman(t)", self.html)
+        self.assertIn("写哪个库", self.html)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -691,6 +691,13 @@ class RepairDispositionGate(unittest.TestCase):
         self.assertTrue(evs, "已处置条目缺 harvest-eval 评估命令")
         self.assertIn("不改变", json.dumps(evs[0], ensure_ascii=False))
 
+    def test_disposition_survives_public_item_v072(self):
+        """v0.72：_public_item 是响应白名单——新字段必须显式放行，
+        否则门测 _repair_items 全绿、真机 API 却把字段吞了（实测踩过）。"""
+        t1 = "子代理嵌套深度受 maxDepth 限制，深任务改平铺编排。"
+        pub = WI._public_item(dict(self.by_title[t1]))
+        self.assertEqual(pub.get("disposition"), "done")
+
     def test_facts_show_annotation_state(self):
         t1 = "子代理嵌套深度受 maxDepth 限制，深任务改平铺编排。"
         t2 = "权限被撤销的工具不要原地重试。"

@@ -1191,11 +1191,14 @@ def _reconcile(items, m, shown) -> dict:
 
 
 def _public_item(i: dict) -> dict:
-    return {"item_id": i["item_id"], "title": i["title"],
-            "metrics": dict(i["metrics"]), "facts": i["facts"],
-            "anchor": i["anchor"], "detail": i["detail"],
-            "suggestion": i["suggestion"], "commands": i["commands"],
-            "level": i["level"], "owner": i["owner"]}
+    out = {"item_id": i["item_id"], "title": i["title"],
+           "metrics": dict(i["metrics"]), "facts": i["facts"],
+           "anchor": i["anchor"], "detail": i["detail"],
+           "suggestion": i["suggestion"], "commands": i["commands"],
+           "level": i["level"], "owner": i["owner"]}
+    if i.get("disposition"):
+        out["disposition"] = i["disposition"]
+    return out
 
 
 def _public_target(t: dict, *, with_items: bool) -> dict:

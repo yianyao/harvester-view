@@ -346,6 +346,22 @@ def _action_dualtrack(cfg: Config, params: dict) -> dict:
     return dualtrack.build(cfg, topic_id, level, tl)
 
 
+def _action_topic_brief(cfg: Config, params: dict) -> dict:
+    """A 档：主题研读面（v0.76 V3）。确定性聚合层——构成/活跃/高频问题/
+    错误模式/skill 行为/重复会话/健康 + 已发布 chain 的结论与未决。
+    全部只读、零语义臆造；大主题走作业通道（同 dualtrack 理由），
+    小主题/脚本可用同步 GET /api/topic/<id>/brief。"""
+    from . import topicbrief
+    topic_id = str(params.get("id") or "").strip()
+    level = str(params.get("level") or "coarse")
+    if not topic_id:
+        raise _BadRequest("缺主题 id（--id）——回主题页选一个主题")
+    if cfg.topics_meta is None:
+        raise RuntimeError("未配置 topics_meta（起服时加 --topics-meta）")
+    tl = topic_timeline(cfg, topic_id, level, None)
+    return topicbrief.build(cfg, topic_id, level, tl)
+
+
 # ---------- A 档通用执行器（v0.63：白名单补全，用户 2026-10-14「都加上」） ----------
 
 def _cli_report(argv: list[str]) -> dict:
@@ -806,6 +822,23 @@ ACTIONS: dict[str, dict] = {
         "reversible": "幂等（只读三库，产物返回页面不落盘）",
         "writes": "",
         "handler": _action_dualtrack,
+    },
+    "topic_brief": {
+        "tier": "A",
+        "label": "主题研读面（聚合分析）",
+        "desc": "确定性聚合层：成员构成/活跃月度/高频问题/错误模式/"
+                "skill 行为/重复会话/健康 + 已发布 chain 的结论与未决。"
+                "每个数字带来源与口径；语义结论只来自 chain，没有就明说。",
+        "params": {"id": {"type": "topic_id", "src": "topics_api",
+                           "default": None, "label": "主题 id"},
+                   "level": {"type": "level", "src": "chips",
+                             "default": "coarse",
+                             "choices": ["coarse", "mid"],
+                             "label": "讨论流分层"}},
+        "est_sec": 30,
+        "reversible": "幂等（只读三库与 chain 文件，产物返回页面不落盘）",
+        "writes": "",
+        "handler": _action_topic_brief,
     },
     # ---- v0.63 白名单补全（用户 2026-10-14「还有哪些没加的？都加上」）----
     # 覆盖 commands.json 里**全部剩余 A 档命令**；执行一律走进程内真 CLI
@@ -1601,6 +1634,10 @@ def make_handler(cfg: Config):
                 if m:
                     self._dualtrack(unquote(m.group(1)), qs)
                     return
+                m = re.fullmatch(r"/api/topic/(.+)/brief", path)
+                if m:
+                    self._topic_brief(unquote(m.group(1)), qs)
+                    return
                 m = re.fullmatch(r"/api/topic/(.+)/skilljoin", path)
                 if m:
                     self._skilljoin(unquote(m.group(1)), qs)
@@ -1958,6 +1995,17 @@ def make_handler(cfg: Config):
                 raise RuntimeError("未配置 topics_meta（起服时加 --topics-meta）")
             tl = topic_timeline(cfg, topic_id, level, None)
             self._json(dualtrack.build(cfg, topic_id, level, tl))
+
+        def _topic_brief(self, topic_id: str, qs: dict):
+            """v0.76 V3 主题研读面（同步 GET，小主题/脚本用）：确定性聚合层
+            （构成/活跃/高频问题/错误模式/skill 行为/重复会话/健康）+ 已发布
+            chain 的结论与未决。大主题请走 A 档动作 topic_brief 作业通道。"""
+            from . import topicbrief
+            level = str((qs.get("level") or ["coarse"])[0])
+            if cfg.topics_meta is None:
+                raise RuntimeError("未配置 topics_meta（起服时加 --topics-meta）")
+            tl = topic_timeline(cfg, topic_id, level, None)
+            self._json(topicbrief.build(cfg, topic_id, level, tl))
 
         def _skilljoin(self, topic_id: str, qs: dict):
             """P4-5 skill 调用点挂轨道：chain 时间线锚点 × skill 调用锚点

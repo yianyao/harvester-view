@@ -578,6 +578,10 @@ h3.sec{font-size:14px;margin:18px 0 6px}
         title="复制到剪贴板，请自行开终端粘贴执行（本视图绝不执行命令）">复制命令</button>
       <button id="btn-topic-gocmd" class="xbtn" disabled
         title="跳到命令台并预填 topic pack 参数，在那里核对后执行">去命令台</button>
+      <button id="btn-topic-brief" class="xbtn"
+        title="A 档动作 topic_brief：确定性聚合层（构成/活跃/高频问题/错误模式/skill 行为/重复会话/健康）+ chain 结论层。人裁语义，机器不给的明说">研读面</button>
+      <button id="btn-topic-chain" class="xbtn" disabled
+        title="切换到 chain 演进链视图（该主题已发布的长文）">chain 演进链</button>
       <button id="btn-topic-dual" class="xbtn" disabled
         title="A 档动作 dualtrack：上轨讨论流+下轨产物流+打磨带/反转点候选；大主题约 90s，作业后台跑">双轨时间线</button>
     </div>
@@ -1970,6 +1974,13 @@ async function loadTopics(){
 }
 /* chain 长文 → 中栏时间线 + 右栏文档。404（尚无长文）降级为空态+复制命令。 */
 async function openTopic(id){
+  /* v0.76 V4：默认进「研读面」（知识优先）——chain 视图退为按钮触发。
+     原逻辑整体搬入 openTopicChain，行为不变。 */
+  state.topicCur={id:id};
+  updateTopicCmd();
+  await runBrief();
+}
+async function openTopicChain(id){
   $("topics-toolbar").style.display="";
   $("topics-timeline").innerHTML="<div class='empty'>加载中…</div>";
   const res=await fetch("/u/"+state.no+"/api/topic/"
@@ -2161,6 +2172,8 @@ function updateTopicCmd(){
   $("btn-topic-cmd").disabled=off;
   $("btn-topic-gocmd").disabled=off;
   $("btn-topic-dual").disabled=off;
+  $("btn-topic-brief").disabled=off;
+  $("btn-topic-chain").disabled=off;
   if(cur)$("btn-topic-cmd").dataset.cmd=
     topicPackCmd(cur.id,packLevel());
 }
@@ -2228,6 +2241,118 @@ async function pollDualJob(jid){
     return;
   }
   renderDualtrack(job.result||{},out);
+}
+/* ---------- v0.76 V3/V4 主题研读面（知识优先默认视图） ----------
+   确定性聚合层（机器聚合）+ chain 结论层（已发布才有的语义结论）分层标注。
+   执行走 A 档动作通道（POST /api/actions/run action_id=topic_brief）入队
+   + 轮询——与 dualtrack 同一条作业链路（铁律 6.5）。本页只渲染。 */
+async function runBrief(){
+  const cur=state.topicCur;
+  if(!cur){showBanner("warn","先在左侧选一个主题");return;}
+  const out=$("topics-timeline");
+  out.innerHTML="<div class='empty'>研读面计算中（A 档动作 topic_brief）…"+
+    "确定性聚合层秒级，大主题重复会话检测可能更久。</div>";
+  const r=await actJson("/api/actions/run",{action_id:"topic_brief",
+    params:{id:cur.id,level:"coarse"},view_actions_api:1});
+  if(r.__err){out.innerHTML=errorBox("研读面入队失败："+r.__err);return;}
+  pollBrief(r.job_id);
+}
+async function pollBrief(jid){
+  const job=await actApi("/api/actions/job/"+jid);
+  const out=$("topics-timeline");
+  if(job.__err){out.innerHTML=errorBox("作业查询失败："+job.__err);return;}
+  if(job.status==="queued"||job.status==="running"){
+    out.innerHTML="<div class='empty'>研读面计算中…</div>";
+    setTimeout(()=>pollBrief(jid),800); return;
+  }
+  if(job.status==="failed"){
+    out.innerHTML=errorBox("研读面失败："+(job.error||""));return;
+  }
+  renderBrief(job.result||{},out);
+}
+function renderBrief(d,out){
+  const tp=d.topic||{};
+  const comp=d.composition||{},q=d.questions||{},e=d.errors||{},
+        sk=d.skills||{},du=d.dupes||{},ch=d.chains||{},hh=d.health||{};
+  let h="<div class='toolbar'><h3 class='sec' style='margin:0'>研读面 · "+
+    esc(tp.name||d.topic_id||"主题")+"</h3>"+
+    "<button class='xbtn' data-brief-note>数字口径</button></div>";
+  h+="<div class='sub2' data-brief-def>成员 "+esc(String(d.members||0))+
+    "｜注册于 "+esc(String(tp.created||"?"))+"｜关键词："+
+    esc(kwText(tp.keywords))+"</div>";
+  /* 构成与活跃 */
+  h+="<h4 class='sec'>构成与活跃</h4><div class='sub2'>"+
+    esc(comp.source||"")+"："+Object.entries(comp.by_source||{})
+      .map(x=>esc(x[0])+" "+x[1]).join("｜")+
+    "｜跨度 "+esc((comp.first||"?").slice(0,10))+" ~ "+
+    esc((comp.last||"?").slice(0,10))+"</div>";
+  h+="<div>"+Object.entries(comp.months||{}).map(x=>
+      "<span class='anchor'>"+esc(x[0])+"</span> "+x[1]+
+      " <span class='sub2'>　</span>").join("")+"</div>";
+  /* 高频问题 */
+  h+="<h4 class='sec'>高频问题（机器聚合，keywords 同口径）</h4><div>";
+  h+=(q.top||[]).map(x=>"<span class='anchor' title='"+esc(String(x.count))+
+      " 次'>"+esc(x.gram)+" <span class='sub2'>"+x.count+"</span></span>")
+      .join(" · ")||"<div class='empty'>（无）</div>";
+  h+="</div><div class='sub2'>"+esc(q.definition||"")+"</div>";
+  /* 错误模式 */
+  h+="<h4 class='sec'>这堆会话里的错误模式（"+esc(String(e.total||0))+" 条错误）</h4>";
+  h+=(e.patterns||[]).length
+    ?"<table><thead><tr><th>模式</th><th>类</th><th class='num'>次数</th>"+
+     "<th class='num'>未解决</th></tr></thead><tbody>"+
+     e.patterns.map(x=>"<tr><td>"+esc(x.pattern)+"</td><td>"+esc(x["class"])+
+       "</td><td class='num'>"+x.count+"</td><td class='num'>"+
+       x.given_up+"</td></tr>").join("")+"</tbody></table>"
+    :"<div class='empty'>（成员会话里没有错误步骤——这不是坏消息）</div>";
+  h+="<div class='sub2'>"+esc(e.definition||"")+"</div>";
+  /* skill 行为 */
+  h+="<h4 class='sec'>skill 行为</h4>";
+  h+=(sk.skills||[]).length
+    ?"<div>"+sk.skills.map(s=>"<span class='anchor' title='调用 "+
+        s.calls+" 次/成功 "+s.ok+"'>"+esc(s.skill)+
+        " <span class='sub2'>"+s.calls+"/"+s.ok+"</span></span>").join(" · ")+
+      "</div>"
+    :"<div class='empty'>（该主题成员没有 skill 调用记录）</div>";
+  h+="<div class='sub2'>"+esc(sk.definition||"")+"</div>";
+  /* 重复会话 */
+  h+="<h4 class='sec'>重复会话（H40 口径）</h4><div class='sub2'>";
+  h+=du.error?("本次不可得："+esc(du.error))
+    :("独立代表 "+esc(String(du.reps??"?"))+"｜重复并入 "+
+      esc(String(du.duplicates??"?"))+"｜边界带 "+esc(String(du.band_pairs??0)));
+  h+="</div><div class='sub2'>"+esc(du.definition||"")+"</div>";
+  /* 健康 */
+  h+="<h4 class='sec'>健康</h4><div class='sub2'>";
+  h+=(hh.members_not_in_index&&hh.members_not_in_index.length)
+    ?("不在索引库 "+hh.members_not_in_index.length+" 个（如 "+
+      esc(hh.members_not_in_index[0])+"）")
+    :"不在索引库 0 个";
+  h+=(hh.noise_registered&&hh.noise_registered.length)
+    ?"｜⚠ 既在主题又登记零散 "+hh.noise_registered.length+" 个"
+    :"｜零散矛盾 0";
+  h+="</div>";
+  /* chain 结论层（已发布才有的语义结论） */
+  h+="<h4 class='sec'>chain 结论层（语义结论只来自已发布长文）</h4>";
+  if(ch.configured===false){
+    h+="<div class='empty'>"+esc(ch.honest||"")+"</div>";
+  }else if(!(ch.chains||[]).length){
+    h+="<div class='empty'>"+esc(ch.honest||"该主题还没有已发布的 chain")+
+      "——聚合层上面就是机器能给的全部；语义结论由 Agent 消费喂料起草"+
+      "（去命令台，已预填 topic pack）。</div>";
+  }else{
+    for(const c of ch.chains){
+      h+="<div class='dt-file'><b>"+esc(c.name)+"</b> <span class='sub2'>"+
+        c.stages+" 阶段 / "+c.nodes+" 节点</span>";
+      h+=c.conclusion?"<details open><summary>「"+esc(c.conclusion.title)+
+        "」</summary><pre class='dt-pre'>"+esc(c.conclusion.text)+
+        "</pre></details>":"";
+      h+=c.open?"<details><summary>「"+esc(c.open.title)+"」</summary>"+
+        "<pre class='dt-pre'>"+esc(c.open.text)+"</pre></details>":"";
+      h+="</div>";
+    }
+  }
+  h+="<div class='sub2'>机器聚合=确定性数据重排（来源见各节数字旁）；"+
+     "语义结论=人/Agent 的研读判断。两层不混装。</div>";
+  out.innerHTML=h;
 }
 function renderDualtrack(d,out){
   const a=d.account||{};
@@ -3934,7 +4059,10 @@ $("btn-agg-facets").onclick=()=>loadAggFacets().catch(()=>{});
 $("btn-topics-refresh").onclick=()=>loadTopics().catch(()=>{});
 $("topic-level").onchange=()=>updateTopicCmd();
 $("btn-topic-gocmd").onclick=()=>topicGoCmd();
-$("btn-topic-dual").onclick=()=>runDualtrack()
+$("btn-topic-dual").onclick=()=>runDualtrack();
+$("btn-topic-chain").onclick=()=>{const c=state.topicCur;
+  if(c)openTopicChain(c.id);};
+$("btn-topic-brief").onclick=()=>runBrief()
   .catch(e=>showBanner("err","双轨时间线失败："+e.message));
 $("btn-topic-cmd").onclick=e=>{
   const b=e.currentTarget;

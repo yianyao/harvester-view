@@ -249,6 +249,12 @@
    "est_sec": null
   },
   {
+   "action_id": "topic_brief",
+   "tier": "A",
+   "cmd": null,
+   "est_sec": null
+  },
+  {
    "action_id": "topic_candidates",
    "tier": "A",
    "cmd": "topic-candidates",
@@ -995,7 +1001,7 @@
  ],
  "counts": {
   "cards": 13,
-  "read_actions": 31,
+  "read_actions": 32,
   "write_actions": 14,
   "write_reversible": 11,
   "write_destructive": 3

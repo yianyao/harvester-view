@@ -49,6 +49,7 @@ READ_ACTIONS: dict[str, object] = {
     "topic_pack": ("topic", "pack"),
     "regress": "regress",
     "dualtrack": None,
+    "topic_brief": None,
     # ---- v0.63 白名单补全（用户 2026-10-14「都加上」）：覆盖 commands.json
     # 里全部剩余 A 档命令。新动作走 _cli_report（进程内真 CLI，输出捕获）。
     "adapters": "adapters",

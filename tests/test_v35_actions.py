@@ -231,7 +231,19 @@ class ActionsServeTest(_ServerMixin, unittest.TestCase):
             direct = AS._hapi.api_reports_errors(con, self.cfg.db, {})
         finally:
             con.close()
-        self.assertEqual(job["result"], direct)
+        # 两次现算的响应各带 generated_at/corpus_mtime（秒级时间戳）——
+        # 跨秒竞态会让 dict 全等假红（v0.76 收口：对账时归一时间戳，
+        # 数字同源同数的断言目标不变）。
+        import copy
+
+        def _strip_ts(o):
+            if isinstance(o, dict):
+                return {k: _strip_ts(v) for k, v in o.items()
+                        if k not in ("generated_at", "corpus_mtime")}
+            if isinstance(o, list):
+                return [_strip_ts(x) for x in o]
+            return o
+        self.assertEqual(_strip_ts(job["result"]), _strip_ts(direct))
 
     def test_run_topic_list_reads_meta(self):
         st, d = self._post("/api/actions/run", {"action_id": "topic_list"})

@@ -30,6 +30,28 @@
 - **错误类别 chips**：G2 报告页与会话页（勾「只看异常」后）可按
   环境/用法/上下文/未归类过滤；会话页条数与 G2 报告同源对账。
 
+## v0.63–v0.65 新增（研读面与裁决直给，2026-10-16）
+
+- **V3 研读面**（v0.63，`actions/analysis/topicbrief.py`）：主题页新增
+  「研读面」聚合层（topic_brief，A 档）——构成/高频问题/错误模式/
+  skill 行为/健康缺口/chain 结论层一次看全，每个数字带
+  `source/definition`，零语义臆造，缺数诚实空态；
+- **V4 C 位重排**（v0.63）：openTopic 默认进研读面，chain 演进链 /
+  双轨时间线退为工具栏按钮（按需加载）；
+- **V5 卡片认 summary**（v0.64）：主仓 v0.74 拆角色后综述在
+  frontmatter `summary`——cardlib 透出、renderCards 双栏
+  （evidence=逐字 / summary=综述，insight 综述顶 C 位）；旧卡原样（additive）；
+- **V7 审计直给**（v0.65）：chain-audit 报告下渲染可疑锚点逐行 [接受] +
+  「全部接受」→ 新 B 档 `chain_audit_accept`（预演列键 / 落账
+  topics_meta audit_review，键取上游 `_node_key` 真源）；
+- **V6 卡片直给**（v0.65）：警告行 [接受] / 本体 [接受整卡] →
+  `card_review` 预演（v0.75 已有的 B 档补前端接线）；
+  warn 单串归一修（单条文本不再被逐字符拆散误匹配）；
+- **commandgen 收录位置参数**（v0.65 连带）：chain-audit/chain-validate
+  的 `file` 与 read/search 位置参数补进命令事实表（真 argparse 对齐）；
+- B 档动作规模：v0.36 时 9 → v0.49 时 11 → v0.62 时 13 → **v0.65 时 15**
+  （card_review + chain_audit_accept）。
+
 一键启动（含三个进程）：`start-viewv2.cmd`（api-serve 8765 +
 **actions-serve 8766** + view 8088；P2 起 8766 由 `actions/actionsserve.py`
 承担，P1 的 viewserver.py 已归并进去，仍是**同一个端口、一个进程**）。
@@ -45,7 +67,8 @@
   - `GET /api/commands`：静态命令注册表（43 命令 / 13 张按意图分组的
     命令卡（旧称「动词卡」，本项目自定义待淘汰；官方对照与替换计划见
     `session-harvester/docs/TERMINOLOGY.md` §3-§4）/ 参数数据源）；
-  - `GET /api/actions`：动作注册表（**A 档 4 + B 档 9**，见下节 v0.36）；
+  - `GET /api/actions`：动作注册表（v0.65 时点 **A 档 32 + B 档 15**；
+    本节写作时为 A4+B9，规模演进见上节）；
   - `POST /api/actions/run` → A 档 `202 {job_id}`（`GET /api/actions/job/<id>`
     轮询），B 档 `200 {status:"needs_confirm", confirm_token, preview}`；
     **进程内线程调 harvester 函数，非 shell**；长任务不阻塞页面；

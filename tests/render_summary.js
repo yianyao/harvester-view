@@ -67,12 +67,18 @@ const bodies = {
   xss: { path: "x.md", parsed: true, id: "kc-x", title: "注入尝试卡",
     type: "insight", confidence: 0.5, evidence: "",
     summary: "<script>alert(1)</script>", conclusion: "结论 x", anchors: [] },
+  /* v0.76 V6：带警告卡——断言警告行 [接受] 与本体 [接受整卡] 按钮 */
+  warncard: { path: "w.md", parsed: true, id: "kc-w", title: "带警告卡",
+    type: "pitfall", confidence: 0.5, evidence: "证据 w",
+    summary: "", conclusion: "结论 w", anchors: [],
+    warnings: ["警告 WA：锚点未命中索引库（dsh:gone/x.v4.jsonl.zstd#turn:1）"] },
 };
 function run(keys) {
   state.cardsBodies = keys.map(k => bodies[k]);
   const d = { root: "/cards", summary: { cards: keys.length, ok: keys.length,
     warn: 0, error: 0, anchor_checked: 0, anchor_misses: 0 },
-    cards: keys.map(k => ({ path: bodies[k].path, errors: [], warnings: [] })) };
+    cards: keys.map(k => ({ path: bodies[k].path,
+      errors: bodies[k].errors || [], warnings: bodies[k].warnings || [] })) };
   store = { "rep-meta": { innerHTML: "", textContent: "" } };
   const out = mkOut();
   renderCards(d, out);
@@ -121,6 +127,16 @@ check("页面 esc 五字符转义表在位",
 /* 6. 节标题 */
 check("本体节标题含「证据·综述」",
   run(["insight"]).indexOf("证据·综述") > -1);
+
+/* 7. V6 直给按钮：警告行 [接受] + 本体 [接受整卡]（属性用单引号） */
+const hw = run(["warncard"]);
+check("警告行带 data-cracc 接受按钮（完整警告文本）",
+  hw.includes("data-cracc='警告 WA：锚点未命中索引库") &&
+  hw.includes("data-crfile='w.md'"));
+check("本体带整卡一键（__all__）",
+  hw.includes("data-cracc='__all__'") && hw.includes("接受整卡"));
+check("直给按钮恰好 2 个（行级 + 整卡，无重复注入）",
+  hw.split("data-cracc=").length - 1 === 2);
 
 if (failed) { console.error(failed + " check(s) failed"); process.exit(1); }
 console.log("ALL SUMMARY CHECKS PASSED");

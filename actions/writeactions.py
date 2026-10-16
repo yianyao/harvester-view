@@ -915,7 +915,15 @@ def _card_review_keys(p: dict, cfg) -> tuple:
     if db is not None and not db.is_file():
         db = None
     warns = _cr_current(card, db=db)
-    sub = tuple(p.get("warn") or [])
+    # warn 归一：页面直给传单条字符串（V6），CLI 语义是可多次子串——
+    # 不能 tuple() 逐字符化，单串必须视作 [串]（v0.76 V6 修）。
+    wv = p.get("warn")
+    if wv is None:
+        sub: tuple = ()
+    elif isinstance(wv, (list, tuple, set)):
+        sub = tuple(str(x) for x in wv)
+    else:
+        sub = (str(wv),)
     if sub:
         warns = [w for w in warns if any(s in w for s in sub)]
     keys = sorted({_cr_key(w) for w in warns})

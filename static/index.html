@@ -1873,7 +1873,11 @@ function renderCards(d,out){
     "</thead><tbody>"+bad.map(c=>"<tr><td>"+esc(c.path)+"</td><td>"+
     c.errors.map(e=>"<span class='pill err'>错误</span> "+esc(e)).join("<br>")+
     (c.errors.length&&c.warnings.length?"<br>":"")+
-    c.warnings.map(w=>"<span class='pill known'>警告</span> "+esc(w))
+    /* v0.76 V6：警告行带 [接受]——点击装填 card_review 并自动预演，
+       落账走 B 档两段提交（与 V7 锚点直给同模式）。 */
+    c.warnings.map(w=>"<span class='pill known'>警告</span> "+esc(w)+
+      " <button class='xbtn' data-cracc='"+esc(w)+"' data-crfile='"+
+      esc(c.path)+"'>接受</button>")
       .join("<br>")+"</td></tr>").join("")+"</tbody></table>")
     :"<div class='empty'>"+(filtered&&s.cards?
       "已过滤：0/"+s.cards+" 张卡（过滤前 "+s.cards+"，当前库无匹配异常）"
@@ -1899,8 +1903,11 @@ function renderCards(d,out){
       const errs=v?v.errors:[], warns=v?v.warnings:[];
       const vp=!v?"<span class='pill known'>校验缺失</span>"
         :errs.length?"<span class='pill err'>校验错误 "+errs.length+"</span>"
-        :warns.length?"<span class='pill known'>校验警告 "+warns.length+
-        "</span>":"<span class='pill ok'>校验通过</span>";
+        :warns.length?"<span class='pill known'>校验警告 "+warns.length+"</span>"+
+        /* v0.76 V6：整卡一键（按届时当前警告集取键，同 V7 全部接受语义） */
+        "<button class='xbtn' data-cracc='__all__' data-crfile='"+
+        esc(b.path)+"'>接受整卡</button>"
+        :"<span class='pill ok'>校验通过</span>";
       html+="<div class='card-body p-ai'><h4>"+pTag("ai")+esc(b.title||b.id||b.path)+" "+vp+
         (b.confidence!=null?"<span class='pill known' "+
           "title='卡片蒸馏时的置信度'>置信度 "+b.confidence+"</span>":"")+
@@ -3478,6 +3485,19 @@ function jobResultHtml(job){
           file:b.dataset.cafile||"",
           accept:all?"":b.dataset.caacc,
           accept_note:""});
+        await runWriteAction(spec,null);
+      };
+    /* V6 直给：警告行 [接受] / 本体 [接受整卡] → card_review 预演。
+       warn 传完整警告文本（后端按子串匹配，完整串=精确那一行）。 */
+    for(const b of el.querySelectorAll("[data-cracc]"))
+      b.onclick=async()=>{
+        const spec=actionSpec("card_review");
+        if(!spec){showBanner("warn","动作面没有 card_review"+
+          "（注册表未更新或版本握手不匹配）");return;}
+        const all=b.dataset.cracc==="__all__";
+        const params={file:b.dataset.crfile||"",verdict:"accepted",note:""};
+        if(!all)params.warn=b.dataset.cracc;
+        await openInCmd("card_review",params);
         await runWriteAction(spec,null);
       };
   },0);

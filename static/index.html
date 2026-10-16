@@ -300,6 +300,10 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 .card-body .c-ev{font-family:Consolas,monospace;font-size:12px;
   color:var(--ink2);background:var(--bg);border-radius:6px;
   padding:6px 8px;margin:6px 0;white-space:pre-wrap;word-break:break-word}
+/* V5（v0.76）：综述块——prose 不是引文，不用等宽；其余与 c-ev 同族 */
+.card-body .c-sum{font-size:12px;color:var(--fg);background:var(--bg);
+  border-left:2px solid var(--line);border-radius:0 6px 6px 0;
+  padding:6px 8px;margin:6px 0;white-space:pre-wrap;word-break:break-word}
 .card-body .c-anc{margin-top:4px}
 .chip{display:inline-block;border:1px solid var(--line);border-radius:11px;
   padding:1px 10px;font-size:12px;color:var(--ink2);cursor:pointer;
@@ -1876,7 +1880,7 @@ function renderCards(d,out){
       :(s.cards?"无问题卡片":"目录下没有卡片"))+"</div>";
   /* P1-3：卡片本体列表（本体来自 view 仓 /view/cards，校验来自上游；
      两路按相对路径合并。本体侧只解析不校验——校验口径唯一权威在上游） */
-  html+="<h3 class='sec'>卡片本体（结论 / 证据 / 锚点 / 置信度）</h3>";
+  html+="<h3 class='sec'>卡片本体（结论 / 证据·综述 / 锚点 / 置信度）</h3>";
   const bodies=(typeof state!=="undefined"&&state.cardsBodies)||[];
   if(!bodies.length){
     html+="<div class='empty'>本体数据未加载——在 view 仓运行 "+
@@ -1902,7 +1906,17 @@ function renderCards(d,out){
           "title='卡片蒸馏时的置信度'>置信度 "+b.confidence+"</span>":"")+
         (b.type?"<span class='sub2'>"+esc(b.type)+"</span>":"")+"</h4>";
       if(b.conclusion)html+="<div>"+esc(b.conclusion)+"</div>";
+      /* V5（v0.76）：evidence/summary 拆角色——evidence=逐字证据（c-ev），
+         summary=综述（c-sum）。insight 的知识本就是蒸馏综述：综述顶 C 位
+         （紧跟结论，作为主体），逐字证据有则附后；非 insight 卡综述作
+         补充视图放证据之后。旧卡无 summary 原样不受影响。 */
+      if(b.summary&&b.type==="insight")
+        html+="<div class='c-sum'><span class='sub2'>综述</span> "+
+          esc(b.summary)+"</div>";
       if(b.evidence)html+="<div class='c-ev'>"+esc(b.evidence)+"</div>";
+      if(b.summary&&b.type!=="insight")
+        html+="<div class='c-sum'><span class='sub2'>综述</span> "+
+          esc(b.summary)+"</div>";
       if(b.anchors&&b.anchors.length)
         html+="<div class='c-anc'>"+b.anchors.map(a=>
           "<a class='anchor' data-sid='"+esc(a.sid)+"' data-turn='"+
@@ -4063,7 +4077,7 @@ $("btn-topic-dual").onclick=()=>runDualtrack();
 $("btn-topic-chain").onclick=()=>{const c=state.topicCur;
   if(c)openTopicChain(c.id);};
 $("btn-topic-brief").onclick=()=>runBrief()
-  .catch(e=>showBanner("err","双轨时间线失败："+e.message));
+  .catch(e=>showBanner("err","研读面加载失败："+e.message));
 $("btn-topic-cmd").onclick=e=>{
   const b=e.currentTarget;
   if(b.dataset.cmd)copyText(b.dataset.cmd,b);};

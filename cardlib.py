@@ -160,10 +160,12 @@ def parse_card(path):
 
     字段（P1-3 渲染所需最小集，additive 哲学：宁可少给不可错给）：
     path / parsed / id / title / type / confidence / evidence /
+    summary（v0.76 V5：主仓 v0.74 拆角色后的综述字段，旧卡为空串） /
     conclusion / anchors[{sid, turn, raw}] / tags / created / body_chars
     """
     out = {"path": str(path), "parsed": False, "id": None, "title": None,
            "type": None, "confidence": None, "evidence": "",
+           "summary": "",
            "conclusion": "", "anchors": [], "tags": [], "created": None,
            "body_chars": 0}
     try:
@@ -185,6 +187,10 @@ def parse_card(path):
         out["confidence"] = None
     ev = fm.get("evidence")
     out["evidence"] = str(ev).strip() if ev else ""
+    # v0.76 V5：summary 综述字段（主仓 v0.74 拆角色）。additive——
+    # 旧卡无此键保持空串，渲染层按 falsy 跳过。
+    sm = fm.get("summary")
+    out["summary"] = str(sm).strip() if sm else ""
     tags = fm.get("tags")
     out["tags"] = tags if isinstance(tags, list) else []
     anchors = fm.get("anchors")
@@ -228,7 +234,9 @@ def _selftest():  # pragma: no cover
         p.write_text(
             "---\nid: kc-x-0001\ntitle: 标题甲\ntype: pitfall\n"
             'anchors: [{session_id: "dsh:a/session.v4.jsonl.zstd", turn: 3}]\n'
-            "evidence: |\n  证据引文甲\nconfidence: 0.9\ncreated: 2026-10-06\n"
+            "evidence: |\n  证据引文甲\n"
+            "summary: |\n  综述甲\n"
+            "confidence: 0.9\ncreated: 2026-10-06\n"
             "---\n## 现象\n\n一句话结论甲\n\n## 做法\n\n1. 先读后写\n",
             encoding="utf-8")
         got = parse_card(p)
@@ -238,6 +246,7 @@ def _selftest():  # pragma: no cover
         assert got["conclusion"] == "一句话结论甲", got
         assert got["confidence"] == 0.9
         assert got["evidence"] == "证据引文甲"
+        assert got["summary"] == "综述甲"
         assert json.dumps(got, ensure_ascii=False)
     print("cardlib selftest ok")
     return 0

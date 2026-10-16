@@ -301,7 +301,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
   color:var(--ink2);background:var(--bg);border-radius:6px;
   padding:6px 8px;margin:6px 0;white-space:pre-wrap;word-break:break-word}
 /* V5（v0.76）：综述块——prose 不是引文，不用等宽；其余与 c-ev 同族 */
-.card-body .c-sum{font-size:12px;color:var(--fg);background:var(--bg);
+.card-body .c-sum{font-size:12px;color:var(--ink);background:var(--bg);
   border-left:2px solid var(--line);border-radius:0 6px 6px 0;
   padding:6px 8px;margin:6px 0;white-space:pre-wrap;word-break:break-word}
 .card-body .c-anc{margin-top:4px}
@@ -3436,6 +3436,26 @@ function jobResultHtml(job){
       "white-space:pre-wrap'>"+esc(r.stdout||"（无输出）")+"</pre>"+
       (r.stderr?"<pre style='max-height:160px;overflow:auto;font-size:11px;"+
        "white-space:pre-wrap;color:var(--warn-ink)'>"+esc(r.stderr)+"</pre>":"");
+    /* v0.76 V7 直给：审计的软锚点裁决不用手抄键——每行一个 [接受] 按钮
+       （含全部接受）。点击把 chain_audit_accept 装进命令台并自动预演，
+       人看清"将落账哪些键"后确认才写（仍是两段提交，直给的只是填参）。 */
+    const aa=r.audit_anchors;
+    if(aa&&aa.suspicious){
+      const rows=aa.suspicious.map(s=>{
+        const key="node:"+s.sid+"#turn:"+s.turn;
+        return "<div class='sub2'>· "+esc(s.sid)+" turn "+s.turn+
+          "　<button class='xbtn' data-caacc='"+esc(key)+"' data-cafile='"+
+          esc(aa.file||"")+"'>接受</button></div>";
+      }).join("");
+      h+="<h4 class='sec'>锚点裁决直给（"+aa.suspicious.length+" 条可疑"+
+        (aa.reviewed_accepted?"，已裁决 "+aa.reviewed_accepted+" 条":"")+
+        "）</h4>"+rows+
+        (aa.suspicious.length?
+          "<button class='xbtn' data-caacc='__all__' data-cafile='"+
+          esc(aa.file||"")+"'>全部接受（落账时按届时可疑集取键）</button>":"")+
+        "<div class='sub2'>[接受] 走 B 档两段提交：预演列键 → 你确认才写 "+
+        "topics_meta.db（audit_review 表）。</div>";
+    }
   }
   h+="<details><summary>原始 JSON</summary><pre style='max-height:260px;"+
     "overflow:auto;font-size:11px'>"+esc(JSON.stringify(r,null,1).slice(0,20000))+
@@ -3444,6 +3464,22 @@ function jobResultHtml(job){
     const el=$("job-out");
     for(const a of el.querySelectorAll("[data-pat]"))
       a.onclick=()=>showPatternSessions(a.dataset.pat);
+    /* V7 直给：[接受] → 命令台装填 chain_audit_accept（预填 file/accept/
+       accept_note）并自动预演；确认仍由人在预演框里做。
+       不走 runCmdAction——它按命令名解析默认动作会回到 A 档 chain_audit；
+       B 档直调 runWriteAction（与「预演」按钮同一入口）。 */
+    for(const b of el.querySelectorAll("[data-caacc]"))
+      b.onclick=async()=>{
+        const all=b.dataset.caacc==="__all__";
+        const spec=actionSpec("chain_audit_accept");
+        if(!spec){showBanner("warn","动作面没有 chain_audit_accept"+
+          "（注册表未更新或版本握手不匹配）");return;}
+        await openInCmd("chain_audit_accept",{
+          file:b.dataset.cafile||"",
+          accept:all?"":b.dataset.caacc,
+          accept_note:""});
+        await runWriteAction(spec,null);
+      };
   },0);
   return h;
 }

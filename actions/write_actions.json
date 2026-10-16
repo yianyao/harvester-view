@@ -415,6 +415,35 @@
      "label": "只裁决包含该子串的警告（可多次；缺省=整卡当前警告一言而决）"
     }
    }
+  },
+  {
+   "action_id": "chain_audit_accept",
+   "cmd": "chain-audit",
+   "risk": "reversible",
+   "target": "topics_meta",
+   "summary": "把 chain {file} 的可疑锚点裁决落账（accepted）",
+   "detail": "写 topics_meta.db 的 audit_review 表（键=node:<sid>#turn:<turn>，UPSERT 改判即重开）。**不碰 chain 文件本身**、不碰索引库；落账后 chain-audit / 审计页不再报这些锚点。",
+   "allow": [
+    "file",
+    "accept",
+    "accept_note",
+    "db"
+   ],
+   "params": {
+    "file": {
+     "map": "file",
+     "required": true,
+     "label": "chain 文件名（相对 knowledge/topics，如 tp-xxx-chain-v2.md）"
+    },
+    "accept": {
+     "map": "accept",
+     "label": "锚点键 node:<sid>#turn:<turn>（逗号分隔可多个；留空=该链当前全部未接受软锚点）"
+    },
+    "accept_note": {
+     "map": "accept_note",
+     "label": "裁决说明（写进台账，供日后复查）"
+    }
+   }
   }
  ]
 }

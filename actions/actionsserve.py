@@ -508,7 +508,12 @@ def _action_chain_validate(cfg: Config, params: dict) -> dict:
 
 
 def _action_chain_audit(cfg: Config, params: dict) -> dict:
-    """A 档：chain 内容审计（`chain-audit`：引文逐字门+锚点语义门+覆盖）。"""
+    """A 档：chain 内容审计（`chain-audit`：引文逐字门+锚点语义门+覆盖）。
+
+    v0.76 V7 直给：文本报告照旧走真 CLI（逐字一致）；另附
+    `audit_anchors`（可疑锚点结构化块）供页面渲染 [接受] 直给按钮——
+    用同一上游 audit_chain（quotes/coverage 关，省一半算力），
+    review_meta 传台账使已裁决行从可疑集消失（与 CLI 口径一致）。"""
     p = _chain_file(cfg, params.get("file"))
     argv = ["chain-audit", str(p), "--db", str(cfg.db)]
     for flag, key in (("--no-quotes", "no_quotes"),
@@ -520,7 +525,22 @@ def _action_chain_audit(cfg: Config, params: dict) -> dict:
             argv.append(flag)
     if params.get("list_limit") is not None:
         argv += ["--list-limit", str(int(params["list_limit"]))]
-    return _cli_report(argv)
+    r = _cli_report(argv)
+    if not params.get("no_anchors"):
+        try:
+            from harvester.chainaudit import audit_chain as _ac
+            meta = _require_topics_meta(cfg)
+            a = _ac(p, cfg.db, quotes=False, coverage=False, anchors=True,
+                    review_meta=meta, show_reviewed=True)
+            r["audit_anchors"] = {
+                "file": p.name,
+                "suspicious": [{"sid": s["sid"], "turn": s["turn"]}
+                               for s in a["anchors"]["suspicious"]],
+                "reviewed_accepted": a["anchors"].get("reviewed_accepted", 0),
+            }
+        except Exception:  # noqa: BLE001 - 结构化块失败不影响文本报告
+            pass
+    return r
 
 
 def _action_deadcode_scan(cfg: Config, params: dict) -> dict:

@@ -695,6 +695,18 @@
    "tier": "A",
    "args": [
     {
+     "name": "file",
+     "dest": "file",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "chain 长文路径（chain-<topic>.md）",
+     "note": null
+    },
+    {
      "name": "--db",
      "dest": "db",
      "kind": "str",
@@ -860,6 +872,18 @@
    "card_id": "topic",
    "tier": "A",
    "args": [
+    {
+     "name": "file",
+     "dest": "file",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "chain 长文路径（chain-<topic>.md）",
+     "note": null
+    },
     {
      "name": "--meta",
      "dest": "meta",
@@ -1997,6 +2021,18 @@
    "tier": "A",
    "args": [
     {
+     "name": "no",
+     "dest": "no",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "纲要序号（见 harvester scan）",
+     "note": null
+    },
+    {
      "name": "--sources",
      "dest": "sources",
      "kind": "str",
@@ -2494,6 +2530,18 @@
    "card_id": "browse",
    "tier": "A",
    "args": [
+    {
+     "name": "query",
+     "dest": "query",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "关键词（多词为 OR 语义）",
+     "note": null
+    },
     {
      "name": "--db",
      "dest": "db",

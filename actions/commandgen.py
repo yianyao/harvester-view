@@ -417,6 +417,28 @@ def extract() -> dict:
                 continue
             opts = [o for o in act.option_strings if o.startswith("--")]
             if not opts or "--help" in opts:
+                # 位置参数收录（v0.76 V7 连带：chain-audit/chain-validate 的
+                # file 是位置参数——不收录则 B 档写动作没法声明 file 参数，
+                # 页面永远传不了文件名）。help 与位置式子动作选择器除外。
+                if opts or act.dest in ("help",) or not act.dest \
+                        or act.choices:
+                    continue
+                dest = act.dest
+                src = SRC.get(dest)
+                if src is None:
+                    src = "server" if dest in SERVER_DESTS else "none"
+                args.append({
+                    "name": dest,
+                    "dest": dest,
+                    "kind": _arg_kind(act),
+                    "default": _jsonable(act.default),
+                    "required": True,
+                    "choices": None,
+                    "src": src,
+                    "negates": None,
+                    "help": (act.help or "").strip()[:_HELP_MAX] or None,
+                    "note": NOTE.get(dest),
+                })
                 continue
             dest = act.dest
             neg = [o for o in opts if o.startswith("--no-")]

@@ -37,9 +37,13 @@ if _ERR is None:  # pragma: no cover - 缺上游时由调用方报 503
     from harvester.cards import (card_current_warnings as _cr_current,
                                  record_review as _cr_record,
                                  _warn_key as _cr_key)
+    from harvester.chainaudit import (audit_chain as _ca_audit,
+                                      record_audit_review as _ca_record,
+                                      _node_key as _ca_node_key)
 else:  # pragma: no cover
     _sm = _tp = None
     _cr_current = _cr_record = _cr_key = None
+    _ca_audit = _ca_record = _ca_node_key = None
 
 
 class WriteError(Exception):
@@ -955,6 +959,114 @@ def _exec_card_review(p: dict, cfg) -> dict:
                        "重跑 cards validate / 刷新卡片页即不再显示"}
 
 
+# ---------- chain 复核台账（v0.76 V7，上游 v0.75 的 view 直给）----------
+#: 与 card_review 同一套两段提交：预演列"将落账哪些锚点键"，人确认才写
+#: topics_meta.db 的 audit_review 表。键格式是上游 _node_key 的
+#: `node:<sid>#turn:<turn>`（同一真源，不自拼格式）。
+
+def _ca_topics_meta(cfg) -> Path:
+    if not getattr(cfg, "topics_meta", None):
+        raise WriteError("未配置 topics_meta（起服时加 --topics-meta）")
+    return Path(cfg.topics_meta)
+
+
+def _ca_chain_path(p: dict, cfg) -> Path:
+    root = getattr(cfg, "chain_root", None)
+    if not root:
+        raise WriteError("未配置 chain_root（起服时加 --chain-root）")
+    f = str(p.get("file") or "")
+    if (not f or f.startswith(("/", "\\")) or ".." in f.replace("\\", "/")):
+        raise WriteError("file 必须是 chain_root 下的相对路径（不含 ..）")
+    path = Path(root) / f
+    if not path.is_file():
+        raise WriteError(f"chain 文件不存在: {path}")
+    return path
+
+
+def _split_accepts(value) -> list[str]:
+    """accepts 参数归一：页面传逗号串或数组都收（惯例同 _split_sids）。"""
+    if value is None:
+        return []
+    items = list(value) if isinstance(value, (list, tuple, set)) \
+        else str(value).split(",")
+    out = []
+    for it in items:
+        it = str(it).strip()
+        if it:
+            out.append(it)
+    return out
+
+
+def _ca_norm_key(k: str) -> str:
+    """容忍裸 `sid#turn` 手抄；规范键一律走上游 _node_key。"""
+    k = k.strip()
+    if k.startswith("node:"):
+        return k
+    sid, _, turn = k.rpartition("#")
+    if sid and turn.isdigit():
+        return _ca_node_key(sid, int(turn))
+    return k
+
+
+def _ca_accept_keys(p: dict, cfg) -> tuple:
+    """预演/执行共用的取键逻辑（同一真源，不算两套）。
+
+    quotes/coverage 都关——直给只需要锚点可疑行；review_meta 传入使
+    已接受裁决的行从可疑集消失（与 CLI 审计同一口径）。"""
+    path = _ca_chain_path(p, cfg)
+    meta = _ca_topics_meta(cfg)
+    r = _ca_audit(path, cfg.db, quotes=False, coverage=False, anchors=True,
+                  review_meta=meta, show_reviewed=True)
+    suspicious = r["anchors"]["suspicious"]
+    cur = {_ca_node_key(s["sid"], s["turn"]): f"{s['sid']}#turn:{s['turn']}"
+           for s in suspicious}
+    wants = [_ca_norm_key(k) for k in _split_accepts(p.get("accept"))]
+    if wants:
+        unknown = [k for k in wants if k not in cur]
+        if unknown:
+            raise WriteError(
+                "锚点键不在当前可疑集（可能已被裁决或链已改）："
+                + "、".join(unknown[:5]))
+        keys = wants
+    else:
+        keys = sorted(cur)
+    return path, keys
+
+
+def _plan_chain_audit_accept(p: dict, cfg) -> dict:
+    """预演：列出该链当前未接受的可疑锚点与将落账的键（只读，无副作用）。"""
+    meta = _ca_topics_meta(cfg)
+    path, keys = _ca_accept_keys(p, cfg)
+    human = [f"动作：chain 复核落账——{path.name}",
+             "裁决：**accepted**（这些锚点的疑点判为可接受/已核实，"
+             "审计不再报；改判重开用 CLI `--accept` 覆盖）",
+             f"目标：{meta}（audit_review 表；不碰 chain 文件、不碰索引库）",
+             f"将落账 {len(keys)} 条锚点键："]
+    human += [f"  - {k}" for k in keys[:8]]
+    if len(keys) > 8:
+        human.append(f"  - …另有 {len(keys) - 8} 条")
+    if not keys:
+        human.append("（该链当前没有未接受的软锚点——执行为 no-op）")
+    return {"target_path": str(meta),
+            "before": {"chain": path.name},
+            "after": {"recorded": len(keys), "verdict": "accepted"},
+            "snapshot": None,
+            "limits": ["预演列的是当前可疑集；两段之间链文件改了 → "
+                       "执行重新取键，缺的直接报错不静默跳过"],
+            "human": human,
+            "noop": not keys}
+
+
+def _exec_chain_audit_accept(p: dict, cfg) -> dict:
+    meta = _ca_topics_meta(cfg)
+    path, keys = _ca_accept_keys(p, cfg)
+    n = _ca_record(meta, path.name, keys, verdict="accepted",
+                   note=p.get("accept_note") or "")
+    return {"recorded": n, "chain": path.name, "verdict": "accepted",
+            "summary": f"已落账 {n} 条锚点裁决（accepted）；"
+                       "重跑 chain-audit 即不再报"}
+
+
 WRITE_ACTIONS: dict[str, dict] = {
     "session_suppress": {"plan": _plan_session_suppress,
                          "execute": _exec_session_suppress},
@@ -964,6 +1076,8 @@ WRITE_ACTIONS: dict[str, dict] = {
                        "execute": _exec_suggest_status},
     "card_review": {"plan": _plan_card_review,
                     "execute": _exec_card_review},
+    "chain_audit_accept": {"plan": _plan_chain_audit_accept,
+                           "execute": _exec_chain_audit_accept},
     "topic_register": {"plan": _plan_topic_register,
                        "execute": lambda p, c: _exec_topic({**p, "__kind": "register"}, c)},
     "topic_add": {"plan": _plan_topic_add,

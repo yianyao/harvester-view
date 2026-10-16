@@ -406,6 +406,59 @@
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
   {
+   "action_id": "chain_audit_accept",
+   "tier": "B",
+   "cmd": "chain-audit",
+   "subaction": null,
+   "risk": "reversible",
+   "target": "topics_meta",
+   "summary": "把 chain {file} 的可疑锚点裁决落账（accepted）",
+   "detail": "写 topics_meta.db 的 audit_review 表（键=node:<sid>#turn:<turn>，UPSERT 改判即重开）。**不碰 chain 文件本身**、不碰索引库；落账后 chain-audit / 审计页不再报这些锚点。",
+   "params": [
+    {
+     "name": "file",
+     "dest": "file",
+     "arg": "file",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "chain 文件名（相对 knowledge/topics，如 tp-xxx-chain-v2.md）"
+    },
+    {
+     "name": "accept",
+     "dest": "accept",
+     "arg": "--accept",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "锚点键 node:<sid>#turn:<turn>（逗号分隔可多个；留空=该链当前全部未接受软锚点）"
+    },
+    {
+     "name": "accept_note",
+     "dest": "accept_note",
+     "arg": "--accept-note",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "裁决说明（写进台账，供日后复查）"
+    }
+   ],
+   "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  },
+  {
    "action_id": "draft_pack",
    "tier": "B",
    "cmd": "draft",
@@ -1002,8 +1055,8 @@
  "counts": {
   "cards": 13,
   "read_actions": 32,
-  "write_actions": 14,
-  "write_reversible": 11,
+  "write_actions": 15,
+  "write_reversible": 12,
   "write_destructive": 3
  }
 }

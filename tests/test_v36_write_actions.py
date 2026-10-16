@@ -428,7 +428,8 @@ class WriteHttpTest(_Fixture):
         # 9 → 11（v0.49 会话抑制加两个）→ 13（v0.62 写工作文件加两个：
         # suggest_agents + draft_pack，用户令 2026-10-14 命令可就地执行）
         # → 14（v0.75 卡片复核落账 card_review：上游 v0.74 复核台账的 view 直给）
-        self.assertEqual(len(b), 14)
+        # → 15（v0.76 chain_audit_accept：上游 v0.75 审计复核台账的 view 直给）
+        self.assertEqual(len(b), 15)
         for a in b:
             self.assertIn(a["risk"], ("reversible", "destructive"))
 

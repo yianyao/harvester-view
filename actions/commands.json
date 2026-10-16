@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "adapter_version": "0.75.0",
+ "adapter_version": "0.76.0",
  "kind": "harvester-view 命令注册表（静态；由真实 argparse 生成）",
  "generated_by": "actions/commandgen.py（python -m actions.commandgen）",
  "hint": "命令名/参数/默认值是事实（走 harvester.cli.build_parser 生成）；src=参数数据源、tier=三档权限是人写的产品判断。页面凡 src 指向端点者一律渲染成选择器，不给人输框。",
@@ -326,6 +326,18 @@
      "src": "none",
      "negates": null,
      "help": "卡片复核台账 meta 库（/api/cards 据此隐去已裁决警告；库不存在=零感知。人裁过的不许再烦人）",
+     "note": null
+    },
+    {
+     "name": "--reports-dir",
+     "dest": "reports_dir",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "日报目录（可选；启用 /api/report-daily 端点，缺省=仓根 docs/reports；文件名白名单 daily-YYYY-MM-DD.md）",
      "note": null
     }
    ],
@@ -1912,6 +1924,86 @@
    "nested": false
   },
   {
+   "cmd": "noise add",
+   "card_id": "triage",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--sid",
+     "dest": "sids",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "sessions_api",
+     "negates": null,
+     "help": "库口径 sid（`source:session_id`，即 search 输出的 [sid]）；可重复给多个",
+     "note": null
+    },
+    {
+     "name": "--reason",
+     "dest": "reason",
+     "kind": "str",
+     "default": "",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "为什么判零散（写进零散表，供日后复查）",
+     "note": null
+    },
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "零散表所在 meta 库（默认 topics_meta.db）",
+     "note": null
+    },
+    {
+     "name": "--apply",
+     "dest": "apply",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "真的写（缺省只预演：列将登记的 sid / 已在表跳过）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "noise list",
+   "card_id": "triage",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "零散表所在 meta 库（默认 topics_meta.db）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
    "cmd": "pack",
    "card_id": "export",
    "tier": "A",
@@ -2170,6 +2262,88 @@
      "src": "chips",
      "negates": null,
      "help": "只统计最近 N 天（按步骤时间戳粗算；近似口径=不如逐条精确）",
+     "note": "只统计最近 N 天（按 steps.ts，近似口径）"
+    },
+    {
+     "name": "--top",
+     "dest": "top",
+     "kind": "int",
+     "default": 10,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "高步会话 Top N（默认 10）",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "报告输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "report-daily",
+   "card_id": "errors",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    },
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "suggestions_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "建议台账 meta 库（decide/verify 队列口径；不存在=诚实空态）",
+     "note": null
+    },
+    {
+     "name": "--cards-root",
+     "dest": "cards_root",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "已有卡片目录（待蒸馏队列的「疑似已有卡」比对，可省）",
+     "note": null
+    },
+    {
+     "name": "--since",
+     "dest": "since",
+     "kind": "float",
+     "default": 1.0,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "tools/errors/chains 窗口天数（默认 1=当天）",
      "note": "只统计最近 N 天（按 steps.ts，近似口径）"
     },
     {

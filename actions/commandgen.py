@@ -97,12 +97,18 @@ COMMAND_CARD: dict[str, str] = {
     "suppress remove": "collect", "suppress prune-exports": "collect",
     # v0.52 候选清单（只读）：抑制的去 sid 化入口，同属"仓内副本"进出
     "suppress candidates": "collect",
+    # P5-⑧ 零散登记（2026-10-16 批准）：分诊裁决的 meta 侧出口——
+    # 判「不归任何主题」的会话不再进候选簇，归「分诊蒸馏」卡
+    "noise list": "triage", "noise add": "triage",
     "adapters": "browse", "scan": "browse", "search": "browse",
     "read": "browse", "index": "browse",
     "export": "export", "aggregate": "export", "pack": "export",
     "draft": "export", "export-analysis": "export",
     "report-tools": "tools", "report-traces": "tools",
     "report-errors": "errors", "report-chains": "errors",
+    # P5-⑤ 每日速览（2026-10-16 批准）：四队列+三报告聚合，只读；
+    # 归「错误分析」卡（它的三段报告全在这卡里，队列数字是附加项）
+    "report-daily": "errors",
     "report-skill": "skill", "report-skill-join": "skill",
     "triage": "triage", "topic-candidates": "triage",
     "topic-consolidate": "triage",
@@ -148,6 +154,8 @@ TIER_OVERRIDE: dict[str, str] = {
     "suppress list": "A", "suppress candidates": "A",
     "suppress add": "B", "suppress remove": "B",
     "suppress prune-exports": "B",
+    # P5-⑧ 零散登记：list 只读 → A；add 写 topics_meta 的幂等表 → B
+    "noise list": "A", "noise add": "B",
     "weblogin check": "C", "weblogin init-config": "C",
     "weblogin prepare": "C",
     # service 卡里两个**不该被连坐**的例外：它们只是打印/在临时目录里造数据，

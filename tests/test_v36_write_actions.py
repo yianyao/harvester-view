@@ -300,6 +300,75 @@ class TwoPhaseTest(_Fixture):
         self.assertIn("属于动作", str(cm.exception))
 
 
+class NoiseRegisterTest(_Fixture):
+    """P5-⑧「登记零散」（2026-10-16 批准）：sessions_noise 幂等登记。
+
+    与抑制的本质区别必须在测试里钉死：登记**绝不删行**——任何一例红，
+    都说明有人把 noise 写成了 suppress。
+    """
+
+    def test_plan_readonly_and_human_says_reversible(self):
+        meta = self.td / "topics_meta.db"
+        fp = _fingerprint(meta)
+        p = self.plan("noise_register", {"sids": "src:s1,src:s2",
+                                         "reason": "测试判零散"})
+        self.assertEqual(_fingerprint(meta), fp, "预演不得写库")
+        self.assertFalse(p["noop"])
+        self.assertTrue(any("不删" in h or "可逆" in h
+                            for h in p["human"]),
+                        "人话里必须交代「不删数据、可逆」")
+        for s in ("src:s1", "src:s2"):
+            self.assertIn(s, p["after"]["noise"],
+                          "预演 after 必须包含将登记的 sid（真库可能已有"
+                          "零散行，不假定空表）")
+
+    def test_plan_all_registered_is_noop(self):
+        WA.execute("noise_register", self.spec("noise_register"),
+                   {"sids": "src:s9", "reason": "先登记"}, self.cfg)
+        p = self.plan("noise_register", {"sids": "src:s9"})
+        self.assertTrue(p["noop"], "全在表里=无新行，必须 noop")
+
+    def test_execute_writes_and_idempotent(self):
+        spec = self.spec("noise_register")
+        r1 = WA.execute("noise_register", spec,
+                        {"sids": ["src:s1", "src:s2"], "reason": "测试"},
+                        self.cfg)
+        self.assertEqual(r1["added"], 2)
+        r2 = WA.execute("noise_register", spec,
+                        {"sids": ["src:s1", "src:s3"], "reason": "再登记"},
+                        self.cfg)
+        self.assertEqual(r2["added"], 1, "重复 sid 必须幂等跳过")
+        from harvester.consolidate import list_noise
+        rows = list_noise(self.td / "topics_meta.db")
+        got = {x["sid"] for x in rows}
+        # 真库副本可能自带零散行：只钉「这次登记的都进来了」，不假定空表
+        self.assertLessEqual({"src:s1", "src:s2", "src:s3"}, got)
+
+    def test_register_never_touches_topics_or_any_other_table(self):
+        con = sqlite3.connect(str(self.td / "topics_meta.db"))
+        tables = [r[0] for r in con.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")]
+        counts = {t: con.execute("SELECT COUNT(*) FROM %s" % t).fetchone()[0]
+                  for t in tables}
+        con.close()
+        WA.execute("noise_register", self.spec("noise_register"),
+                   {"sids": "src:sx", "reason": "测试"}, self.cfg)
+        con = sqlite3.connect(str(self.td / "topics_meta.db"))
+        counts_after = {
+            t: con.execute("SELECT COUNT(*) FROM %s" % t).fetchone()[0]
+            for t in tables if t != "sessions_noise"}
+        con.close()
+        self.assertEqual(counts_after,
+                         {t: c for t, c in counts.items()
+                          if t != "sessions_noise"},
+                         "登记只准动 sessions_noise 表")
+
+    def test_missing_sids_rejected(self):
+        from actions.writeactions import WriteError
+        with self.assertRaises(WriteError):
+            self.plan("noise_register", {"sids": "  "})
+
+
 class WriteExecutorTest(_Fixture):
     """真执行：写进去了 + 台账留痕（含 destructive 快照）。"""
 
@@ -429,7 +498,8 @@ class WriteHttpTest(_Fixture):
         # suggest_agents + draft_pack，用户令 2026-10-14 命令可就地执行）
         # → 14（v0.75 卡片复核落账 card_review：上游 v0.74 复核台账的 view 直给）
         # → 15（v0.76 chain_audit_accept：上游 v0.75 审计复核台账的 view 直给）
-        self.assertEqual(len(b), 15)
+        # → 16（P5-⑧ 登记零散 noise_register：用户批准 2026-10-16，可逆）
+        self.assertEqual(len(b), 16)
         for a in b:
             self.assertIn(a["risk"], ("reversible", "destructive"))
 

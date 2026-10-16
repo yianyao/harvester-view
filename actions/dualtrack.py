@@ -109,6 +109,37 @@ def _revisions_track(cfg, member_sids: list[str]) -> dict:
                       "预览超 %d 字符截断" % PREVIEW_CAP}
 
 
+def _nags_track(cfg, member_sids: list[str]) -> dict:
+    """P4-1 反复叮嘱候选（过滤版口径）→ 主题内命中组 + 全库账目。
+
+    口径零改动（红线）：调 `actions.analysis.nags.collect`（与过滤版探针
+    v2 / CLI 同一实现：剥 system-reminder 注入、剥过短轮、剥长正文粘贴、
+    模板过滤、相似归并）全库跑一遍，再按主题成员过滤——组内**任一成员命中
+    即保留**，并列出命中者（hit_sids）供锚点跳转。候选**只列不裁决**：
+    归宿（班规条目 / 问题清单）由人走 P4-2 建议池，「登记零散」只是处置
+    手段之一，不等于裁决。
+    """
+    from .actionsserve import open_ro
+    from .analysis import nags
+    con = open_ro(cfg.db)
+    try:
+        res = nags.collect(con)
+    finally:
+        con.close()
+    mset = set(member_sids)
+    groups = []
+    for g in res["groups"]:
+        hit = [s for s in g["sids"] if s in mset]
+        if hit:
+            groups.append({
+                "n": g["n"], "sids": g["sids"], "hit_sids": hit,
+                "sample": g["sample"]})
+    return {"account": res["account"], "groups": groups,
+            "honest": "口径=过滤版探针 v2（剥注入/剥过短/剥长粘贴/剥模板/"
+                      "相似归并，nags.py 冻结常量）；候选只列不裁决，"
+                      "归宿由人定（P4-2 建议池）"}
+
+
 def _artifacts_track(cfg, member_sids: list[str]) -> dict:
     """下轨产物流：成员 sid 的 Write/Edit 版本序列，按 (sid, file_path) 分组。"""
     if not cfg.artifacts_meta or not Path(cfg.artifacts_meta).is_file():
@@ -159,6 +190,7 @@ def build(cfg, topic_id: str, level: str, timeline_dict: dict) -> dict:
     member_sids = [m["sid"] for m in topic["members"]]
     rev = _revisions_track(cfg, member_sids)
     art = _artifacts_track(cfg, member_sids)
+    nag = _nags_track(cfg, member_sids)
     return {
         "view_actions_api": 1,
         "topic_id": topic_id,
@@ -168,6 +200,7 @@ def build(cfg, topic_id: str, level: str, timeline_dict: dict) -> dict:
         "timeline": timeline_dict,
         "revisions": rev,
         "artifacts": art,
+        "nags": nag,
         "account": {
             "members": len(member_sids),
             "band": len(rev["band"]),
@@ -177,5 +210,7 @@ def build(cfg, topic_id: str, level: str, timeline_dict: dict) -> dict:
             "turn_hits_all": rev["account_all"]["turn_hits"],
             "artifact_files": art["n_files"],
             "artifact_versions": art["n_versions"],
+            "nags_groups": len(nag["groups"]),
+            "nags_groups_all": nag["account"]["n_groups"],
         },
     }

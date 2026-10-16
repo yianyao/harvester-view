@@ -110,8 +110,19 @@ const FIXTURE = {
         old_len: 0, new_len: 300, old_preview: "", new_preview: "新版全文…" },
     ] },
   ] },
+  nags: {
+    account: { user_turns: 400, n_inject: 31, n_short: 22, n_paste: 15,
+               n_lane: 332, n_hits: 9, n_template_groups: 1, n_groups: 4 },
+    groups: [
+      { n: 3, sids: ["s-a", "s-b", "s-c"], hit_sids: ["s-a", "s-b"],
+        sample: { sid: "s-a", rowid: 5, preview: "记得收尾文件写完再退出" } },
+    ],
+    honest: "口径=过滤版探针 v2（剥注入/剥过短/剥长粘贴/剥模板/相似归并，"
+          + "nags.py 冻结常量）；候选只列不裁决，归宿由人定（P4-2 建议池）",
+  },
   account: { members: 3, band: 1, turn_hits: 2, band_all: 9,
-             turn_hits_all: 17, artifact_files: 1, artifact_versions: 2 },
+             turn_hits_all: 17, artifact_files: 1, artifact_versions: 2,
+             nags_groups: 1, nags_groups_all: 4 },
 };
 
 async function main() {
@@ -158,8 +169,8 @@ async function main() {
      "① 上轨行数=timeline.rows（只渲染服务端给的那批）");
   eq((h.match(/class='dt-file'/g) || []).length, FIXTURE.artifacts.files.length,
      "① 下轨文件数=artifacts.files");
-  eq((h.match(/class='dt-cand'/g) || []).length, 3,
-     "②③ 打磨带+反转点候选条数一致（1+2），每条可点开");
+  eq((h.match(/class='dt-cand'/g) || []).length, 4,
+     "②③ 打磨带+反转点+反复叮嘱候选条数一致（1+2+1），每条可点开");
   ok(h.includes("前轮原文A") && h.includes("后轮原文B"),
      "② 打磨带自带 a/b 两轮原文预览（无二次请求）");
   ok(h.includes("本轮原文") && h.includes("前轮原文"),
@@ -170,6 +181,29 @@ async function main() {
      "④ 主题内候选数与全库口径（band_all/turn_hits_all）并列渲染");
   ok(h.includes("由人甄别"), "④ 诚实说明随视图渲染");
   ok(h.includes("原始 JSON"), "④ 原始 JSON 可展开（机器口径不丢）");
+
+  /* ⑧ 反复叮嘱候选（P5-③，过滤版口径 + 只列不裁决 + 登记零散 P5-⑧） */
+  ok(h.includes("反复叮嘱候选 1") && h.includes("全库 4"),
+     "⑧ 主题内命中组数与全库口径并列渲染");
+  ok(h.includes("过滤账目") && h.includes("含注入剥块 31") &&
+     h.includes("逐字模板丢 1 组"),
+     "⑧ 过滤账目随视图渲染（口径透明，候选才可信）");
+  ok(h.includes("只列不裁决"),
+     "⑧ 「候选只列不裁决」的诚实说明必须可见");
+  ok(h.includes("记得收尾文件写完再退出"),
+     "⑧ 候选组样例渲染");
+  ok(h.includes('data-dt-sid="s-a"') && h.includes('data-dt-sid="s-b"') &&
+     !h.includes('data-dt-sid="s-c"'),
+     "⑧ 锚点只给主题成员 hit_sids（s-c 是主题外，只在对账文案里出现）");
+  ok(h.includes("另涉主题外 1 会话"),
+     "⑧ 命中组含主题外成员 → 对账提示可见");
+  ok(h.includes("data-noise-reg=\"s-a,s-b\""),
+     "⑧ 登记零散按钮只带主题成员 sid（P5-⑧，B 档两段提交）");
+  const out5 = mkEl();
+  renderDualtrack(Object.assign({}, FIXTURE, { nags: Object.assign({},
+    FIXTURE.nags, { groups: [] }) }), out5);
+  ok(out5.innerHTML.includes("没有跨 ≥2 会话的非模板叮嘱"),
+     "⑧ 无命中 → 诚实空态（不装作有候选）");
 
   /* ⑤ 诚实空态 */
   const out2 = mkEl();

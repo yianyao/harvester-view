@@ -400,6 +400,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
   <main>
     <div id="home-intro"></div>
     <div id="home-banner" class="sub2"></div>
+    <div id="home-daily"></div>
     <h3 class="sec">四队列（点数字去处理）</h3>
     <p class="legend">四队列和下面的闭环健康是<b>一本账的两种看法</b>：闭环健康是三条流水线的库存体检（问题攒了多少、卡在哪一段）；四队列是从这些库存里捞出的、按<b>下一步动作</b>分的四队活（裁决/修补/蒸馏/验证）。队列里的每一条活，都来自环上某一段的明细——点数字进处理单就能看到。</p>
     <div id="home-queues" class="queue-grid"><div class="empty">加载中…</div></div>
@@ -552,6 +553,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
     <button id="btn-agg-search">搜索全部上游</button>
     <button id="btn-agg-facets">刷新 facets 对比</button>
   </div>
+  <div id="agg-intro"></div>
   <div id="agg-out"><div class="empty">尚未加载</div></div>
 </section>
 
@@ -979,7 +981,7 @@ function switchTab(name){
     if(name==="sessions") loadAll().catch(()=>{});
     if(name==="triage") loadTriage().catch(()=>{});
     if(name==="reports") loadReport().catch(()=>{});
-    if(name==="agg") loadAggFacets().catch(()=>{});
+    if(name==="agg"){ loadAggFacets().catch(()=>{}); }
     if(name==="topics") loadTopics().catch(()=>{});
     if(name==="cmd") loadCmdData().catch(()=>{});
   }
@@ -1113,7 +1115,9 @@ async function openSession(sid){
     "<button class='xbtn' id='btn-sess-export' "+
     "title='拉取全部回合全文并导出 Markdown（回合多时较慢，纯浏览器本地完成）'>导出 md</button>"+
     "<button class='xbtn' id='btn-sess-suppress' "+
-    "title='把这条会话从仓内副本里移出（删库内三张表——会话/消息/工具步——的行，加 exports 下的副本文件）；不删采集源。走命令台的两段提交：先预演看清将删什么，再确认才写。'>删除（抑制）</button></h2>"+
+    "title='把这条会话从仓内副本里移出（删库内三张表——会话/消息/工具步——的行，加 exports 下的副本文件）；不删采集源。走命令台的两段提交：先预演看清将删什么，再确认才写。'>删除（抑制）</button>"+
+    "<button class='xbtn' id='btn-sess-topic' "+
+    "title='把当前会话并入某个主题（P5-② 检索动线收口：读完直接挂进主题，不用回列表重新勾选）。A 档动作，装到命令台确认执行。'>并入主题</button></h2>"+
     "<div class='sub'>"+esc(m.source||"")+" · "+esc(m.model||"（未知）")+
     " · "+d.n_turns+" 回合 · 更新 "+esc(m.updated_at||"")+"</div>"+
     (d.turns||[]).map(t=>
@@ -1131,6 +1135,12 @@ async function openSession(sid){
      B 档两段提交（预演 → 你确认 → 才写）+ 台账（含 destructive 删除前快照）。 */
   $("btn-sess-suppress").onclick=()=>{
     openInCmd("session_suppress",{sids:sid,reason:""}).catch(()=>{});
+  };
+  /* P5-② 检索动线收口（B1）：阅读页就地并入主题——topic_id 留空，
+     命令台「从库里选」面板出主题清单，选一下就填上（与列表勾选同款）。 */
+  $("btn-sess-topic").onclick=()=>{
+    openInCmd("topic_add",{topic_id:"",sids:sid,
+      evidence:"会话阅读页一键并入"}).catch(()=>{});
   };
   for(const el of box.querySelectorAll(".turn"))
     el.onclick=()=>openTurn(sid,el.dataset.no);
@@ -1242,8 +1252,9 @@ function renderSessChips(){
   const bc=d.by_class||{};
   const tot=Object.values(bc).reduce((a,b)=>a+b,0);
   const cur=state.sessChip||"";
-  let h="<span class='sub2'>错误类别（条数"+
-    (state.sessClsSess?"/涉及会话":"")+"，全库对账）：</span>";
+  let h="<span class='sub2'>错误类别（本项目自定义分类｜条数"+
+    (state.sessClsSess?"/涉及会话":"")+"，全库对账；官方惯例参考 "+
+    "OpenTelemetry error.type）：</span>";
   h+="<span class='chip"+(cur?"":" on")+"' data-sesschip=''>全部 "+tot+
     "</span>";
   h+=Object.entries(bc).sort((a,b)=>b[1]-a[1]).map(e=>
@@ -1364,6 +1375,42 @@ function renderRepConcl(kind,d){
       bench:()=>showBanner("warn","本视图绝不写配置：复制规则句，"+
         "在 CLI 侧人工并入并 suggest-status 落账"),
       cmd:()=>openInCmd("suggest_agents",{})};
+  }else if(kind==="skills"){
+    /* P5-① E2：skills 结论卡（数字全部取自本响应，同 tools/errors 现款） */
+    const skills=d.skills||[];
+    const tot=d.n_invocations||
+      skills.reduce((a,s)=>a+s.calls,0);
+    const err=skills.reduce((a,s)=>a+s.err,0);
+    const worst=skills.filter(s=>s.err>0)
+      .sort((a,b)=>b.err-a.err||b.no_result-a.no_result)[0];
+    cc=conclusionCard({
+      lines:[{text:"窗口内 skill 调用 "+tot+" 次（"+skills.length+
+        " 个 skill），失败 "+err+" 次。"},
+        {text:worst?("最该先看："+esc(worst.skill)+"（失败 "+worst.err+
+          "｜无结果 "+(worst.no_result||0)+"）——高失败=常被误用或环境不配合。")
+          :"窗口内没有 skill 失败。",ok:!worst}],
+      sub:"机械事实：由 /api/reports/skills 现算；「最该先看」=失败数最高者。",
+      actions:[{id:"root",label:"看明细",title:"跳到本页 skill 明细表"},
+        {id:"bench",label:"起草班规",title:"打开建议池（agents 报告）"},
+        {id:"cmd",label:"在命令台打开",title:"把 report-skill 装到命令台就地执行（A 档只读，结果与本页同源）"}]});
+    handlers={root:()=>$("rep-out").scrollIntoView({behavior:"smooth"}),
+      bench:()=>{$("rep-kind").value="agents";loadReport(true).catch(()=>{});},
+      cmd:()=>openInCmd("report_skill",{})};
+  }else if(kind==="cards"){
+    /* P5-① E2：cards 结论卡（d.summary 来自主库校验器，与面板徽章同源） */
+    const s=d.summary||{};
+    const cards=d.cards||[];
+    const bad=cards.filter(c=>c.errors.length||c.warnings.length);
+    cc=conclusionCard({
+      lines:[{text:"卡片校验：通过 "+(s.ok||0)+"｜警告 "+(s.warn||0)+
+        "｜错误 "+(s.error||0)+"（共 "+cards.length+" 张）。"},
+        {text:(s.error||0)?("有 "+s.error+" 张卡带错误级问题，最该先修——"+
+          "错误>警告>通过，修卡别只看警告。")
+          :(s.warn||0)?("没有错误级问题；"+s.warn+" 张警告卡可顺手复核。")
+          :"全部通过，卡片库干净。",ok:!(s.error||0)}],
+      sub:"机械事实：校验徽章由主库校验器现算；本体（结论/证据/锚点）来自本地只读服务。",
+      actions:[{id:"root",label:"看异常卡",title:"跳到问题卡片列表"}]});
+    handlers={root:()=>$("rep-out").scrollIntoView({behavior:"smooth"})};
   }
   box.innerHTML=(cc?"<div class='p-fact'>"+pTag("fact")+cc+"</div>":"");
   if(handlers)bindConcl(box,handlers);
@@ -1679,7 +1726,9 @@ function renderErrors(d,out){
     unclassified:"怎么做：人工抽几条原始错误回看原文，归纳出新规则补进归类表，下次自动归对类。"};
   const CLS_TIP={};CLS.forEach(c=>CLS_TIP[c[0]]=c[1]);
   let html="<h3 class='sec'>三分类分布</h3>"+
-    "<p class='sub2'>每行悬停可看「怎么做」；窗口/全库口径见页头 meta 行。</p>"+
+    "<p class='sub2'>每行悬停可看「怎么做」；窗口/全库口径见页头 meta 行。"+
+    "<b>N1 术语标注</b>：四类是本项目自定义分类（行业无直接对应；官方惯例参考 "+
+    "OpenTelemetry error.type，见主仓 docs/TERMINOLOGY.md §2.2）。</p>"+
     "<table><thead><tr><th title='错误按出错形状归并成的四大类'>类别</th>"+
     "<th class='num' title='窗口内这类错误的错误步骤条数（与下方明细的类别 chips 同源）'>次数</th>"+
     "<th class='num' title='这类次数 ÷ 窗口内错误总数'>占比</th>"+
@@ -2409,6 +2458,9 @@ function renderDualtrack(d,out){
   const band=(d.revisions&&d.revisions.band)||[];
   const hits=(d.revisions&&d.revisions.turn_hits)||[];
   const art=d.artifacts||{};
+  const nag=d.nags||{};
+  const nags_g=nag.groups||[];
+  const nag_a=nag.account||{};
   const th=(d.revisions&&d.revisions.thresholds)||{};
   let h="<div class='toolbar'><h3 class='sec' style='margin:0'>双轨时间线 · "+
     esc((d.topic&&d.topic.name)||d.topic_id||"主题")+"</h3>"+
@@ -2485,6 +2537,35 @@ function renderDualtrack(d,out){
       "</pre></div><div><b>本轮</b><pre class='dt-pre'>"+
       esc((x.cur&&x.cur.preview)||"")+"</pre></div></div></details>").join(""))
     :"<div class='empty'>无反转点候选</div>";
+  /* 反复叮嘱候选（P4-1 nags，过滤版口径）：候选只列不裁决；
+     「登记零散」复用 sessions_noise（P5-⑧，B 档两段提交，预演可见） */
+  h+="<h4 class='sec'>反复叮嘱候选 "+nags_g.length+
+    "（全库 "+esc(String(nag_a.n_groups||0))+"）</h4>";
+  h+="<div class='sub2'>"+esc(nag.honest||"")+"</div>";
+  h+="<div class='sub2'>过滤账目：user 轮次 "+
+    esc(String(nag_a.user_turns||0))+"｜含注入剥块 "+
+    esc(String(nag_a.n_inject||0))+"｜剥后过短 "+
+    esc(String(nag_a.n_short||0))+"｜长正文粘贴丢 "+
+    esc(String(nag_a.n_paste||0))+"｜参与命中 "+
+    esc(String(nag_a.n_lane||0))+"｜命中词句 "+
+    esc(String(nag_a.n_hits||0))+"｜逐字模板丢 "+
+    esc(String(nag_a.n_template_groups||0))+" 组</div>";
+  h+=nags_g.length
+    ?(nags_g.map((g,i)=>{
+      const sids=(g.hit_sids&&g.hit_sids.length)?g.hit_sids:g.sids;
+      return "<details class='dt-cand'><summary>#"+(i+1)+" "+
+        esc(String(sids.length))+" 会话 × "+esc(String(g.n))+
+        " 次「"+esc((g.sample&&g.sample.preview)||"")+"」</summary>"+
+        "<div class='sub2'>命中本主题的会话："+
+        sids.map(s=>"<span class='anchor' data-dt-sid=\""+esc(s)+
+          "\" title=\"点击跳到该会话\">"+esc(s)+"</span>").join("、")+
+        (g.sids.length>sids.length?
+          "（另涉主题外 "+(g.sids.length-sids.length)+" 会话）":"")+"</div>"+
+        "<button class='xbtn' data-noise-reg=\""+esc(sids.join(","))+
+        "\" title=\"B 档：预演确认后写 topics_meta 的 sessions_noise 表（幂等、可逆）\">"+
+        "登记零散（这 "+esc(String(sids.length))+" 个会话不归主题）</button></details>";
+    }).join(""))
+    :"<div class='empty'>（无——本库当前没有跨 ≥2 会话的非模板叮嘱）</div>";
   h+="<details><summary>原始 JSON</summary><pre style='max-height:260px;"+
     "overflow:auto;font-size:11px'>"+esc(JSON.stringify(d,null,1)
       .slice(0,20000))+"</pre></details>";
@@ -2502,11 +2583,18 @@ function renderDualtrack(d,out){
           showBanner("err","跳转会话失败："+e.message);
       }
     };
+  for(const b of out.querySelectorAll("[data-noise-reg]"))
+    b.onclick=()=>openInCmd("noise_register",{
+      sids:b.dataset.noiseReg,
+      reason:"双轨时间线反复叮嘱候选（nags 过滤版口径）"}).catch(()=>{});
 }
 
 /* ---------- Tab 4: 中台 ---------- */
 async function loadAggFacets(){
   const out=$("agg-out");
+  /* P5-① E1：agg 面板导语（glossary panels.agg），与其它 tab 同款挂法 */
+  const ti=$("agg-intro");
+  if(ti)ti.innerHTML=panelIntro("agg");
   out.innerHTML="<div class='empty'>加载中…</div>";
   try{ await _renderAggFacets(out); }
   catch(e){ out.innerHTML=errorBox("聚合失败："+e.message+
@@ -3682,6 +3770,7 @@ async function loadOverview(){
   renderQueues(d);
   renderQueueDetail(d);
   renderRings(d);
+  loadDailyCard().catch(()=>{});  /* P5-⑤ 昨日报告卡：失败不影响主渲染 */
   const fp=d.db_fingerprint||{};
   $("home-foot").innerHTML="库快照："+(fp.sessions||"?")+" 会话 / "+
     (fp.steps||"?")+" 步骤 / "+(fp.errors||"?")+" 错误 @ "+
@@ -3690,6 +3779,32 @@ async function loadOverview(){
     "　（本页数字全部现算，非缓存）";
   if(glossary.loaded)applyTermTooltips(out);
 }
+/* P5-⑤（用户 2026-10-16 批准）：「昨日报告」卡。
+   数据源：主仓 /api/report-daily（文件名白名单 daily-YYYY-MM-DD.md，
+   服务端只读）。纪律同四队列：**只渲染服务端给的内容**（md_head 原样
+   展示，页面不解析不二次聚合）；found=false 是诚实空态，照实说，不装。 */
+async function loadDailyCard(){
+  const box=$("home-daily");
+  let d;
+  try{ d=await api("/api/report-daily"); }
+  catch(e){ return; }  /* 端点不可达/旧版主仓 404：failApi 已有全局横幅，
+                          卡片静默让位，不重复报错不占位 */
+  if(!d.found){
+    box.innerHTML="<details class='panel-intro'><summary>昨日报告：还没有</summary>"+
+      "<div class='sub2'>"+esc(d.hint||"")+"</div>"+
+      "<div class='sub2'>生成命令：<code>harvester report-daily --out &lt;仓根&gt;/docs/reports/daily-YYYY-MM-DD.md</code>"+
+      "（主仓 README「每日速览」有 schedule 每日自动配方）</div></details>";
+    return;
+  }
+  box.innerHTML="<details class='panel-intro'><summary>昨日报告（"+
+    esc(d.date)+"｜"+esc(String(d.n_chars))+" 字，点开看全文头部）</summary>"+
+    "<div class='sub2'>文件："+esc(d.path||"")+"</div>"+
+    "<pre style='white-space:pre-wrap;max-height:340px;overflow:auto'>"+
+    esc(d.md_head||"")+(d.n_chars>(d.md_head||"").length?
+      "\n…（头部截断，全文看文件）":"")+"</pre></details>";
+  if(glossary.loaded)applyTermTooltips(box);
+}
+
 function renderQueues(d){
   const box=$("home-queues");
   const qs=d.queues||[];

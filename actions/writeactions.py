@@ -722,6 +722,66 @@ def _exec_session_unsuppress(p: dict, cfg) -> dict:
             "removed": n, "sids": sids}
 
 
+# ---------- 零散登记（P5-⑧，用户 2026-10-16 批准）----------
+#
+# 与 session_suppress 的本质区别：抑制 = 删仓内副本（destructive）；
+# 零散 = 只往 topics_meta 的 sessions_noise 表插幂等行（可逆：删行即撤销），
+# 效果是主题候选簇（candidates / keywords）不再收它们。会话数据一行不动。
+# 目标库与抑制表同库（topics_meta），但**不同表**——fail loud 用独立小工具，
+# 不复用 _suppress_meta 的名字以免语义混淆。
+
+
+def _noise_meta(cfg) -> Path:
+    """零散表所在库 = topics_meta.db（与抑制表同库不同表）。"""
+    if not cfg.topics_meta:
+        raise WriteError("未配置 topics_meta（起服时加 --topics-meta）")
+    return Path(cfg.topics_meta)
+
+
+def _plan_noise_register(p: dict, cfg) -> dict:
+    from harvester.consolidate import list_noise
+    meta = _noise_meta(cfg)
+    sids = _split_sids(p.get("sids"))
+    if not sids:
+        raise WriteError("sids 不能为空（要登记零散的 sid，多个用逗号分隔）")
+    reason = (p.get("reason") or "").strip()
+    have = {r["sid"] for r in list_noise(meta)}
+    new = [s for s in sids if s not in have]
+    already = [s for s in sids if s in have]
+    human = [
+        "动作：把 %d 个会话登记为**零散**（不归任何主题）" % len(sids),
+        "写入：%s 的 sessions_noise 表（新增 %d 行%s）" % (
+            meta, len(new),
+            "；已在表 %d 个，幂等跳过" % len(already) if already else ""),
+        "效果：这些会话不再进主题候选簇（candidates / keywords）；"
+        "会话本身仍在库、仍可检索，一个字节的数据都不删",
+        "撤销：从 sessions_noise 删行即恢复（可逆）——与抑制不同，"
+        "这不是删除动作",
+    ]
+    if reason:
+        human.append("理由：%s" % reason)
+    return {
+        "target_path": str(meta),
+        "before": {"noise": sorted(have)},
+        "after": {"noise": sorted(have | set(sids))},
+        "snapshot": None,
+        "limits": ["登记零散≠抑制：不删任何数据，只是不再进主题候选"],
+        "human": human,
+        "noop": not new,
+    }
+
+
+def _exec_noise_register(p: dict, cfg) -> dict:
+    from harvester.consolidate import register_noise
+    meta = _noise_meta(cfg)
+    sids = _split_sids(p.get("sids"))
+    reason = (p.get("reason") or "").strip()
+    n = register_noise(meta, [{"sid": s, "reason": reason} for s in sids])
+    return {"summary": "登记零散 %d 个会话（新增 %d 行，幂等跳过 %d）"
+                       % (len(sids), n, len(sids) - n),
+            "added": n, "sids": sids}
+
+
 # ---------- 班规候选与蒸馏包（v0.62：写主库仓内工作文件，不碰库）----------
 #
 # 用户令（2026-10-14）：建议文案不再只给"复制命令"——命令台要能就地执行。
@@ -1084,6 +1144,8 @@ WRITE_ACTIONS: dict[str, dict] = {
                          "execute": _exec_session_suppress},
     "session_unsuppress": {"plan": _plan_session_unsuppress,
                            "execute": _exec_session_unsuppress},
+    "noise_register": {"plan": _plan_noise_register,
+                       "execute": _exec_noise_register},
     "suggest_status": {"plan": _plan_suggest_status,
                        "execute": _exec_suggest_status},
     "card_review": {"plan": _plan_card_review,

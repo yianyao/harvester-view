@@ -177,6 +177,12 @@
    "est_sec": null
   },
   {
+   "action_id": "noise_list",
+   "tier": "A",
+   "cmd": "noise list",
+   "est_sec": null
+  },
+  {
    "action_id": "pack",
    "tier": "A",
    "cmd": "pack",
@@ -198,6 +204,12 @@
    "action_id": "report_chains",
    "tier": "A",
    "cmd": "report-chains",
+   "est_sec": null
+  },
+  {
+   "action_id": "report_daily",
+   "tier": "A",
+   "cmd": "report-daily",
    "est_sec": null
   },
   {
@@ -553,6 +565,46 @@
     }
    ],
    "writes": "keywords_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  },
+  {
+   "action_id": "noise_register",
+   "tier": "B",
+   "cmd": "noise add",
+   "subaction": null,
+   "risk": "reversible",
+   "target": "topics_meta",
+   "summary": "把会话 {sids} 登记为**零散**（不归任何主题，不再进主题候选簇）",
+   "detail": "往 topics_meta 的 sessions_noise 表插幂等行：判「不归任何主题」的会话不再进主题候选簇（candidates / keywords）。**与抑制的本质区别**：这不删任何数据——会话仍在库、仍可检索，撤销=从 sessions_noise 删行即恢复（可逆）。已登记过的 sid 幂等跳过。",
+   "params": [
+    {
+     "name": "sids",
+     "dest": "sids",
+     "arg": "--sid",
+     "kind": "str",
+     "src": "sessions_api",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "要登记零散的会话 sid（库口径 `source:session_id`；多个用逗号分隔）"
+    },
+    {
+     "name": "reason",
+     "dest": "reason",
+     "arg": "--reason",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": "",
+     "note": null,
+     "label": "为什么判零散（写进零散表，供日后复查；可空）"
+    }
+   ],
+   "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
   {
@@ -1054,9 +1106,9 @@
  ],
  "counts": {
   "cards": 13,
-  "read_actions": 32,
-  "write_actions": 15,
-  "write_reversible": 12,
+  "read_actions": 34,
+  "write_actions": 16,
+  "write_reversible": 13,
   "write_destructive": 3
  }
 }

@@ -103,6 +103,44 @@ def _mk_env(td: Path):
     return cfg, db, tid
 
 
+def _mk_index_db_nags(db: Path) -> None:
+    """nags 夹具：s1（成员）与 s2（非成员）各有一次同一句叮嘱（含「记得」）。
+
+    N1 归一后 ≥10 字、<600 字（过过滤闸），逐字同串跨 2 会话 → 1 个候选组
+    （n=2 < 模板闸 8，不丢）。其余轮次不含 NAG_WORDS，不产生额外组。
+    """
+    con = sqlite3.connect(str(db))
+    try:
+        con.executescript(SCHEMA)
+        nag = "记得把工作区的收尾文件写完再退出环境"
+        for sid, turns in (
+            ("s1", [T1, T2, nag]),
+            ("s2", [T1, nag]),
+        ):
+            msgs = [Message(role="user", text=t) for t in turns]
+            index_session(con, SessionRecord(
+                source="dsh", session_id=sid, title="会话" + sid,
+                created_at="2026-10-01 10:00:0" + sid[-1],
+                updated_at="2026-10-01 10:02:0" + sid[-1],
+                messages=msgs), category="test")
+        con.commit()
+    finally:
+        con.close()
+
+
+def _mk_env_nags(td: Path):
+    if AS.ensure_harvester_importable():
+        raise unittest.SkipTest("上游 harvester 不可用")
+    db = td / "harvester.db"
+    _mk_index_db_nags(db)
+    meta = td / "topics_meta.db"
+    tid = register_topic(meta, "nags 双轨主题", keywords=["测试"])
+    add_members(meta, tid, ["dsh:s1"])
+    cfg = AS.Config(db=db, cards_root=td, glossary=td / "g.json",
+                    topics_meta=meta, artifacts_meta=None)
+    return cfg, db, tid
+
+
 class _Srv:
     """随机端口起停 actionsserve（与 test_v41 同款）。"""
 
@@ -202,6 +240,65 @@ class TestDualTrackBuild(unittest.TestCase):
             self.assertFalse(d["artifacts"]["configured"])
             self.assertEqual(d["artifacts"]["files"], [])
             self.assertIn("artifacts", d["artifacts"]["hint"])
+
+
+@unittest.skipIf(_ERR is not None, "上游 session-harvester 不在（%s）" % (_ERR,))
+class TestDualTrackNags(unittest.TestCase):
+    """P5-③ 反复叮嘱候选接入双轨（用户 2026-10-16 批准）。
+
+    口径红线：与 P4-1 候选一致是**构造性的**（调同一 nags.collect 全库跑
+    再按成员过滤）；候选**只列不裁决**——「登记零散」只是处置手段之一，
+    不等于裁决；非成员的命中保留在 sids 里（页面对账），hit_sids 只列成员。
+    """
+
+    def test_nags_group_scoped_and_carries_hit_sids(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg, db, tid = _mk_env_nags(Path(td))
+            d = dualtrack.build(cfg, tid, "coarse", {"rows": []})
+            nag = d["nags"]
+            self.assertIn("只列不裁决", nag["honest"])
+            self.assertEqual(len(nag["groups"]), 1)
+            g = nag["groups"][0]
+            self.assertEqual(g["sids"], ["dsh:s1", "dsh:s2"],
+                             "全库候选组按主题过滤但不丢组外成员（对账用）")
+            self.assertEqual(g["hit_sids"], ["dsh:s1"],
+                             "hit_sids 只列主题成员")
+            self.assertIn("记得", g["sample"]["preview"])
+            self.assertEqual(d["account"]["nags_groups"], 1)
+            self.assertEqual(d["account"]["nags_groups_all"], 1)
+
+    def test_nags_consistent_with_collect(self):
+        """与 P4-1 候选一致 = 全库 collect 按成员过滤（构造性）。"""
+        with tempfile.TemporaryDirectory() as td:
+            cfg, db, tid = _mk_env_nags(Path(td))
+            from actions.analysis import nags
+            con = sqlite3.connect("file:%s?mode=ro" % db.as_posix(), uri=True)
+            try:
+                all_res = nags.collect(con)
+            finally:
+                con.close()
+            d = dualtrack.build(cfg, tid, "coarse", {"rows": []})
+            self.assertEqual(d["account"]["nags_groups_all"],
+                             all_res["account"]["n_groups"])
+            in_topic = {(g["sample"]["sid"], g["sample"]["rowid"])
+                        for g in d["nags"]["groups"]}
+            mset = {"dsh:s1"}
+            expect = {(g["sample"]["sid"], g["sample"]["rowid"])
+                      for g in all_res["groups"] if mset & set(g["sids"])}
+            self.assertEqual(in_topic, expect)
+
+    def test_nags_honest_empty_without_hits(self):
+        """原夹具（T1/T2/反转句不含 NAG_WORDS）→ 诚实空态。"""
+        with tempfile.TemporaryDirectory() as td:
+            cfg, _db, tid = _mk_env(Path(td))
+            d = dualtrack.build(cfg, tid, "coarse", {"rows": []})
+            self.assertEqual(d["nags"]["groups"], [])
+            self.assertIn("只列不裁决", d["nags"]["honest"])
+
+    def test_nags_track_adds_no_write_sql(self):
+        src = Path(dualtrack.__file__).read_text(encoding="utf-8")
+        for bad in ("INSERT ", "UPDATE ", "DELETE ", "CREATE "):
+            self.assertNotIn(bad, src, "nags 轨道含写语句 %r" % bad)
 
 
 @unittest.skipIf(_ERR is not None, "上游 session-harvester 不在（%s）" % (_ERR,))

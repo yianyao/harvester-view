@@ -619,6 +619,19 @@ def _action_report_chains(cfg: Config, params: dict) -> dict:
     return _cli_report(argv)
 
 
+def _action_report_daily(cfg: Config, params: dict) -> dict:
+    """A 档：每日数据速览（`report-daily`，P5-⑤）。
+
+    只读聚合；直给版**绝不带 --out**（stdout 捕获即结果，不在服务端
+    落第二个文件——要落盘走 CLI 或 schedule 配方）。"""
+    argv = ["report-daily", "--db", str(cfg.db)]
+    if cfg.suggestions_meta:
+        argv += ["--meta", str(cfg.suggestions_meta)]
+    if params.get("since") is not None:
+        argv += ["--since", str(params["since"])]
+    return _cli_report(argv)
+
+
 def _action_report_skill(cfg: Config, params: dict) -> dict:
     """A 档：skill 行为画像（`report-skill`）。"""
     argv = ["report-skill", "--db", str(cfg.db)]
@@ -649,6 +662,15 @@ def _action_report_traces(cfg: Config, params: dict) -> dict:
 def _action_suppress_list(cfg: Config, params: dict) -> dict:
     """A 档：抑制表清单（`suppress list`；抑制表在 topics_meta.db）。"""
     return _cli_report(["suppress", "list",
+                        "--meta", str(_require_topics_meta(cfg))])
+
+
+def _action_noise_list(cfg: Config, params: dict) -> dict:
+    """A 档：零散登记清单（`noise list`；sessions_noise 在 topics_meta.db）。
+
+    P5-⑧（用户 2026-10-16 批准）的只读面：列出已判零散的会话（何时/为什么），
+    与抑制清单同款走进程内真 CLI、输出捕获。"""
+    return _cli_report(["noise", "list",
                         "--meta", str(_require_topics_meta(cfg))])
 
 
@@ -1076,6 +1098,29 @@ ACTIONS: dict[str, dict] = {
         "reversible": "幂等（只读抑制表）",
         "writes": "",
         "handler": _action_suppress_list,
+    },
+    "noise_list": {
+        "tier": "A",
+        "label": "零散登记清单",
+        "desc": "列出已登记零散的会话（noise list：谁/何时/为什么）；"
+                "登记≠抑制——只写 meta 表，会话数据一行不动。",
+        "params": {},
+        "est_sec": 1,
+        "reversible": "幂等（只读零散表）",
+        "writes": "",
+        "handler": _action_noise_list,
+    },
+    "report_daily": {
+        "tier": "A",
+        "label": "每日数据速览",
+        "desc": "四队列+tools/errors/chains 五段聚合（report-daily，只读）；"
+                "四队列与工作台同源，快照口径。",
+        "params": {"since": {"type": "days", "src": "chips", "default": 1.0,
+                             "label": "tools/errors/chains 窗口（天）"}},
+        "est_sec": 8,
+        "reversible": "幂等（只读聚合）",
+        "writes": "",
+        "handler": _action_report_daily,
     },
     "suppress_candidates": {
         "tier": "A",

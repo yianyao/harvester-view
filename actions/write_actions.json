@@ -57,6 +57,31 @@
    }
   },
   {
+   "action_id": "noise_register",
+   "cmd": "noise add",
+   "risk": "reversible",
+   "target": "topics_meta",
+   "summary": "把会话 {sids} 登记为**零散**（不归任何主题，不再进主题候选簇）",
+   "detail": "往 topics_meta 的 sessions_noise 表插幂等行：判「不归任何主题」的会话不再进主题候选簇（candidates / keywords）。**与抑制的本质区别**：这不删任何数据——会话仍在库、仍可检索，撤销=从 sessions_noise 删行即恢复（可逆）。已登记过的 sid 幂等跳过。",
+   "allow": [
+    "cmd",
+    "meta",
+    "sids",
+    "reason"
+   ],
+   "params": {
+    "sids": {
+     "map": "sids",
+     "required": true,
+     "label": "要登记零散的会话 sid（库口径 `source:session_id`；多个用逗号分隔）"
+    },
+    "reason": {
+     "map": "reason",
+     "label": "为什么判零散（写进零散表，供日后复查；可空）"
+    }
+   }
+  },
+  {
    "action_id": "suggest_status",
    "cmd": "suggest-status",
    "risk": "reversible",

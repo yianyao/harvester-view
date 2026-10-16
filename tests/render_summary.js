@@ -138,5 +138,16 @@ check("本体带整卡一键（__all__）",
 check("直给按钮恰好 2 个（行级 + 整卡，无重复注入）",
   hw.split("data-cracc=").length - 1 === 2);
 
+/* 8. V6 直给守卫（2026-10-16 真机实测踩中）：注册表懒加载必须先于
+   actionSpec 查询——刷新后直奔报告页点 [接受] 时 state.act 尚未拉取，
+   先查必空、直给必早退（渲染门盖不住加载顺序，用源码序断言钉住）。 */
+const bd = extract("bindCardDirect", "root");
+const iLoad = bd.indexOf("loadCmdData()");
+const iSpec = bd.indexOf('actionSpec("card_review")');
+check("bindCardDirect 懒加载注册表先于 actionSpec 查询",
+  iLoad > -1 && iSpec > -1 && iLoad < iSpec);
+check("bindCardDirect 懒加载失败仍有 banner 兜底（不静默）",
+  iSpec > -1 && bd.includes("if(!spec){showBanner"));
+
 if (failed) { console.error(failed + " check(s) failed"); process.exit(1); }
 console.log("ALL SUMMARY CHECKS PASSED");

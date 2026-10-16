@@ -911,8 +911,12 @@ def _card_review_keys(p: dict, cfg) -> tuple:
     card = root / f
     if not card.is_file():
         raise WriteError(f"卡片文件不存在: {card}")
-    db = Path(p["db"]) if p.get("db") else None
-    if db is not None and not db.is_file():
+    # 引文核对必须与展示层（/api/cards）同库同口径：不带索引库时
+    # evidence 类警告会退化成「原文不可得」，直给预演取键为空、
+    # 接受变 no-op（2026-10-16 真机实测踩中）。默认用本服务的
+    # 索引库（cfg.db，_session_content 对缺失库容错），显式传 db 仍可覆盖。
+    db = Path(p["db"]) if p.get("db") else Path(cfg.db)
+    if not db.is_file():
         db = None
     warns = _cr_current(card, db=db)
     # warn 归一：页面直给传单条字符串（V6），CLI 语义是可多次子串——

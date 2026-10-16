@@ -1818,7 +1818,16 @@ def make_handler(cfg: Config):
                            500)
                 return
             a_out = []
+            # cmd/subaction 以注册表为准（注册表唯一真相）：ACTIONS 代码
+            # 字典缺这两个键时，/api/actions 曾发空值 → 前端 cmdActionMap
+            # 首个声明者胜出 → B 档同名 cmd（chain_audit_accept 的
+            # cmd=chain-audit）劫持命令 chip，A 档审计从命令台不可达
+            # （2026-10-16 真机实测踩中：点 chain-audit「执行」直接弹
+            # B 档确认框）。A 档在列表前段，首个声明者恒为 A 档。
+            reg_a = {a["action_id"]: a
+                     for a in reg.get("read_actions") or []}
             for aid, spec in sorted(ACTIONS.items()):
+                ra = reg_a.get(aid) or {}
                 a_out.append({"action_id": aid, "tier": "A",
                               "label": spec["label"], "desc": spec.get("desc"),
                               "params": spec.get("params") or {},
@@ -1829,8 +1838,11 @@ def make_handler(cfg: Config):
                               # 2026-10-13 additive：A 档也带命令映射（
                               # topic_pack 这类子动作级动作靠它上页面映射表；
                               # 旧字段一个不少，旧前端多收两键无害）。
-                              "cmd": spec.get("cmd"),
-                              "subaction": spec.get("subaction")})
+                              "cmd": ra.get("cmd")
+                              if ra.get("cmd") is not None else spec.get("cmd"),
+                              "subaction": ra.get("subaction")
+                              if ra.get("subaction") is not None
+                              else spec.get("subaction")})
             b_out = [{"action_id": a["action_id"], "tier": a.get("tier", "B"),
                       "label": a.get("summary"), "desc": a.get("detail"),
                       "cmd": a.get("cmd"), "subaction": a.get("subaction"),

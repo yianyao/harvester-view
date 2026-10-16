@@ -9,7 +9,10 @@
 3. **预演无副作用**：plan 前后 reviews_meta 字节不变；
 4. **真落账**：execute 后 load_review_map 有行（verdict=accepted）；
 5. **渲染门**：render_summary.js 已覆盖本体渲染；警告行按钮由
-   render_review_direct.js 真执行断言（data-cracc/data-crfile 在位）。
+   render_review_direct.js 真执行断言（data-cracc/data-crfile 在位）；
+6. **evidence 警告复现**（2026-10-16 真机实测踩中）：预演不带 db 参数
+   时必须默认用 cfg.db 与展示层同库核引文——否则警告集不同、取键为空、
+   接受变 no-op。
 
 夹具：临时 cards 目录（卡片锚点指向不存在的 sid → 必产生锚点类警告），
 reviews_meta 用临时库；db 传真库路径（只读）。
@@ -48,10 +51,29 @@ created: 2026-10-16
 仅测试用。
 """
 
+CARD_EVIDENCE = """---
+id: kc-v62-evidence
+title: 引文未命中夹具卡
+type: pitfall
+anchors: [{session_id: "dsh:v62-fixture/session.v4.jsonl.zstd", turn: 1}]
+evidence: |
+  这句引文绝不会出现在锚点会话原文里。
+confidence: 0.5
+created: 2026-10-16
+---
+## 现象
 
-def _make_cfg(td: Path) -> AS.Config:
+引文核对未命中。
+
+## 做法
+
+仅测试用。
+"""
+
+
+def _make_cfg(td: Path, db: Path | None = None) -> AS.Config:
     return AS.Config(
-        db=UP / "harvester.db",
+        db=db or (UP / "harvester.db"),
         cards_root=td / "cards",
         glossary=td / "glossary.json",
         topics_meta=td / "topics_meta.db",
@@ -145,6 +167,39 @@ class CardReviewDirectTest(unittest.TestCase):
     def test_registry_params_declared(self):
         names = {p["name"] for p in self.spec["params"]}
         self.assertEqual(names, {"file", "verdict", "warn", "note", "by"})
+
+    def test_evidence_warning_reproduced_without_db_param(self):
+        """预演不带 db 参数也必须复现 evidence 类警告（2026-10-16 真机
+        实测踩中）：_card_review_keys 原先 db=None → 引文核对退化成
+        「原文不可得」→ 直给警告串匹配不上 → 取键空 → 接受变 no-op。
+        修后默认用 cfg.db（与展示层 /api/cards 同库同口径）。"""
+        import sqlite3
+        hdb = self.td / "h.db"
+        con = sqlite3.connect(hdb)
+        try:
+            con.executescript(
+                "CREATE TABLE sessions(sid TEXT PRIMARY KEY,"
+                " session_id TEXT);"
+                "CREATE TABLE messages(sid TEXT, raw TEXT, text TEXT);")
+            sid = "dsh:v62-fixture/session.v4.jsonl.zstd"
+            con.execute("INSERT INTO sessions VALUES (?,?)", (sid, sid))
+            con.execute("INSERT INTO messages VALUES (?,?,?)",
+                        (sid, None, "锚点会话的原文，与卡片引文毫无重叠。"))
+            con.commit()
+        finally:
+            con.close()  # 不 close 会让 Windows 的 cleanup 炸
+        (self.td / "cards" / "kc-v62-evidence.md").write_text(
+            CARD_EVIDENCE, encoding="utf-8")
+        from harvester.cards import _warn_key, card_current_warnings
+        cfg2 = _make_cfg(self.td, db=hdb)
+        warns = card_current_warnings(
+            self.td / "cards" / "kc-v62-evidence.md", db=hdb)
+        ev = [w for w in warns if w.startswith("evidence 第")]
+        self.assertTrue(ev, "夹具未触发 evidence 类警告（上游口径变了）")
+        # 修前：不带 db → 警告集不同 → keys=[]（no-op）；修后必须取到键
+        _, keys = WA._card_review_keys(
+            {"file": "kc-v62-evidence.md", "warn": ev[0]}, cfg2)
+        self.assertEqual(keys, [_warn_key(ev[0])])
 
 
 if __name__ == "__main__":

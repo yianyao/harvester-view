@@ -890,6 +890,11 @@ function bindCardAnchors(root){
 function bindCardDirect(root){
   for(const b of root.querySelectorAll("[data-cracc]"))
     b.onclick=async()=>{
+      /* 注册表懒加载必须先于查询（topicGoCmd 同款）：页面刷新后直奔报告页
+         点 [接受] 时 state.act 还没拉过，actionSpec 必空、直给必早退
+         （2026-10-16 真机实测踩中——渲染门盖不住加载顺序）。拉取失败时
+         spec 仍空，下面的 banner 照常兜底，不会静默。 */
+      if(!state.act.loaded)await loadCmdData().catch(()=>{});
       const spec=actionSpec("card_review");
       if(!spec){showBanner("warn","动作面没有 card_review"+
         "（注册表未更新或版本握手不匹配）");return;}

@@ -216,6 +216,29 @@ class ActionsServeTest(_ServerMixin, unittest.TestCase):
             if a["tier"] == "B":
                 self.assertIn(a["risk"], ("reversible", "destructive"))
                 self.assertTrue(a["target"])
+        # 命令映射不许被 B 档劫持（2026-10-16 真机实测踩中）：ACTIONS 代码
+        # 字典缺 cmd 时 /api/actions 曾发空 → 前端 cmdActionMap 首个声明者
+        # 胜出 → chain_audit_accept（B，cmd=chain-audit）抢走 chain-audit
+        # 命令，A 档审计从命令台不可达。规则：A 档条目必须带上注册表声明
+        # 的 cmd；同一 cmd 有多个声明者时列表首位必须是 A 档。
+        reg = AS.load_registry(self.cfg.registry_json)
+        reg_cmd = {a["action_id"]: a.get("cmd")
+                   for a in reg.get("read_actions") or []}
+        for a in d["actions"]:
+            if a["tier"] == "A" and reg_cmd.get(a["action_id"]):
+                self.assertEqual(a["cmd"], reg_cmd[a["action_id"]],
+                                 "A 档 %s 的 cmd 必须与注册表一致"
+                                 % a["action_id"])
+        first_by_cmd: dict = {}
+        for a in d["actions"]:
+            if a["cmd"]:
+                first_by_cmd.setdefault(a["cmd"], []).append(a)
+        for cmd, lst in first_by_cmd.items():
+            if not any(x["tier"] == "A" for x in lst):
+                continue  # 纯 B 档命令（cards review 等）走 B 档是设计行为
+            self.assertEqual(lst[0]["tier"], "A",
+                             "命令 %s 的首个声明者是 %s（B 档劫持了命令映射）"
+                             % (cmd, lst[0]["action_id"]))
 
     def test_run_report_errors_matches_upstream_numbers(self):
         """A 档动作必须与 /api/reports/errors **同源同数**（同函数）。"""

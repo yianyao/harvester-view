@@ -56,6 +56,38 @@
 **actions-serve 8766** + view 8088；P2 起 8766 由 `actions/actionsserve.py`
 承担，P1 的 viewserver.py 已归并进去，仍是**同一个端口、一个进程**）。
 
+## v0.76 直给真机实测三修（2026-10-16）
+
+批次二遗留的「直给按钮真机实测」（浏览器实点 V6/V7 两条 B 档直给链路）
+做完了，实测抓出**三个真 bug**（渲染门与单测都盖不住的三类盲区），逐个修：
+
+1. **V6 懒加载时序**（`static/index.html`）：刷新后直奔报告页点警告行
+   [接受]，`state.act` 还没拉过 → `actionSpec("card_review")` 必空 →
+   直给必早退（黄条「动作面没有 card_review」）。修：handler 先
+   `loadCmdData()`（与 `topicGoCmd` 同款懒加载前置），拉取失败仍有
+   banner 兜底、不静默。渲染门新增 2 条源码序断言（懒加载必须先于
+   actionSpec 查询）钉住；
+2. **V6 预演与展示层不同库口径**（`actions/writeactions.py`）：
+   `_card_review_keys` 原先不带索引库查当前警告 → evidence 类警告退化成
+   「原文不可得」→ 直给传来的完整警告串匹配不上 → 预演「将落账 0 条
+   警告键（no-op）」——人确认的是 A、落账的是空。修：默认用本服务索引库
+   （cfg.db，与 /api/cards 同库同口径；显式传 db 仍可覆盖）。
+   test_v62 新增真库夹具用例（修前必红）；
+3. **V7 命令被 B 档劫持**（`actions/actionsserve.py`）：/api/actions 的
+   A 档条目从 ACTIONS 代码字典取 cmd——chain_audit 代码字典没写 cmd →
+   下发空 → 前端 cmdActionMap 首个声明者胜出 → `chain_audit_accept`
+   （B 档，cmd=chain-audit）抢走 chain-audit 命令 → 命令台点 chain-audit
+   「执行」直接弹 B 档确认框，**A 档审计从命令台不可达**。修：cmd/subaction
+   以注册表 JSON 为准（注册表唯一真相）合并下发。test_v35 新增守卫：
+   A 档 cmd 必须与注册表一致 + 同 cmd 多声明者时首位必须是 A 档
+   （纯 B 档命令如 cards review 不受影响）。
+
+终验（浏览器真机两轮 + 服务端台账对账）：V6 警告行 [接受] → 自动切命令台
+→ 预演「将落账 1 条警告键」逐行可核 → 取消零写入；V7 chain-audit →
+真审计报告（引文逐字门）→ 直给区块 7 按钮（6 行级 + 全部接受）→ 行级
+[接受] 预演恰列 1 条锚点键 → 取消零写入。台账口径：全程 writes=0，
+preview 留痕符合设计。套件 316 OK / 渲染门 16 检查全绿。
+
 ## v0.35 新增（P2 打通层，2026-10-12）
 
 - **actions-serve（`actions/actionsserve.py`，8766）**：本仓唯一的动作面，

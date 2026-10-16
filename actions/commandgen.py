@@ -111,6 +111,8 @@ COMMAND_CARD: dict[str, str] = {
     "topic": "topic", "chain-validate": "topic", "chain-audit": "topic",
     "artifacts": "artifacts",
     "cards": "kb", "cards validate": "kb", "cards new": "kb",
+    # v0.74 卡片复核台账（上游）：人裁过的警告不再显示——写 cards_meta.db → B
+    "cards review": "kb",
     "kb-init": "kb", "kb-stats": "kb",
     # v0.66 正本→镜像发布（用户裁决：正本随项目走，WorkBuddy 位只作镜像）。
     # 档位在 TIER_OVERRIDE 定为 B（写镜像位文件，仓外写→两段提交；幂等不删）。
@@ -134,6 +136,8 @@ TIER_OVERRIDE: dict[str, str] = {
     "suggest-agents": "B", "suggest-status": "B", "ledger-sync": "B",
     "topic": "B", "topic-consolidate": "B", "artifacts": "B",
     "kb-init": "B", "cards new": "B",
+    # v0.74 卡片复核落账：写 cards_meta.db → B（UPSERT 可改判，非破坏性）
+    "cards review": "B",
     # v0.66 kb-publish：写镜像位文件（仓外写）→ B；幂等、不删镜像文件
     "kb-publish": "B",
     # 长驻/需人亲手登录 → C（永不执行）

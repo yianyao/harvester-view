@@ -12,6 +12,7 @@
   "suggestions_meta": "suggestions_meta.db（建议池状态与人账）",
   "topics_meta": "topics_meta.db（主题注册表）",
   "keywords_meta": "keywords_meta.db（n-gram 统计累积表）",
+  "cards_meta": "cards_meta.db（卡片复核台账：人裁过的不许再烦人，v0.74）",
   "repo_files": "主库仓内工作文件（建议池 agents_suggestions.md / 蒸馏包 docs/distill_prompts/*.md；覆盖前自动备份，不碰库与 AGENTS.md）"
  },
  "cards": [
@@ -316,6 +317,88 @@
   }
  ],
  "write_actions": [
+  {
+   "action_id": "card_review",
+   "tier": "B",
+   "cmd": "cards review",
+   "subaction": null,
+   "risk": "reversible",
+   "target": "cards_meta",
+   "summary": "把卡片 {file} 的当前警告裁决落账（{verdict}）",
+   "detail": "写 cards_meta.db 的 card_review 表（键=文件名+数字归一警告，UPSERT 改判即重开）。**不碰卡片文件本身**、不碰任何采集库；裁决后 cards validate / view 卡片页不再显示这些警告（--show-review 可连同显示）。",
+   "params": [
+    {
+     "name": "file",
+     "dest": "file",
+     "arg": "--file",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "卡片文件名（相对卡片库根，如 kc-20261006-0002-card.md）"
+    },
+    {
+     "name": "verdict",
+     "dest": "verdict",
+     "arg": "--verdict",
+     "kind": "enum",
+     "src": "none",
+     "server": false,
+     "required": true,
+     "choices": [
+      "accepted",
+      "fixed"
+     ],
+     "default": "accepted",
+     "note": null,
+     "label": "裁决：accepted=接受（综述/误报，不再显示）；fixed=已按修复处理"
+    },
+    {
+     "name": "note",
+     "dest": "note",
+     "arg": "--note",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "裁决说明（写进台账，供日后复查）"
+    },
+    {
+     "name": "by",
+     "dest": "by",
+     "arg": "--by",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "谁裁决的（写进台账；缺省留空不猜身份）"
+    },
+    {
+     "name": "warn",
+     "dest": "warn",
+     "arg": "--warn",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "只裁决包含该子串的警告（可多次；缺省=整卡当前警告一言而决）"
+    }
+   ],
+   "writes": "cards_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  },
   {
    "action_id": "draft_pack",
    "tier": "B",
@@ -913,8 +996,8 @@
  "counts": {
   "cards": 13,
   "read_actions": 31,
-  "write_actions": 13,
-  "write_reversible": 10,
+  "write_actions": 14,
+  "write_reversible": 11,
   "write_destructive": 3
  }
 }

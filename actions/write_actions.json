@@ -374,6 +374,47 @@
      "label": "会话原文截断预算（字符数）"
     }
    }
+  },
+  {
+   "action_id": "card_review",
+   "cmd": "cards review",
+   "risk": "reversible",
+   "target": "cards_meta",
+   "summary": "把卡片 {file} 的当前警告裁决落账（{verdict}）",
+   "detail": "写 cards_meta.db 的 card_review 表（键=文件名+数字归一警告，UPSERT 改判即重开）。**不碰卡片文件本身**、不碰任何采集库；裁决后 cards validate / view 卡片页不再显示这些警告（--show-review 可连同显示）。",
+   "allow": [
+    "file",
+    "warn",
+    "verdict",
+    "note",
+    "by",
+    "root",
+    "db"
+   ],
+   "params": {
+    "file": {
+     "map": "file",
+     "required": true,
+     "label": "卡片文件名（相对卡片库根，如 kc-20261006-0002-card.md）"
+    },
+    "verdict": {
+     "map": "verdict",
+     "required": true,
+     "label": "裁决：accepted=接受（综述/误报，不再显示）；fixed=已按修复处理"
+    },
+    "note": {
+     "map": "note",
+     "label": "裁决说明（写进台账，供日后复查）"
+    },
+    "by": {
+     "map": "by",
+     "label": "谁裁决的（写进台账；缺省留空不猜身份）"
+    },
+    "warn": {
+     "map": "warn",
+     "label": "只裁决包含该子串的警告（可多次；缺省=整卡当前警告一言而决）"
+    }
+   }
   }
  ]
 }

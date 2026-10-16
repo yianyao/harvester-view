@@ -122,7 +122,8 @@ class Config:
                  commands_json: Path | None = None,
                  corpus_watermark: bool = False,
                  registry_json: Path | None = None,
-                 actions_meta: Path | None = None):
+                 actions_meta: Path | None = None,
+                 reviews_meta: Path | None = None):
         self.db = Path(db)
         self.cards_root = Path(cards_root)
         self.glossary = Path(glossary)
@@ -138,6 +139,8 @@ class Config:
         #: 动作注册表（P3-1）与动作台账库（P3-2）
         self.registry_json = Path(registry_json or DEFAULT_REGISTRY_JSON)
         self.actions_meta = Path(actions_meta or DEFAULT_ACTIONS_META)
+        self.reviews_meta = (Path(reviews_meta) if reviews_meta
+                             else None)
         #: 是否在 timeline 端点里附带库龄判定（`stale`）。缺省 **关**：
         #: 它要扫一遍语料盘（实测 0.08 s，但盘在网络上/语料巨大时会变慢），
         #: P2-3 的验收是"无 chain 主题也能看时间线"，不该被库龄判定拖住。
@@ -2111,6 +2114,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="动作注册表（P3-1 生成物；执行器只认它）")
     ap.add_argument("--actions-meta", default=str(DEFAULT_ACTIONS_META),
                     help="动作台账库（P3-2）：action_runs/write_records/confirms")
+    ap.add_argument("--reviews-meta", default=None,
+                    help="卡片复核台账（B 档动作 card_review 写它；"
+                         "缺省=<db 同目录>/cards_meta.db）")
     ap.add_argument("--corpus-watermark", action="store_true",
                     help="在 timeline 端点附带库龄判定（要扫一遍语料盘；"
                          "缺省关，见 Config.want_watermark 注释）")
@@ -2134,7 +2140,10 @@ def config_from_args(args) -> Config:
                   commands_json=Path(args.commands_json),
                   corpus_watermark=getattr(args, "corpus_watermark", False),
                   registry_json=Path(args.registry_json),
-                  actions_meta=Path(args.actions_meta))
+                  actions_meta=Path(args.actions_meta),
+                  reviews_meta=(Path(args.reviews_meta)
+                               if getattr(args, "reviews_meta", None)
+                               else (db.parent / "cards_meta.db")))
 
 
 def serve(cfg: Config, host: str = "127.0.0.1",

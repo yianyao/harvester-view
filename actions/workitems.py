@@ -756,10 +756,13 @@ CARD_VALIDATE_NOTE = (
 
 #: 发布镜像命令的说明（v0.66：正本/镜像架构的操作口）。
 CARD_PUBLISH_NOTE = (
-    "把项目正本（仓内 knowledge\\ 的 cards+topics）单向复制到 WorkBuddy "
-    "知识库镜像位：只喂不收（镜像里正本没有的文件不删）、正本没变时重跑="
-    "零复制。什么时候跑：正本新增/修改了卡片或 chain，想让 WorkBuddy "
-    "资料库界面看到时。迁移到新机后跑一次即可让主程序看到全部知识。")
+    "把项目正本（仓内 knowledge\\ 的 cards+topics）单向**投递**给 WorkBuddy "
+    "主程序——它只认自家目录，是四个消费者里唯一需要文件镜像的"
+    "（view/Agent/第三方直读正本或走 API/MCP，不经本命令）。"
+    "正本在项目里=唯一权威，随项目迁移；镜像只喂不收（镜像里正本没有的"
+    "文件不删）、正本没变时重跑=零复制，删了镜像重跑即可重建。"
+    "什么时候跑：正本新增/修改了卡片或 chain，想让 WorkBuddy 资料库界面"
+    "看到时。迁移到新机后跑一次即可让主程序看到全部知识。")
 
 
 def _publish_cli() -> str:
@@ -915,7 +918,7 @@ def _targets_all(g) -> list[dict]:
          "package": [c for c in [_cmd(
              "校验卡片目录", CARD_VALIDATE_NOTE,
              cli=_cards_cli(g)),
-             _cmd("发布镜像到 WorkBuddy 知识库", CARD_PUBLISH_NOTE,
+             _cmd("投递镜像给 WorkBuddy 主程序", CARD_PUBLISH_NOTE,
                   cli=_publish_cli())] if c],
          "metrics": [_metric("cards", "待做卡片数", "items")],
          "primary": "cards", "items": cardsp},
@@ -1074,7 +1077,7 @@ def _targets_all(g) -> list[dict]:
                        "复核接受警告不减一（警告保留是诚实标注）。",
          "package": [_cmd("校验卡片目录", CARD_VALIDATE_NOTE,
                           cli=_cards_cli(g)),
-                    _cmd("发布镜像到 WorkBuddy 知识库", CARD_PUBLISH_NOTE,
+                    _cmd("投递镜像给 WorkBuddy 主程序", CARD_PUBLISH_NOTE,
                          cli=_publish_cli())],
          "metrics": [_metric("cards", "待确认卡片数", "items")],
          "primary": "cards", "items": cards},

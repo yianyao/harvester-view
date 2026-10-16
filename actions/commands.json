@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "adapter_version": "0.46.0",
+ "adapter_version": "0.75.0",
  "kind": "harvester-view 命令注册表（静态；由真实 argparse 生成）",
  "generated_by": "actions/commandgen.py（python -m actions.commandgen）",
  "hint": "命令名/参数/默认值是事实（走 harvester.cli.build_parser 生成）；src=参数数据源、tier=三档权限是人写的产品判断。页面凡 src 指向端点者一律渲染成选择器，不给人输框。",
@@ -315,6 +315,18 @@
      "negates": null,
      "help": "关键词 meta 库路径（可选；启用 /api/keywords）",
      "note": null
+    },
+    {
+     "name": "--reviews-meta",
+     "dest": "reviews_meta",
+     "kind": "str",
+     "default": "cards_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "卡片复核台账 meta 库（/api/cards 据此隐去已裁决警告；库不存在=零感知。人裁过的不许再烦人）",
+     "note": null
     }
    ],
    "subactions": null,
@@ -475,6 +487,127 @@
    "nested": false
   },
   {
+   "cmd": "cards review",
+   "card_id": "kb",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--list",
+     "dest": "list",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "列出台账明细（不需 --root）",
+     "note": null
+    },
+    {
+     "name": "--file",
+     "dest": "file",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "卡片文件名（相对 --root；缺省 --warn 时=整卡当前警告一言而决）",
+     "note": null
+    },
+    {
+     "name": "--root",
+     "dest": "root",
+     "kind": "str",
+     "default": ".",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "卡片库根目录（定位 --file 用）",
+     "note": null
+    },
+    {
+     "name": "--warn",
+     "dest": "warn",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "只裁决包含该子串的警告（可多次；缺省=整卡当前警告）",
+     "note": null
+    },
+    {
+     "name": "--verdict",
+     "dest": "verdict",
+     "kind": "enum",
+     "default": "accepted",
+     "required": false,
+     "choices": [
+      "accepted",
+      "fixed"
+     ],
+     "src": "none",
+     "negates": null,
+     "help": "accepted=接受（综述/误报）；fixed=已按修复处理（默认 accepted；两者都不再烦人，要重开用改判）",
+     "note": null
+    },
+    {
+     "name": "--note",
+     "dest": "note",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "裁决说明（写进台账）",
+     "note": null
+    },
+    {
+     "name": "--by",
+     "dest": "by",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "谁裁决的（写进台账；缺省不猜身份）",
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径（计算当前警告用；缺省 harvester.db）",
+     "note": null
+    },
+    {
+     "name": "--reviews-meta",
+     "dest": "reviews_meta",
+     "kind": "str",
+     "default": "cards_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "复核台账 meta 库",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
    "cmd": "cards validate",
    "card_id": "kb",
    "tier": "A",
@@ -513,6 +646,30 @@
      "src": "server",
      "negates": null,
      "help": "主题注册表 topics_meta.db（可选；给定时追加「卡片声明主题 ↔ 注册表成员资格」一致性核对，缺省不做该检查，行为与旧版一致）",
+     "note": null
+    },
+    {
+     "name": "--reviews-meta",
+     "dest": "reviews_meta",
+     "kind": "str",
+     "default": "cards_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "复核台账 meta 库（默认 cards_meta.db；库/表不存在=零感知。人已裁决的警告不再显示——人裁过的不许再烦人）",
+     "note": null
+    },
+    {
+     "name": "--show-review",
+     "dest": "show_review",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "连同已裁决警告一起显示（复核留痕用）",
      "note": null
     },
     {
@@ -619,6 +776,66 @@
      "src": "chips",
      "negates": null,
      "help": "各区块明细最多列几条；0 = 不限（默认 20，超出会显式印「另有 N 条」）",
+     "note": null
+    },
+    {
+     "name": "--reviews-meta",
+     "dest": "reviews_meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "复核台账（存 topics_meta.db 的 audit_review 表；库/表不存在=零感知。已裁决节点不再列入疑似错配）",
+     "note": null
+    },
+    {
+     "name": "--show-review",
+     "dest": "show_review",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "连同已裁决节点一起显示",
+     "note": null
+    },
+    {
+     "name": "--accept",
+     "dest": "accept",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "一言而决：把该节点的语义门告警落账为 accepted（可多次），随后审计即不再显示",
+     "note": null
+    },
+    {
+     "name": "--accept-note",
+     "dest": "accept_note",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "--accept 的裁决说明",
+     "note": null
+    },
+    {
+     "name": "--review-list",
+     "dest": "review_list",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "列出该 chain 的复核台账后退出",
      "note": null
     },
     {
@@ -1075,7 +1292,7 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": "前后窗口天数（默认 14）",
+     "help": "前后窗口天数（默认 %(default)s）",
      "note": null
     },
     {

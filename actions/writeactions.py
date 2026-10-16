@@ -34,8 +34,12 @@ _ERR = ensure_harvester_importable()
 if _ERR is None:  # pragma: no cover - 缺上游时由调用方报 503
     from harvester import suggestmeta as _sm
     from harvester import topics as _tp
+    from harvester.cards import (card_current_warnings as _cr_current,
+                                 record_review as _cr_record,
+                                 _warn_key as _cr_key)
 else:  # pragma: no cover
     _sm = _tp = None
+    _cr_current = _cr_record = _cr_key = None
 
 
 class WriteError(Exception):
@@ -888,6 +892,69 @@ def _exec_draft(p: dict, cfg) -> dict:
 
 #: action_id → (plan, execute)。**这张表就是 B 档的"实现白名单"**：
 #: `actions_registry.json` 声明了什么，这里必须一一对上（有测试比对）。
+# ---------- 卡片复核台账（v0.75，上游 v0.74 的 view 直给）----------
+
+def _cards_reviews_meta(cfg) -> Path:
+    if not getattr(cfg, "reviews_meta", None):
+        raise WriteError("未配置 reviews_meta（起服时加 --reviews-meta）")
+    return Path(cfg.reviews_meta)
+
+
+def _card_review_keys(p: dict, cfg) -> tuple:
+    """预演/执行共用的取键逻辑（同一真源，不算两套）。"""
+    root = Path(p.get("root") or cfg.cards_root)
+    f = str(p["file"])
+    card = root / f
+    if not card.is_file():
+        raise WriteError(f"卡片文件不存在: {card}")
+    db = Path(p["db"]) if p.get("db") else None
+    if db is not None and not db.is_file():
+        db = None
+    warns = _cr_current(card, db=db)
+    sub = tuple(p.get("warn") or [])
+    if sub:
+        warns = [w for w in warns if any(s in w for s in sub)]
+    keys = sorted({_cr_key(w) for w in warns})
+    return f, keys
+
+
+def _plan_card_review(p: dict, cfg) -> dict:
+    """预演：列出该卡当前警告与将落账的键（只读，无副作用）。"""
+    meta = _cards_reviews_meta(cfg)
+    f, keys = _card_review_keys(p, cfg)
+    verdict = p.get("verdict") or "accepted"
+    human = [f"动作：卡片复核落账——{f}",
+             f"裁决：**{verdict}**（accepted=接受不再显示；fixed=已按修复处理；"
+             "重开用改判 UPSERT）",
+             f"目标：{meta}（card_review 表；不碰卡片文件、不碰任何库数据）",
+             f"将落账 {len(keys)} 条警告键："]
+    human += [f"  - {k[:90]}" for k in keys[:8]]
+    if len(keys) > 8:
+        human.append(f"  - …另有 {len(keys) - 8} 条")
+    if not keys:
+        human.append("（该卡当前没有可裁决的警告——执行为 no-op）")
+    return {"target_path": str(meta),
+            "before": {"card": f},
+            "after": {"recorded": len(keys), "verdict": verdict},
+            "snapshot": None,
+            "limits": ["预演列的是当前警告；执行时若卡片已改，按届时警告取键"
+                       "（卡片文件不在两段指纹保护内）"],
+            "human": human,
+            "noop": not keys}
+
+
+def _exec_card_review(p: dict, cfg) -> dict:
+    meta = _cards_reviews_meta(cfg)
+    f, keys = _card_review_keys(p, cfg)
+    verdict = p.get("verdict") or "accepted"
+    n = _cr_record(meta, f, keys, verdict=verdict,
+                   note=p.get("note") or "",
+                   reviewed_by=p.get("created_by") or "")
+    return {"recorded": n, "card": f, "verdict": verdict,
+            "summary": f"已落账 {n} 条裁决（{verdict}）；"
+                       "重跑 cards validate / 刷新卡片页即不再显示"}
+
+
 WRITE_ACTIONS: dict[str, dict] = {
     "session_suppress": {"plan": _plan_session_suppress,
                          "execute": _exec_session_suppress},
@@ -895,6 +962,8 @@ WRITE_ACTIONS: dict[str, dict] = {
                            "execute": _exec_session_unsuppress},
     "suggest_status": {"plan": _plan_suggest_status,
                        "execute": _exec_suggest_status},
+    "card_review": {"plan": _plan_card_review,
+                    "execute": _exec_card_review},
     "topic_register": {"plan": _plan_topic_register,
                        "execute": lambda p, c: _exec_topic({**p, "__kind": "register"}, c)},
     "topic_add": {"plan": _plan_topic_add,

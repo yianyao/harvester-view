@@ -882,6 +882,24 @@ function bindCardAnchors(root){
   for(const a of root.querySelectorAll(".card-body a.anchor"))
     a.onclick=()=>gotoTopicAnchor(a.dataset.sid,Number(a.dataset.turn||0));
 }
+/* v0.76 V6 直给：警告行 [接受] / 本体 [接受整卡] → card_review 预演。
+   warn 传完整警告文本（后端按子串匹配，完整串=精确那一行）；
+   落账走 B 档两段提交，直给的只是填参——确认仍由人在预演框里做。
+   绑定点是 renderCards 输出（#rep-out）——不是 #job-out（V7 的
+   审计 [接受] 才在那里）。 */
+function bindCardDirect(root){
+  for(const b of root.querySelectorAll("[data-cracc]"))
+    b.onclick=async()=>{
+      const spec=actionSpec("card_review");
+      if(!spec){showBanner("warn","动作面没有 card_review"+
+        "（注册表未更新或版本握手不匹配）");return;}
+      const all=b.dataset.cracc==="__all__";
+      const params={file:b.dataset.crfile||"",verdict:"accepted",note:""};
+      if(!all)params.warn=b.dataset.cracc;
+      await openInCmd("card_review",params);
+      await runWriteAction(spec,null);
+    };
+}
 
 /* ---------- API 访问（经本地代理） ---------- */
 async function api(path){
@@ -1940,6 +1958,9 @@ function renderCards(d,out){
     :"全部卡片满足 §8 规范，可并入主库。")+"</p>";
   out.innerHTML=html;
   bindCardAnchors(out);
+  /* V6 直给绑定：按钮在 renderCards 输出里（#rep-out），每次渲染后重绑；
+     typeof 守卫——渲染门 stub 环境缺该全局时不至于崩（displayPath 同款）。 */
+  if(typeof bindCardDirect==="function")bindCardDirect(out);
 }
 
 /* ---------- Tab 5: 主题（T3-5，数据驱动） ---------- */
@@ -3488,18 +3509,9 @@ function jobResultHtml(job){
         await runWriteAction(spec,null);
       };
     /* V6 直给：警告行 [接受] / 本体 [接受整卡] → card_review 预演。
-       warn 传完整警告文本（后端按子串匹配，完整串=精确那一行）。 */
-    for(const b of el.querySelectorAll("[data-cracc]"))
-      b.onclick=async()=>{
-        const spec=actionSpec("card_review");
-        if(!spec){showBanner("warn","动作面没有 card_review"+
-          "（注册表未更新或版本握手不匹配）");return;}
-        const all=b.dataset.cracc==="__all__";
-        const params={file:b.dataset.crfile||"",verdict:"accepted",note:""};
-        if(!all)params.warn=b.dataset.cracc;
-        await openInCmd("card_review",params);
-        await runWriteAction(spec,null);
-      };
+       warn 传完整警告文本（后端按子串匹配，完整串=精确那一行）。
+       注意绑定点：这些按钮在 renderCards 输出（#rep-out），
+       由 bindCardDirect 在 renderCards 末尾绑定——不在这里（#job-out）。 */
   },0);
   return h;
 }

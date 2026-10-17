@@ -117,7 +117,11 @@ def _mk_index_db_nags(db: Path) -> None:
             ("s1", [T1, T2, nag]),
             ("s2", [T1, nag]),
         ):
-            msgs = [Message(role="user", text=t) for t in turns]
+            # ts 必须有值：真实库 messages.ts 逐条都有（adapter 落库），
+            # nags 样例的 ts 是一跳原文的精确锚点（v0.78）
+            msgs = [Message(role="user", text=t,
+                            timestamp="2026-10-01 10:%02d:00" % i)
+                    for i, t in enumerate(turns)]
             index_session(con, SessionRecord(
                 source="dsh", session_id=sid, title="会话" + sid,
                 created_at="2026-10-01 10:00:0" + sid[-1],
@@ -264,6 +268,8 @@ class TestDualTrackNags(unittest.TestCase):
             self.assertEqual(g["hit_sids"], ["dsh:s1"],
                              "hit_sids 只列主题成员")
             self.assertIn("记得", g["sample"]["preview"])
+            self.assertTrue(g["sample"].get("ts"),
+                            "样例自带 ts（双轨候选一跳原文的精确锚点）")
             self.assertEqual(d["account"]["nags_groups"], 1)
             self.assertEqual(d["account"]["nags_groups_all"], 1)
 

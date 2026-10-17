@@ -89,6 +89,8 @@ class TestNagsCollect(unittest.TestCase):
         self.assertEqual(len(g2[0]["sids"]), 2)
         self.assertEqual(g2[0]["n"], 2)
         self.assertTrue(all(m["rowid"] > 0 for m in g2[0]["members"]))
+        self.assertTrue(g2[0]["sample"].get("ts"),
+                        "样例自带 ts（双轨候选一跳原文的精确锚点，v0.78）")
         # 注入+正文轮：剥注入后参与命中（"注意"在词表里）
         g1 = [g for g in r["groups"] if "更新文档" in g["sample"]["preview"]]
         self.assertEqual(len(g1), 1)

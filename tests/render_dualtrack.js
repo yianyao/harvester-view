@@ -12,7 +12,10 @@
  *  ④ 数字皆门：主题内候选数与全库口径（band_all/turn_hits_all）并列渲染；
  *  ⑤ 诚实空态：artifacts 未配置/无记录时渲染 hint，不装作有数据；
  *  ⑥ level 兜底：选择器不在 coarse/mid 时 dualtrackLevel() 返回 coarse；
- *  ⑦ 作业链路真跑：runDualtrack → 入队 → 轮询 queued → 完成后渲染结果。
+ *  ⑦ 作业链路真跑：runDualtrack → 入队 → 轮询 queued → 完成后渲染结果；
+ *  ⑧ ts 精确锚点一跳原文（v0.78）：mid 行/打磨带前轮后轮/反转点本轮前轮/
+ *     nags 样例透传 data-dt-ts，bindDualtrackJumps 带 ts 走 gotoAnchorTs
+ *     （ts→回合首条消息前缀匹配→openTurn），扫不到诚实横幅留会话级。
  */
 const fs = require("fs");
 const path = require("path");
@@ -59,7 +62,16 @@ function switchTab(n) { tabCalls.push(n); }
 const tabCalls = [];
 const opened = [];
 function openTopic(id) { opened.push(["topic", id]); return Promise.resolve(); }
-function openSession(sid) { opened.push(["session", sid]); return Promise.resolve({}); }
+/* gotoAnchorTs 真函数连着的桩：openSession 返回带回合列表（回合 ts=首条
+   消息 ts，apiserve 口径），openTurn 记调用供断言 */
+const SESS = { turns: [
+  { no: 1, ts: "2026-10-13T09:00:00" },
+  { no: 2, ts: "2026-10-13T10:00:00" },
+] };
+function openSession(sid) { opened.push(["session", sid]); return Promise.resolve(SESS); }
+const turnCalls = [];
+function openTurn(sid, no, hitIdx) { turnCalls.push([sid, no, hitIdx]); return Promise.resolve(); }
+function shortSid(s) { return String(s).slice(0, 8); }
 const state = { topicCur: { id: "t-fix" }, anchorRun: 0, dualJob: null };
 
 /* ---- 动作面桩：runDualtrack 入队 → pollDualJob 轮询两拍 ---- */
@@ -78,7 +90,10 @@ eval(extract("packLevel", ""));
 eval(extract("dualtrackLevel", ""));
 eval(extract("runDualtrack", ""));
 eval(extract("pollDualJob", "jid"));
-eval(extract("renderDualtrack", "d,out"));
+eval(extract("bindDualtrackJumps", "out"));
+eval(extract("gotoAnchorTs", "sid,ts"));
+const rdSrc = extract("renderDualtrack", "d,out");
+eval(rdSrc);
 
 /* ---- 夹具：与 dualtrack.build 的输出形状一致 ---- */
 const FIXTURE = {
@@ -93,13 +108,15 @@ const FIXTURE = {
     thresholds: { band: 0.9 },
     band: [
       { sid: "s-a", rowid_a: 11, rowid_b: 12, jaccard: 0.93,
-        a: { preview: "前轮原文A" }, b: { preview: "后轮原文B" } },
+        a: { ts: "2026-10-13T09:00:00", preview: "前轮原文A" },
+        b: { ts: "2026-10-13T09:05:00", preview: "后轮原文B" } },
     ],
     turn_hits: [
       { sid: "s-b", rowid: 21, word: "不对", head: "不对，换成另一版开头",
-        cur: { preview: "本轮原文" }, prev: { preview: "前轮原文" } },
+        cur: { ts: "2026-10-13T10:00:00", preview: "本轮原文" },
+        prev: { ts: "2026-10-13T09:55:00", preview: "前轮原文" } },
       { sid: "s-b", rowid: 22, word: "不对", head: "不对，重来",
-        cur: { preview: "本轮原文2" }, prev: null },
+        cur: { ts: "2026-10-13T10:30:00", preview: "本轮原文2" }, prev: null },
     ],
     account_all: { band: 9, turn_hits: 17 },
     honest: "打磨 vs 反转由人甄别（候选非结论）；预览超 800 字符截断",
@@ -115,7 +132,8 @@ const FIXTURE = {
                n_lane: 332, n_hits: 9, n_template_groups: 1, n_groups: 4 },
     groups: [
       { n: 3, sids: ["s-a", "s-b", "s-c"], hit_sids: ["s-a", "s-b"],
-        sample: { sid: "s-a", rowid: 5, preview: "记得收尾文件写完再退出" } },
+        sample: { sid: "s-a", rowid: 5, ts: "2026-10-12T08:00:00",
+                  preview: "记得收尾文件写完再退出" } },
     ],
     honest: "口径=过滤版探针 v2（剥注入/剥过短/剥长粘贴/剥模板/相似归并，"
           + "nags.py 冻结常量）；候选只列不裁决，归宿由人定（P4-2 建议池）",
@@ -124,6 +142,14 @@ const FIXTURE = {
              turn_hits_all: 17, artifact_files: 1, artifact_versions: 2,
              nags_groups: 1, nags_groups_all: 4 },
 };
+
+/* mid 档同款视图：讨论行带行级 ts（一跳原文锚），其余段落复用 coarse 形状 */
+const FIXTURE_MID = Object.assign({}, FIXTURE, {
+  timeline: { level: "mid", members: 3, rows: [
+    { sid: "s-a", ts: "2026-10-13T11:00:00", text: "用户原话甲" },
+    { sid: "s-b", ts: "", text: "无 ts 的行" },
+  ] },
+});
 
 async function main() {
   /* ⑥ level 兜底（v0.74：下拉已删 chain/fine/artifact，只留可直接跑的
@@ -204,6 +230,52 @@ async function main() {
     FIXTURE.nags, { groups: [] }) }), out5);
   ok(out5.innerHTML.includes("没有跨 ≥2 会话的非模板叮嘱"),
      "⑧ 无命中 → 诚实空态（不装作有候选）");
+
+  /* ⑨ ts 精确锚点一跳原文（v0.78）：候选锚点透传 data-dt-ts，
+     bindDualtrackJumps 带 ts 走 gotoAnchorTs（ts→回合前缀匹配→openTurn），
+     扫不到诚实横幅留会话级（不静默降级到猜行号） */
+  eq((h.match(/data-dt-ts=/g) || []).length, 6,
+     "⑨ coarse 渲染透传 6 处 data-dt-ts（打磨带 a/b 2 + 反转点 cur×2/prev" +
+     "×1 3 + 反复叮嘱样例 1）");
+  ok(h.includes('data-dt-sid="s-a" data-dt-ts="2026-10-12T08:00:00"'),
+     "⑨ 反复叮嘱样例预览锚点自带 ts（一跳原文可精确到回合）");
+  eq((h.match(/→ 原文/g) || []).length, 5,
+     "⑨ 打磨带/反转点带「→ 原文」跳转锚（prev=null 不渲染）");
+  const outM = mkEl();
+  renderDualtrack(FIXTURE_MID, outM);
+  const hM = outM.innerHTML;
+  eq((hM.match(/data-dt-ts=/g) || []).length, 7,
+     "⑨ mid 渲染：行级 ts 透传（6 处候选锚 + 1 处讨论行）");
+  ok(hM.includes('data-dt-sid="s-a" data-dt-ts="2026-10-13T11:00:00"'),
+     "⑨ mid 讨论行带 data-dt-ts，点击直达该条原话所在回合");
+  ok(hM.includes("用户原话甲"), "⑨ mid 行渲染原话文本");
+  const turnBefore = turnCalls.length;
+  const eJump = { dataset: { dtSid: "s-a", dtTs: "2026-10-13T10:00:00" } };
+  const ePlain = { dataset: { dtSid: "s-b" } };
+  bindDualtrackJumps({ querySelectorAll: (sel) =>
+    sel === "[data-dt-sid]" ? [eJump, ePlain] : [] });
+  ok(typeof eJump.onclick === "function" && typeof ePlain.onclick === "function",
+     "⑨ bindDualtrackJumps 给每只 [data-dt-sid] 锚点绑 onclick");
+  eJump.onclick();
+  await new Promise(r => setTimeout(r, 0));
+  eq(turnCalls.length, turnBefore + 1, "⑨ 带 ts 点击 → gotoAnchorTs 精确开回合");
+  eq(turnCalls[turnCalls.length - 1][0], "s-a", "⑨ gotoAnchorTs 收到候选 sid");
+  eq(turnCalls[turnCalls.length - 1][1], 2,
+     "⑨ ts=10:00 前缀匹配到回合 #2（回合 ts=首条消息 ts 口径）");
+  ePlain.onclick();
+  await new Promise(r => setTimeout(r, 0));
+  ok(opened[opened.length - 1][0] === "session" &&
+     opened[opened.length - 1][1] === "s-b" &&
+     turnCalls.length === turnBefore + 1,
+     "⑨ 无 ts 点击 → 只开会话，不猜行号");
+  const bBefore = banners.length;
+  await gotoAnchorTs("s-a", "2026-10-13T07:59:59");
+  ok(banners.length > bBefore && banners[banners.length - 1][0] === "warn" &&
+     banners[banners.length - 1][1].includes("人工定位") &&
+     turnCalls.length === turnBefore + 1,
+     "⑨ ts 扫不到回合 → 诚实横幅指人工定位，会话仍开着（不静默）");
+  ok(rdSrc.includes("bindDualtrackJumps(out)"),
+     "⑨ renderDualtrack 收口统一绑跳转（⑦ 轮询真跑链路同样生效）");
 
   /* ⑤ 诚实空态 */
   const out2 = mkEl();

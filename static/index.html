@@ -1231,6 +1231,41 @@ async function gotoAnchor(sid,seq,errText){
   }
 }
 
+/* v0.78 ts 精确锚点一跳原文（挂账 §3-方向①）：双轨候选自带 messages.ts
+   （与回合首条消息 ts 同列同格式）——前缀匹配到回合即 openTurn 直达全文；
+   扫不到就诚实横幅指人工定位，会话保持打开（不猜行号、不静默）。
+   无 ts 的锚点保持旧口径：只开会话（列表点选本来就是这个语义）。
+   run 守卫与 gotoAnchor 同款（连点锚点旧链自查放弃）。 */
+async function gotoAnchorTs(sid,ts){
+  const run=++state.anchorRun;
+  if(!ts){
+    try{
+      switchTab("sessions");
+      if(await openSession(sid)===null)return;
+    }catch(e){
+      if(run===state.anchorRun)
+        showBanner("err","跳转会话失败："+e.message);
+    }
+    return;
+  }
+  try{
+    switchTab("sessions");
+    const d=await openSession(sid);
+    if(run!==state.anchorRun||!d)return;
+    const key=String(ts).slice(0,19);
+    const hit=(d.turns||[]).find(t=>String(t.ts||"").slice(0,19)===key);
+    if(hit){ await openTurn(sid,hit.no); return; }
+    if(run===state.anchorRun)
+      showBanner("warn","会话 "+shortSid(sid)+
+        " 里没有 ts 前缀为 "+key+" 的回合（数据可能跨库不同步）——"+
+        "已停在会话级，请按回合列表人工定位。");
+  }catch(e){
+    if(run===state.anchorRun)
+      showBanner("err","ts 锚点跳转失败（会话可能不在当前库或上游不可达）："+
+        shortSid(sid)+" — "+e.message);
+  }
+}
+
 /* ---------- P1-5：会话异常类别 chips（错误→会话对账） ---------- */
 /* 口径：chips 上的条数来自 /api/reports/errors?days=0 的 by_class
    （与 G2 报告同源同库，全库=381 对账基准）；「哪些会话涉哪类」上游无
@@ -2450,6 +2485,13 @@ function renderBrief(d,out){
      "语义结论=人/Agent 的研读判断。两层不混装。</div>";
   out.innerHTML=h;
 }
+/* v0.78 ts 精确锚点：双轨视图里所有候选锚统一在此绑跳转——带 data-dt-ts
+   的走 gotoAnchorTs（一跳原文精确到回合），只有 sid 的保持旧口径开会话。
+   抽出来是为了渲染门能独立点验绑定分发（真跑与轮询链路同款）。 */
+function bindDualtrackJumps(out){
+  for(const el of out.querySelectorAll("[data-dt-sid]"))
+    el.onclick=()=>gotoAnchorTs(el.dataset.dtSid,el.dataset.dtTs||null);
+}
 function renderDualtrack(d,out){
   const a=d.account||{};
   const tl=d.timeline||{};
@@ -2462,6 +2504,11 @@ function renderDualtrack(d,out){
   const nags_g=nag.groups||[];
   const nag_a=nag.account||{};
   const th=(d.revisions&&d.revisions.thresholds)||{};
+  /* v0.78 一跳原文：候选片段自带 ts → 渲染「→ 原文」锚（点击精确到回合） */
+  const tsJ=(sid,m)=>(m&&m.ts)
+    ?" <span class='anchor' data-dt-sid=\""+esc(sid)+"\" data-dt-ts=\""+
+     esc(m.ts)+"\" title=\"一跳原文：跳到该回合全文（ts 精确锚点）\">→ 原文</span>"
+    :"";
   let h="<div class='toolbar'><h3 class='sec' style='margin:0'>双轨时间线 · "+
     esc((d.topic&&d.topic.name)||d.topic_id||"主题")+"</h3>"+
     "<button class='xbtn' data-dt-back>返回 chain 视图</button></div>";
@@ -2486,7 +2533,9 @@ function renderDualtrack(d,out){
       esc(String(r.first_user||"").slice(0,140))+"</div></div>").join("");
   }else{
     h+=rows.map(r=>"<div class='dt-up' data-dt-sid=\""+esc(r.sid)+
-      "\" title=\"点击跳到该会话\"><span class='sub2'>"+
+      (r.ts?"\" data-dt-ts=\""+esc(r.ts):"")+
+      "\" title=\""+(r.ts?"点击跳到该条原话所在回合":"点击跳到该会话")+
+      "\"><span class='sub2'>"+
       esc(String(r.ts||"").slice(0,19))+"</span> "+
       esc(String(r.text||"").slice(0,160))+"</div>").join("");
   }
@@ -2521,8 +2570,9 @@ function renderDualtrack(d,out){
       "<details class='dt-cand'><summary>#"+(i+1)+" "+esc(p.sid)+
       " <span class='sub2'>相似度 J="+esc(String(p.jaccard))+
       "（两段文字的重复度：1=逐字相同，≥0.9 即基本同文副本）</span></summary>"+
-      "<div class='dt-cmp'><div><b>前轮</b><pre class='dt-pre'>"+
-      esc((p.a&&p.a.preview)||"")+"</pre></div><div><b>后轮</b>"+
+      "<div class='dt-cmp'><div><b>前轮</b>"+tsJ(p.sid,p.a)+
+      "<pre class='dt-pre'>"+
+      esc((p.a&&p.a.preview)||"")+"</pre></div><div><b>后轮</b>"+tsJ(p.sid,p.b)+
       "<pre class='dt-pre'>"+esc((p.b&&p.b.preview)||"")+
       "</pre></div></div></details>").join("")+"</div>")
     :"<div class='empty'>无打磨带候选</div>";
@@ -2532,10 +2582,11 @@ function renderDualtrack(d,out){
     ?(hits.map((x,i)=>
       "<details class='dt-cand'><summary>#"+(i+1)+" "+esc(x.sid)+
       " <span class='sub2'>「"+esc(x.word)+"」"+esc(x.head||"")+
-      "</span></summary><div class='dt-cmp'><div><b>前轮</b><pre class='dt-pre'>"+
-      esc((x.prev&&x.prev.preview)||"（同会话无更早 user 轮）")+
-      "</pre></div><div><b>本轮</b><pre class='dt-pre'>"+
-      esc((x.cur&&x.cur.preview)||"")+"</pre></div></div></details>").join(""))
+      "</span></summary><div class='dt-cmp'><div><b>前轮</b>"+tsJ(x.sid,x.prev)+
+      "<pre class='dt-pre'>"+esc((x.prev&&x.prev.preview)||"（同会话无更早 user 轮）")+
+      "</pre></div><div><b>本轮</b>"+tsJ(x.sid,x.cur)+
+      "<pre class='dt-pre'>"+esc((x.cur&&x.cur.preview)||"")+
+      "</pre></div></div></details>").join(""))
     :"<div class='empty'>无反转点候选</div>";
   /* 反复叮嘱候选（P4-1 nags，过滤版口径）：候选只列不裁决；
      「登记零散」复用 sessions_noise（P5-⑧，B 档两段提交，预演可见） */
@@ -2553,9 +2604,16 @@ function renderDualtrack(d,out){
   h+=nags_g.length
     ?(nags_g.map((g,i)=>{
       const sids=(g.hit_sids&&g.hit_sids.length)?g.hit_sids:g.sids;
+      /* 样例预览自带 ts（nags.collect 附带）→ 包一层一跳原文锚 */
+      const sp=(g.sample&&g.sample.ts)
+        ?"<span class='anchor' data-dt-sid=\""+esc(g.sample.sid)+
+         "\" data-dt-ts=\""+esc(g.sample.ts)+
+         "\" title=\"一跳原文：跳到样例回合全文（ts 精确锚点）\">"+
+         esc((g.sample&&g.sample.preview)||"")+"</span>"
+        :esc((g.sample&&g.sample.preview)||"");
       return "<details class='dt-cand'><summary>#"+(i+1)+" "+
         esc(String(sids.length))+" 会话 × "+esc(String(g.n))+
-        " 次「"+esc((g.sample&&g.sample.preview)||"")+"」</summary>"+
+        " 次「"+sp+"」</summary>"+
         "<div class='sub2'>命中本主题的会话："+
         sids.map(s=>"<span class='anchor' data-dt-sid=\""+esc(s)+
           "\" title=\"点击跳到该会话\">"+esc(s)+"</span>").join("、")+
@@ -2572,17 +2630,8 @@ function renderDualtrack(d,out){
   out.innerHTML=h;
   for(const b of out.querySelectorAll("[data-dt-back]"))
     b.onclick=()=>openTopic(d.topic_id);
-  for(const el of out.querySelectorAll("[data-dt-sid]"))
-    el.onclick=async()=>{
-      const run=++state.anchorRun;
-      switchTab("sessions");
-      try{
-        if(await openSession(el.dataset.dtSid)===null)return;
-      }catch(e){
-        if(run===state.anchorRun)
-          showBanner("err","跳转会话失败："+e.message);
-      }
-    };
+  /* v0.78：候选锚跳转统一收口 bindDualtrackJumps（带 ts 走 gotoAnchorTs） */
+  bindDualtrackJumps(out);
   for(const b of out.querySelectorAll("[data-noise-reg]"))
     b.onclick=()=>openInCmd("noise_register",{
       sids:b.dataset.noiseReg,

@@ -11,7 +11,8 @@
   排除'同一串被重复发送 ≥N 次'的模板、排除长正文粘贴"；
 - 词句命中 → 逐字归一聚类（KEY_LEN 前缀键）→ 模板过滤 → 相似归并
   （bigram Jaccard ≥0.55，抓"每次换个说法"）；
-- 只读 harvester.db（mode=ro）、只读 `raw` 列；锚点 = messages.rowid；
+- 只读 harvester.db（mode=ro）、只读 `raw` 列；锚点 = messages.rowid，
+  另附 ts（v0.78 一跳原文的精确锚点，与回合首条消息 ts 同口径）；
 - 相似度工具与阈值 import 自 harvester.topicprep（H40 冻结口径）。
 
 用法：
@@ -75,7 +76,7 @@ def collect(con: sqlite3.Connection) -> dict:
         con.row_factory = sqlite3.Row
     grams, jaccard = _topicprep()
     rows = list(con.execute(
-        "SELECT sid, rowid AS rid, role, "
+        "SELECT sid, rowid AS rid, ts, role, "
         "COALESCE(NULLIF(raw,''), text) AS body FROM messages "
         "WHERE role='user' ORDER BY sid, rowid"))
 
@@ -91,21 +92,21 @@ def collect(con: sqlite3.Connection) -> dict:
         if len(_norm(body)) > PASTE_MAX:
             n_paste += 1          # 长粘贴只滤出 P4-1 通道
             continue
-        lane.append((r["sid"], r["rid"], body))
+        lane.append((r["sid"], r["rid"], r["ts"] or "", body))
 
-    hits = [(sid, rid, body) for (sid, rid, body) in lane
+    hits = [(sid, rid, ts, body) for (sid, rid, ts, body) in lane
             if any(w in body for w in NAG_WORDS)]
 
     exact: dict[str, dict] = defaultdict(
         lambda: {"sids": set(), "n": 0, "sample": None})
-    for sid, rid, body in hits:
+    for sid, rid, ts, body in hits:
         key = _norm(body)[:KEY_LEN]
         if len(key) < 6:
             continue
         g = exact[key]
         g["sids"].add(sid)
         g["n"] += 1
-        g["sample"] = g["sample"] or (sid, rid, body)
+        g["sample"] = g["sample"] or (sid, rid, ts, body)
     templates = {k for k, g in exact.items() if g["n"] >= TEMPLATE_N}
     n_template_turns = sum(g["n"] for k, g in exact.items() if k in templates)
 
@@ -114,10 +115,10 @@ def collect(con: sqlite3.Connection) -> dict:
     # 相似归并：代表串 bigram Jaccard ≥SIM_THRESHOLD 并组
     merged: list[dict] = []
     for g in sorted(cand, key=lambda g: -len(g["sids"])):
-        rep = grams(_norm(g["sample"][2])[:200])
+        rep = grams(_norm(g["sample"][3])[:200])
         hit = None
         for m in merged:
-            if jaccard(rep, grams(_norm(m["sample"][2])[:200])) >= SIM_THRESHOLD:
+            if jaccard(rep, grams(_norm(m["sample"][3])[:200])) >= SIM_THRESHOLD:
                 hit = m
                 break
         if hit:
@@ -131,8 +132,10 @@ def collect(con: sqlite3.Connection) -> dict:
 
     groups = [{"n": m["n"], "sids": sorted(m["sids"]),
                "sample": {"sid": m["sample"][0], "rowid": m["sample"][1],
-                          "preview": _norm(m["sample"][2])[:PREVIEW]},
-               "members": [{"sid": s, "rowid": rid} for s, rid, _ in m["members"]]}
+                          "ts": m["sample"][2],
+                          "preview": _norm(m["sample"][3])[:PREVIEW]},
+               "members": [{"sid": s, "rowid": rid}
+                           for s, rid, _ts, _body in m["members"]]}
               for m in merged]
     return {"account": {
                 "user_turns": len(rows), "n_inject": n_inject,

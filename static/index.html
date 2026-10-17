@@ -538,11 +538,13 @@ h3.sec{font-size:14px;margin:18px 0 6px}
     <label class="sub2"><input type="checkbox" id="rep-erronly">只看异常</label>
     <button id="btn-rep-export" class="xbtn" title="把当前报告导出为 Markdown 文件（浏览器本地生成）">导出 md</button>
     <button id="btn-rep-json" class="xbtn" title="导出机器可读 JSON（上游原始结构 + 归一模式去重说明），可直接交给 Agent 分析">导出 JSON</button>
+    <button id="btn-rep-index" class="xbtn" title="列出服务端报告目录里的 .md 报告（只读索引，可逐份看全文）">报告索引</button>
     <span class="sub2" id="rep-meta"></span>
   </div>
   <div id="rep-intro"></div>
   <div id="rep-concl"></div>
   <div class="report-box" id="rep-out"><div class="empty">尚未生成</div></div>
+  <div id="rep-index"></div>
 </section>
 
 <!-- ============ Tab 4: 中台 ============ -->
@@ -980,7 +982,7 @@ function switchTab(name){
     if(name==="work") loadWork().catch(()=>{});
     if(name==="sessions") loadAll().catch(()=>{});
     if(name==="triage") loadTriage().catch(()=>{});
-    if(name==="reports") loadReport().catch(()=>{});
+    if(name==="reports"){ loadReport().catch(()=>{}); loadReportsIndex().catch(()=>{}); }
     if(name==="agg"){ loadAggFacets().catch(()=>{}); }
     if(name==="topics") loadTopics().catch(()=>{});
     if(name==="cmd") loadCmdData().catch(()=>{});
@@ -3845,13 +3847,75 @@ async function loadDailyCard(){
       "（主仓 README「每日速览」有 schedule 每日自动配方）</div></details>";
     return;
   }
+  const truncated=d.n_chars>(d.md_head||"").length;
   box.innerHTML="<details class='panel-intro'><summary>昨日报告（"+
     esc(d.date)+"｜"+esc(String(d.n_chars))+" 字，点开看全文头部）</summary>"+
     "<div class='sub2'>文件："+esc(d.path||"")+"</div>"+
     "<pre style='white-space:pre-wrap;max-height:340px;overflow:auto'>"+
-    esc(d.md_head||"")+(d.n_chars>(d.md_head||"").length?
-      "\n…（头部截断，全文看文件）":"")+"</pre></details>";
+    esc(d.md_head||"")+(truncated?"\n…（头部截断，点「查看全文」补齐）":"")+
+    "</pre>"+(truncated?"<div class='sub2'><button class='xbtn' data-dfull=\""+
+      esc("daily-"+d.date+".md")+"\">查看全文</button></div>":"")+"</details>";
+  /* P5 后续（用户 2026-10-17 批准）：截断的卡就地补全文——懒加载一次，
+     name 走服务端白名单口径 daily-<date>.md；textContent 原样塞入不解析 */
+  const fb=box.querySelector("[data-dfull]");
+  if(fb)fb.onclick=async()=>{
+    if(fb.disabled)return;
+    try{ const md=await fetchReportFile(fb.dataset.dfull);
+      const pre=box.querySelector("pre");
+      if(pre)pre.textContent=md;
+      fb.textContent="全文已载入"; fb.disabled=true;
+    }catch(e){ showBanner("err","全文加载失败："+e.message); }
+  };
   if(glossary.loaded)applyTermTooltips(box);
+}
+/* P5 后续（用户 2026-10-17 批准）：报告文件全文懒加载（昨日卡与报告索引
+   共用）。/api/report-get 只收纯 .md 文件名（服务端白名单+resolve 双保险）；
+   found=false 是诚实空态，转成可读报错。 */
+async function fetchReportFile(name){
+  const d=await api("/api/report-get?name="+encodeURIComponent(name));
+  if(!d.found)throw new Error(d.hint||("文件不存在："+name));
+  return d.md||"";
+}
+/* P5 后续（用户 2026-10-17 批准）：报告族 md 索引区（五报告各自 --out，
+   这里把服务端报告目录里实际存在的 .md 列出来，mtime 新→旧）。
+   纪律同四队列：只渲染服务端给的内容——文件名/全文/hint 全 esc 原样展示，
+   页面不解析 md 不二次聚合；目录不存在/没有 .md 是诚实空态，照实说。 */
+async function loadReportsIndex(){
+  const box=$("rep-index");
+  let d;
+  try{ d=await api("/api/reports-index"); }
+  catch(e){ box.innerHTML=errorBox("报告索引不可达："+e.message); return; }
+  if(!d.found){
+    box.innerHTML="<details class='panel-intro'><summary>报告索引：还没有</summary>"+
+      "<div class='sub2'>"+esc(d.hint||"")+"</div></details>";
+    return;
+  }
+  const files=d.files||[];
+  if(!files.length){
+    box.innerHTML="<div class='empty'>报告目录里还没有 .md 文件（"+
+      esc(d.dir||"")+"）</div>";
+    return;
+  }
+  box.innerHTML="<details class='panel-intro' open><summary>报告索引（"+
+    files.length+" 份，新→旧）｜目录："+esc(d.dir||"")+"</summary>"+
+    files.map(f=>
+      "<div class='rep-frow'><b>"+esc(f.name)+"</b>"+
+      (f.date?"　<span class='sub2'>日报 "+esc(f.date)+"</span>":"")+
+      "　<span class='sub2'>"+esc(f.mtime||"")+"｜"+esc(String(f.bytes||0))+
+      " 字节</span>　<button class='xbtn' data-rfull=\""+esc(f.name)+
+      "\">看全文</button><div class='rep-fbody'></div></div>").join("")+
+    "</details>";
+  box.querySelectorAll("[data-rfull]").forEach(b=>{
+    b.onclick=async()=>{
+      const body=b.parentElement.querySelector(".rep-fbody");
+      if(!body||body.dataset.loaded)return;
+      try{ const md=await fetchReportFile(b.dataset.rfull);
+        body.innerHTML="<pre style='white-space:pre-wrap;max-height:420px;"+
+          "overflow:auto'>"+esc(md)+"</pre>";
+        body.dataset.loaded="1"; b.textContent="已载入"; b.disabled=true;
+      }catch(e){ body.innerHTML=errorBox("全文加载失败："+e.message); }
+    };
+  });
 }
 
 function renderQueues(d){
@@ -4307,6 +4371,8 @@ $("btn-agg-search").onclick=()=>loadAggSearch().catch(()=>{});
 $("agg-q").addEventListener("keydown",e=>{
   if(e.key==="Enter")$("btn-agg-search").click();});
 $("btn-agg-facets").onclick=()=>loadAggFacets().catch(()=>{});
+$("btn-rep-index").onclick=()=>loadReportsIndex()
+  .catch(e=>showBanner("err","报告索引加载失败："+e.message));
 $("btn-topics-refresh").onclick=()=>loadTopics().catch(()=>{});
 $("topic-level").onchange=()=>updateTopicCmd();
 $("btn-topic-gocmd").onclick=()=>topicGoCmd();

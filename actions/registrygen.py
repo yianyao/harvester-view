@@ -57,6 +57,7 @@ READ_ACTIONS: dict[str, object] = {
     "read": "read",
     "pack": "pack",
     "cards_validate": "cards validate",
+    "cards_index_md": "cards index-md",
     "chain_validate": "chain-validate",
     "chain_audit": "chain-audit",
     "deadcode_scan": "deadcode-scan",

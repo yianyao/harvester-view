@@ -499,6 +499,14 @@ def _action_cards_validate(cfg: Config, params: dict) -> dict:
     return _cli_report(argv)
 
 
+def _action_cards_index_md(cfg: Config, params: dict) -> dict:
+    """A 档：触发词消歧素材（v0.78 `cards index-md`；stdout 版，不落盘）。
+
+    只读只列不裁决；人要把素材存档时在命令台复制命令加 --out 自行跑。
+    """
+    return _cli_report(["cards", "index-md", "--root", str(cfg.cards_root)])
+
+
 def _action_chain_validate(cfg: Config, params: dict) -> dict:
     """A 档：chain 长文结构校验（`chain-validate`；文件限 chain_root 内）。"""
     p = _chain_file(cfg, params.get("file"))
@@ -949,6 +957,17 @@ ACTIONS: dict[str, dict] = {
         "reversible": "幂等（只读卡片目录与库）",
         "writes": "",
         "handler": _action_cards_validate,
+    },
+    "cards_index_md": {
+        "tier": "A",
+        "label": "触发词素材",
+        "desc": "触发词消歧素材（cards index-md；触发行+疑似易混对+"
+                "AGENTS.md 钩子模板；stdout 版，存档请复制命令加 --out）。",
+        "params": {},
+        "est_sec": 2,
+        "reversible": "幂等（只读卡片目录）",
+        "writes": "",
+        "handler": _action_cards_index_md,
     },
     "chain_validate": {
         "tier": "A",

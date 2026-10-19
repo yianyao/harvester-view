@@ -72,6 +72,11 @@ const bodies = {
     type: "pitfall", confidence: 0.5, evidence: "证据 w",
     summary: "", conclusion: "结论 w", anchors: [],
     warnings: ["警告 WA：锚点未命中索引库（dsh:gone/x.v4.jsonl.zstd#turn:1）"] },
+  /* v0.79 触发层：带 triggers 现象词卡（含注入试探词验证逐词 esc） */
+  trigcard: { path: "t.md", parsed: true, id: "kc-t", title: "触发卡",
+    type: "pitfall", confidence: 0.8, evidence: "证据 t",
+    summary: "", conclusion: "结论 t",
+    anchors: [], triggers: ["file changed", "<b>注入词</b>"] },
 };
 function run(keys) {
   state.cardsBodies = keys.map(k => bodies[k]);
@@ -148,6 +153,16 @@ check("bindCardDirect 懒加载注册表先于 actionSpec 查询",
   iLoad > -1 && iSpec > -1 && iLoad < iSpec);
 check("bindCardDirect 懒加载失败仍有 banner 兜底（不静默）",
   iSpec > -1 && bd.includes("if(!spec){showBanner"));
+
+/* 9. v0.79 触发层：triggers 现象词行（c-trig），旧卡零感知，逐词 esc */
+const ht = run(["trigcard"]);
+check("触发词渲染 c-trig 块且词齐全",
+  ht.includes("c-trig") && ht.includes("file changed"));
+check("触发词逐词 esc（注入试探词被转义）",
+  !ht.includes("<b>注入词</b>") && ht.includes("&lt;b&gt;注入词&lt;/b&gt;"));
+const hl2 = run(["legacy"]);
+check("旧卡（无 triggers）不出触发行（零感知）",
+  !hl2.includes("c-trig"));
 
 if (failed) { console.error(failed + " check(s) failed"); process.exit(1); }
 console.log("ALL SUMMARY CHECKS PASSED");

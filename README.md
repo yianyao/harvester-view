@@ -12,6 +12,44 @@
 > harvester-view 是架在接口之上的"看板"。视图坏了不影响数据，
 > 数据库不升级视图也能照常用（只要接口版本兼容）。
 
+## v0.81 新增（词云导航，2026-10-19，P7-①）
+
+主仓零改动（`/api/keywords` v0.33 就有；启动脚本早已配 `--keywords-meta`）：
+
+- **词云 tab**（会话检索之后）：读上游 keywords_meta 最新 run 的 n-gram
+  词频（gram/freq/doc_freq），字号 = doc_freq 分位五档（20/40/60/80
+  分位，**纯展示密度不是语义分类**）；二元词/三元词两档切换；bar 标注
+  run 编号与日期（数据新鲜度诚实）；
+- **点词下钻 = 真检索**：把词灌进会话检索（state.q + f-q + loadSessions），
+  复用现有会话→回合三跳——keywords 无词→会话回链，**不臆造归属**，
+  下钻结果就是检索真话；
+- **诚实空态**：keywords_meta 未生成/无 run/空 rows 三种都明说 + 给
+  `python -m harvester keywords` 生成命令，绝不编词；
+- **esc 纪律**：词/提示原样转义（注入试探词有渲染门抓）；
+- **测试**：先红后绿——test_v65_wordcloud.py 6 例（静态结构/数据通路/
+  esc/下钻通路/诚实空态/启动参数）+ 渲染门 render_wordcloud.js
+  12 断言（分档/转义/口径/新鲜度/下钻/空态×3/失败态）。
+- P7-②（主题树层级）维持缓行：层级语义需主仓数据面先行（parent 字段
+  + 候选不裁决），届时单独提案。
+
+## v0.80 新增（卡片触发层，2026-10-19）
+
+主仓 v0.78（P6-卡片触发钩子，借鉴 DSH-agent-procedures 调研）配套：
+
+- **数据面**：`cardlib.parse_card` 透出 `triggers`（主仓 v0.78 卡片可选
+  现象词列表；非列表形态=空列表，旧卡零感知——additive 哲学：宁可少给
+  不可错给）；`cards_payload` 原样透传（`_cards_payload` 零改动）；
+- **渲染面**：卡片报告页每张卡在 evidence/summary 之后、锚点行之前渲染
+  触发行（`c-trig`，有才渲染；逐词 `esc` 原样展示，注入试探词转义有门）；
+- **测试**：先红后绿——新增 `tests/test_v64_card_triggers.py` 4 例
+  （列表逐字 / 非列表空 / 旧卡零感知 / payload 全带键 + 渲染行 esc）+
+  渲染门 render_summary.js 第 ⑨ 组 3 断言（c-trig 渲染 / 逐词 esc /
+  旧卡零感知）；commandgen 适配版本握手 0.78.0（53→54 命令，新增
+  `cards index-md` 归「知识库」卡 A 档）；view 动作面配套：
+  actionsserve 新 A 档动作 `cards_index_md`（stdout 版素材直给，存档
+  走命令台复制加 --out）+ registrygen READ_ACTIONS 登记（A 档
+  34→35），test_v36/v38/v54 三道对账门全过。
+
 ## v0.79 新增（报告索引 + 昨日报告卡全文，2026-10-17）
 
 HANDOFF-v0.52-next §三-2 挂账两项收口（用户批准「做完挂账的」）：
@@ -590,12 +628,16 @@ A：导出走浏览器下载（看下载栏）；复制依赖剪贴板权限，�
 # 全套件（跑之前先设 PYTHONPATH 指向 session-harvester/scripts/sandbox）
 python -m unittest discover -s tests -v
 
-# 渲染门（五个，node；缺 node 时上面套件里转 skip，不是"通过"）
+# 渲染门（node 逐文件列全；缺 node 时上面套件里转 skip，不是"通过"）
 node tests/render_smoke.js      # P0-2/P0-3 报告渲染
 node tests/render_cmd.js        # P2 命令台 + 数字皆门三跳 + 端点地址静态门
 node tests/render_home.js       # P3-3 今日工作台（四队列 + 闭环健康）
 node tests/boot_sequence.js     # 启动序列真跑（"永远加载中"那个真缺陷的回归门）
 node tests/render_work.js       # v0.49 处理单（对账报警 + 建议 + 命令包 + 送命令台）
+node tests/render_summary.js    # v0.74 卡片解释层 + v0.79 触发层（c-trig）
+node tests/render_dualtrack.js  # v0.77 双轨时间线 + ts 锚点
+node tests/render_reports.js    # v0.79 报告索引 + 昨日卡全文
+node tests/render_wordcloud.js  # v0.81 词云导航（分档/下钻/空态）
 
 # v0.49 自查：把 5 个缺陷故意放回去，确认每道门都会红（末行打印 5/5 被抓）
 python docs/reports/mutation-check-v049.py

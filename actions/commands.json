@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "adapter_version": "0.77.0",
+ "adapter_version": "0.78.0",
  "kind": "harvester-view 命令注册表（静态；由真实 argparse 生成）",
  "generated_by": "actions/commandgen.py（python -m actions.commandgen）",
  "hint": "命令名/参数/默认值是事实（走 harvester.cli.build_parser 生成）；src=参数数据源、tier=三档权限是人写的产品判断。页面凡 src 指向端点者一律渲染成选择器，不给人输框。",
@@ -409,6 +409,40 @@
      "tier": "B"
     }
    ],
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "cards index-md",
+   "card_id": "kb",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--root",
+     "dest": "root",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "卡片库根目录",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "输出路径（缺省打印到 stdout；素材供人定稿，不进任何常驻注入）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    }
+   ],
+   "subactions": null,
    "help": null,
    "nested": false
   },

@@ -161,13 +161,14 @@ def parse_card(path):
     字段（P1-3 渲染所需最小集，additive 哲学：宁可少给不可错给）：
     path / parsed / id / title / type / confidence / evidence /
     summary（v0.76 V5：主仓 v0.74 拆角色后的综述字段，旧卡为空串） /
-    conclusion / anchors[{sid, turn, raw}] / tags / created / body_chars
+    conclusion / anchors[{sid, turn, raw}] / tags / created / body_chars /
+    triggers（v0.79 触发层：主仓 v0.78 可选现象词列表，旧卡为空列表）
     """
     out = {"path": str(path), "parsed": False, "id": None, "title": None,
            "type": None, "confidence": None, "evidence": "",
            "summary": "",
            "conclusion": "", "anchors": [], "tags": [], "created": None,
-           "body_chars": 0}
+           "body_chars": 0, "triggers": []}
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
@@ -193,6 +194,10 @@ def parse_card(path):
     out["summary"] = str(sm).strip() if sm else ""
     tags = fm.get("tags")
     out["tags"] = tags if isinstance(tags, list) else []
+    # v0.79 触发层：triggers 现象词列表（主仓 v0.78 可选字段）。
+    # additive——旧卡无此键保持空列表，渲染层按长度跳过。
+    trig = fm.get("triggers")
+    out["triggers"] = [str(t) for t in trig] if isinstance(trig, list) else []
     anchors = fm.get("anchors")
     if isinstance(anchors, list):
         for a in anchors:

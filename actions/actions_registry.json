@@ -183,6 +183,12 @@
    "est_sec": null
   },
   {
+   "action_id": "kgraph",
+   "tier": "A",
+   "cmd": null,
+   "est_sec": null
+  },
+  {
    "action_id": "noise_list",
    "tier": "A",
    "cmd": "noise list",
@@ -1112,7 +1118,7 @@
  ],
  "counts": {
   "cards": 13,
-  "read_actions": 35,
+  "read_actions": 36,
   "write_actions": 16,
   "write_reversible": 13,
   "write_destructive": 3

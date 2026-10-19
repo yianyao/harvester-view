@@ -380,6 +380,15 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 #freshbar.stale{border-color:var(--warn-ink);color:var(--warn-ink)}
 #freshbar .fb-act{cursor:pointer;font-weight:600;text-decoration:underline;
   margin-left:8px}
+/* 知识图谱（v0.82，机械关系图）——画布是固定配色画面：底/字/线写死浅色
+ * 并钉 color-scheme:light（同悬停卡先例），canvas 内 #333 标签在深色模式下
+ * 依旧落在浅底上，两种模式都可读；提示框走主题变量随模式翻转 */
+#kg-out{position:relative;border:1px solid #e3e3e8;border-radius:8px;
+  background:#fbfbfd;min-height:220px;overflow:hidden;color-scheme:light}
+#kg-canvas{display:block}
+#kg-tip{position:absolute;display:none;max-width:300px;background:var(--panel);
+  border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;
+  box-shadow:0 2px 8px rgba(0,0,0,.12);pointer-events:none;z-index:30}
 </style>
 </head>
 <body>
@@ -390,6 +399,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
     <button data-tab="work">处理单</button>
     <button data-tab="sessions">会话检索</button>
     <button data-tab="cloud">词云</button>
+    <button data-tab="kgraph">图谱</button>
     <button data-tab="triage">蒸馏队列</button>
     <button data-tab="reports">报告</button>
     <button data-tab="agg">中台</button>
@@ -520,6 +530,24 @@ h3.sec{font-size:14px;margin:18px 0 6px}
   </div>
   <div class="sub2" style="margin:6px 2px">从高频词粗粒度漫游进会话：字号=命中会话数分位（纯展示密度，不是语义分类）；点词=以该词跑一次会话检索（下钻走真检索，不臆造词→会话归属）</div>
   <div id="cloud-out" class="cloud-wrap"><div class="empty">尚未加载</div></div>
+</section>
+
+<!-- ============ Tab 1.6: 知识图谱（v0.82，机械关系图） ============
+  数据：A 档动作 kgraph（主题×卡片×关键词一次组装，会话层懒加载）。
+  纪律：机械关系零语义臆造（边只有 成员/锚点/归属/关键词 四类）；
+  力导向布局确定性（固定种子+迭代上限）；主题间无边=数据面没有主题层级
+  （P7-② 缓行），不是图坏了——图例固定声明，防误读。 -->
+<section class="tab" id="tab-kgraph" style="display:none">
+  <div class="toolbar">
+    <button id="kg-reload">重新组装</button>
+    <button id="kg-reset" disabled>收起会话层</button>
+    <span class="sub2" id="kg-bar"></span>
+  </div>
+  <div class="sub2" style="margin:6px 2px" id="kg-legend">机械关系图（不是语义图谱）｜<b style="color:#3b74c4">●</b> 主题　<b style="color:#8a5fc0">●</b> 卡片　<b style="color:#2f9e77">●</b> 关键词　<b style="color:#c4703b">●</b> 会话（懒加载）｜边：—成员 —锚点 —归属 —关键词｜<b>主题间无边=现状数据面没有主题层级（P7-② 缓行），不是图坏了</b>｜点主题/卡片=展开成员/锚点会话；点会话=直达回合原文；点关键词=灌进会话检索</div>
+  <div id="kg-out">
+    <div id="kg-msg"></div>
+    <canvas id="kg-canvas" style="display:none"></canvas>
+  </div>
 </section>
 
 <!-- ============ Tab 2: 蒸馏队列 ============ -->
@@ -1004,6 +1032,7 @@ function switchTab(name){
     if(name==="work") loadWork().catch(()=>{});
     if(name==="sessions") loadAll().catch(()=>{});
     if(name==="cloud") loadWordcloud().catch(()=>{});
+    if(name==="kgraph") loadKgraph().catch(()=>{});
     if(name==="triage") loadTriage().catch(()=>{});
     if(name==="reports"){ loadReport().catch(()=>{}); loadReportsIndex().catch(()=>{}); }
     if(name==="agg"){ loadAggFacets().catch(()=>{}); }
@@ -1107,6 +1136,304 @@ function jumpCloudWord(w){
   switchTab("sessions");
   state.q=w; $("f-q").value=w; state.offset=0;
   loadSessions().catch(()=>{});
+}
+
+/* ---------- 知识图谱（v0.82，机械关系图）----------
+ * 数据：A 档动作 kgraph——主题×卡片×关键词一次组装（成员/锚点/归属/
+ * 关键词四类机械边，零语义臆造）；会话层**懒加载**：点主题/卡片再按需
+ * 展开成员/锚点会话（防节点爆炸），点会话=直达回合原文，点关键词=
+ * 灌进会话检索（真检索通路，同词云下钻）。
+ * 纪律：力导向布局确定性（固定种子+固定迭代上限——同数据同坐标）；
+ * hint/标签一律 esc 原样展示；诚实空态（hints 原样渲染，绝不编节点）；
+ * 主题间无边=数据面没有主题层级（P7-② 缓行），图例固定声明。 */
+let kgData=null,kgPos={},kgIndex={},kgExpanded={};
+const KG_KIND_COLOR={topic:"#3b74c4",card:"#8a5fc0",kw:"#2f9e77",
+  session:"#c4703b"};
+const KG_KIND_SIZE={topic:13,card:9,kw:5,session:6};
+const KG_KIND_NAME={topic:"主题",card:"卡片",kw:"关键词",session:"会话"};
+const KG_EDGE_LABEL={member:"成员",anchor:"锚点",topic_of:"归属",
+  keyword:"关键词"};
+function kgRng(seed){
+  let s=seed>>>0;
+  return function(){ s|=0; s=(s+0x6D2B79F5)|0;
+    let t=Math.imul(s^(s>>>15),1|s);
+    t=(t+Math.imul(t^(t>>>7),61|t))^t;
+    return ((t^(t>>>14))>>>0)/4294967296; };
+}
+/* 力导向布局（纯函数，确定性）：固定种子初始摆环 + 固定迭代上限的
+ * 斥力/引力模拟。节点按 id 排序后参与计算——同数据必得同坐标。 */
+function kgLayout(nodes,edges,W,H){
+  const pos={};
+  const sorted=[...nodes].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
+  const n=sorted.length;
+  if(!n)return pos;
+  const rand=kgRng(20261019);
+  sorted.forEach((nd,i)=>{
+    const a=2*Math.PI*i/n, rad=0.25+0.45*rand();
+    pos[nd.id]={x:Math.min(W-30,Math.max(30,W/2+Math.cos(a)*W*rad)),
+                y:Math.min(H-30,Math.max(30,H/2+Math.sin(a)*H*rad))};
+  });
+  const idx={}; sorted.forEach((nd,i)=>{idx[nd.id]=i;});
+  const E=edges.map(e=>[idx[e.src],idx[e.dst]])
+    .filter(p=>p[0]!==undefined&&p[1]!==undefined);
+  const ITER=n>400?60:150, REP=2600, ATTR=0.05, MAXV=8;
+  for(let it=0;it<ITER;it++){
+    const fx=new Array(n).fill(0), fy=new Array(n).fill(0);
+    for(let i=0;i<n;i++){
+      const pi=pos[sorted[i].id];
+      for(let j=i+1;j<n;j++){
+        const pj=pos[sorted[j].id];
+        const dx=pi.x-pj.x, dy=pi.y-pj.y;
+        const d2=dx*dx+dy*dy+0.01;
+        const f=REP/d2*0.001;
+        fx[i]+=dx*f; fy[i]+=dy*f;
+        fx[j]-=dx*f; fy[j]-=dy*f;
+      }
+    }
+    for(const e of E){
+      const a=pos[sorted[e[0]].id], b=pos[sorted[e[1]].id];
+      const dx=b.x-a.x, dy=b.y-a.y;
+      fx[e[0]]+=dx*ATTR; fy[e[0]]+=dy*ATTR;
+      fx[e[1]]-=dx*ATTR; fy[e[1]]-=dy*ATTR;
+    }
+    for(let i=0;i<n;i++){
+      const p=pos[sorted[i].id];
+      p.x=Math.min(W-20,Math.max(20,p.x+Math.max(-MAXV,
+        Math.min(MAXV,fx[i]))));
+      p.y=Math.min(H-20,Math.max(20,p.y+Math.max(-MAXV,
+        Math.min(MAXV,fy[i]))));
+    }
+  }
+  return pos;
+}
+function kgBar(){
+  if(!kgData)return;
+  const c={topic:0,card:0,kw:0,session:0};
+  for(const nd of kgData.nodes)c[nd.kind]=(c[nd.kind]||0)+1;
+  const m=kgData.meta||{};
+  $("kg-bar").textContent="主题 "+(c.topic||0)+"｜卡片 "+(c.card||0)+
+    "｜关键词 "+(c.kw||0)+"｜会话节点 "+(c.session||0)+
+    ((m.sessions_unlinked||m.sessions_unlinked===0)?
+      "（未入主题的会话 "+m.sessions_unlinked+" 个不画，防糊屏）":"")+
+    (m.cards_unlinked?"｜未挂主题的卡 "+m.cards_unlinked+" 张":"");
+}
+async function loadKgraph(){
+  $("kg-msg").innerHTML="<div class='empty'>图谱组装中（A 档动作 kgraph）…</div>";
+  $("kg-bar").textContent="";
+  const r=await actJson("/api/actions/run",{action_id:"kgraph",
+    params:{},view_actions_api:1});
+  if(r.__err){$("kg-msg").innerHTML=errorBox("图谱入队失败："+r.__err);return;}
+  const job=await kgWaitJob(r.job_id);
+  if(job&&job.status==="done")renderKgraph(job.result||{});
+  else if(job)$("kg-msg").innerHTML=errorBox("图谱动作失败："+
+    esc(job.error||""));
+}
+async function kgWaitJob(jid){
+  for(;;){
+    const job=await actApi("/api/actions/job/"+jid);
+    if(job.__err){$("kg-msg").innerHTML=errorBox("作业查询失败："+job.__err);
+      return null;}
+    if(job.status==="queued"||job.status==="running"){
+      $("kg-msg").innerHTML="<div class='empty'>图谱计算中…"+
+        "（可切页签，回来重进即见）</div>";
+      await new Promise(res=>setTimeout(res,800));
+      continue;
+    }
+    return job;
+  }
+}
+function renderKgraph(d){
+  const out=$("kg-out"), cv=$("kg-canvas");
+  const hints=d.hints||[], nodes=d.nodes||[];
+  kgData=null; kgIndex={}; kgExpanded={};
+  $("kg-reset").disabled=true;
+  if(!nodes.length){
+    cv.style.display="none";
+    $("kg-bar").textContent="";
+    $("kg-msg").innerHTML="<div class='empty'>"+
+      (hints.length?hints.map(h=>esc(h)).join("<br>")
+        :"没有可画的节点")+"</div>";
+    return;
+  }
+  kgData={nodes:nodes,edges:d.edges||[],meta:d.meta||{},hints:hints};
+  for(const nd of kgData.nodes)kgIndex[nd.id]=nd;
+  const W=Math.max(640,out.clientWidth||960), H=560;
+  cv.width=W; cv.height=H; cv.style.display="";
+  $("kg-msg").innerHTML="";
+  kgBar(); kgRelayout();
+}
+function kgRelayout(){
+  if(!kgData)return;
+  const cv=$("kg-canvas");
+  kgPos=kgLayout(kgData.nodes,kgData.edges,
+    cv.width||960,cv.height||560);
+  kgDraw();
+}
+function kgDraw(){
+  const cv=$("kg-canvas"), ctx=cv.getContext("2d");
+  if(!ctx)return;
+  ctx.clearRect(0,0,cv.width,cv.height);
+  if(!kgData)return;
+  ctx.strokeStyle="#c9ccd6";
+  for(const e of kgData.edges){
+    const a=kgPos[e.src], b=kgPos[e.dst];
+    if(!a||!b)continue;
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+  }
+  ctx.font="12px sans-serif";
+  for(const nd of kgData.nodes){
+    const p=kgPos[nd.id];
+    if(!p)continue;
+    const r=KG_KIND_SIZE[nd.kind]||6;
+    ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2);
+    ctx.fillStyle=KG_KIND_COLOR[nd.kind]||"#999"; ctx.fill();
+    if(kgExpanded[nd.id]){
+      ctx.strokeStyle="#e2574c"; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(p.x,p.y,r+3,0,Math.PI*2); ctx.stroke();
+      ctx.lineWidth=1;
+    }
+    ctx.fillStyle="#333";
+    const lab=String(nd.label==null?"":nd.label);
+    ctx.fillText(lab.length>18?lab.slice(0,18)+"…":lab,p.x+r+3,p.y+4);
+  }
+}
+function kgHit(x,y){
+  if(!kgData)return null;
+  let best=null, bd=1e18;
+  for(const nd of kgData.nodes){
+    const p=kgPos[nd.id];
+    if(!p)continue;
+    const dx=x-p.x, dy=y-p.y, d2=dx*dx+dy*dy;
+    const r=(KG_KIND_SIZE[nd.kind]||6)+6;
+    if(d2<=r*r&&d2<bd){bd=d2;best=nd;}
+  }
+  return best;
+}
+function kgHitEdge(x,y){
+  if(!kgData)return null;
+  for(const e of kgData.edges){
+    const a=kgPos[e.src], b=kgPos[e.dst];
+    if(!a||!b)continue;
+    const dx=b.x-a.x, dy=b.y-a.y, len2=dx*dx+dy*dy;
+    if(!len2)continue;
+    let t=((x-a.x)*dx+(y-a.y)*dy)/len2;
+    t=Math.max(0,Math.min(1,t));
+    const px=a.x+t*dx-x, py=a.y+t*dy-y;
+    if(px*px+py*py<=25)return e;
+  }
+  return null;
+}
+function kgShowTip(html,x,y){
+  const tip=$("kg-tip");
+  tip.innerHTML=html;
+  tip.style.display="block";
+  const pw=(tip.parentElement&&tip.parentElement.clientWidth)||960;
+  tip.style.left=Math.min(x+12,pw-300)+"px";
+  tip.style.top=(y+12)+"px";
+}
+function kgHover(e){
+  const nd=kgHit(e.offsetX,e.offsetY);
+  if(nd){
+    const badge=nd.badge?"（"+nd.badge+"）":"";
+    const src=(nd.kind==="session"&&nd.meta&&nd.meta.source)?
+      " · "+nd.meta.source:"";
+    kgShowTip("<b>"+esc(String(nd.label==null?"":nd.label))+"</b> "+
+      esc(badge)+"<br><span class='sub2'>"+
+      esc(KG_KIND_NAME[nd.kind]||nd.kind)+esc(src)+"</span>",
+      e.offsetX,e.offsetY);
+    return;
+  }
+  const ed=kgHitEdge(e.offsetX,e.offsetY);
+  if(ed){
+    const s=kgIndex[ed.src], d2=kgIndex[ed.dst];
+    kgShowTip(esc(String(s?s.label:ed.src))+" → "+
+      esc(String(d2?d2.label:ed.dst))+
+      "（"+esc(KG_EDGE_LABEL[ed.kind]||ed.kind)+"）",
+      e.offsetX,e.offsetY);
+    return;
+  }
+  $("kg-tip").style.display="none";
+}
+function kgOpenSession(sid){
+  if(!sid)return;
+  switchTab("sessions");
+  openSession(sid).catch(()=>{});
+}
+function kgCanvasClick(e){
+  const nd=kgHit(e.offsetX,e.offsetY);
+  if(!nd)return;
+  if(nd.kind==="session"){ kgOpenSession(nd.meta.sid); return; }
+  if(nd.kind==="kw"){ jumpCloudWord(nd.label); return; }
+  kgExpandNode(nd.id).catch(()=>{});
+}
+async function kgExpandNode(id){
+  const nd=kgIndex[id];
+  if(!nd)return;
+  if(nd.kind!=="topic"&&nd.kind!=="card")return;
+  if(kgExpanded[id]){
+    showBanner("warn","该节点已展开会话层（点「收起会话层」可重画）");
+    return;
+  }
+  let sids=[], ekind="";
+  if(nd.kind==="topic"){ sids=nd.meta.member_sids||[]; ekind="member"; }
+  else{ sids=nd.meta.anchor_sids||[]; ekind="anchor"; }
+  if(!sids.length){
+    showBanner("warn",nd.kind==="topic"
+      ?"该主题还没有成员会话（topic add 挂会话后可展开）"
+      :"该卡还没有锚点会话（anchors 落卡后可展开）");
+    return;
+  }
+  if(sids.length>60&&!confirm("该节点带 "+sids.length+
+      " 个会话，图会变挤——确定展开？"))return;
+  $("kg-msg").innerHTML="<div class='empty'>会话层展开中（A 档动作 kgraph）…</div>";
+  const r=await actJson("/api/actions/run",{action_id:"kgraph",
+    params:{sids:sids.join(",")},view_actions_api:1});
+  if(r.__err){$("kg-msg").innerHTML=errorBox("展开失败："+r.__err);return;}
+  const job=await kgWaitJob(r.job_id);
+  if(job&&job.status==="done")kgMergeExpand(nd,ekind,job.result||{});
+  else if(job)$("kg-msg").innerHTML=errorBox("展开失败："+
+    esc(job.error||""));
+}
+function kgMergeExpand(parent,ekind,res){
+  const rows=res.sessions||[];
+  if(!rows.length){
+    $("kg-msg").innerHTML="<div class='empty'>"+
+      esc("该批会话在索引库里一个都没找到"+
+        ((res.missing||[]).length?"（缺 "+res.missing.length+
+          " 个 sid，可能已被抑制或未采集）":""))+"</div>";
+    return;
+  }
+  for(const s of rows){
+    const nid="s:"+s.sid;
+    if(!kgIndex[nid]){
+      const node={id:nid,kind:"session",
+        label:s.title||s.sid,
+        badge:s.error_count?("错"+s.error_count):"",
+        meta:{sid:s.sid,source:s.source||""}};
+      kgData.nodes.push(node); kgIndex[nid]=node;
+    }
+    kgData.edges.push({src:parent.id,dst:nid,kind:ekind});
+  }
+  kgExpanded[parent.id]=true;
+  $("kg-reset").disabled=false;
+  const miss=(res.missing||[]).length;
+  $("kg-msg").innerHTML=miss
+    ?"<div class='empty'>"+esc(miss+" 个 sid 在库里没有"+
+      "（可能已被抑制或未采集），如实跳过")+"</div>":"";
+  kgBar(); kgRelayout();
+}
+function kgReset(){
+  if(!kgData)return;
+  kgData.nodes=kgData.nodes.filter(nd=>nd.kind!=="session");
+  kgData.edges=kgData.edges.filter(e=>{
+    const a=kgIndex[e.src], b=kgIndex[e.dst];
+    return a&&b&&a.kind!=="session"&&b.kind!=="session";});
+  for(const id of Object.keys(kgIndex))
+    if(kgIndex[id].kind==="session")delete kgIndex[id];
+  kgExpanded={};
+  $("kg-reset").disabled=true;
+  $("kg-msg").innerHTML="";
+  kgBar(); kgRelayout();
 }
 
 /* ---------- 会话列表 ---------- */
@@ -4383,6 +4710,13 @@ function renderSuppressed(d){
 }
 
 /* ---------- 事件绑定 ---------- */
+/* 知识图谱（v0.82）：组装/收起按钮 + canvas 交互（hover 提示/点击下钻） */
+$("kg-reload").onclick=()=>loadKgraph().catch(()=>{});
+$("kg-reset").onclick=()=>kgReset();
+$("kg-canvas").addEventListener("mousemove",kgHover);
+$("kg-canvas").addEventListener("mouseleave",
+  ()=>{$("kg-tip").style.display="none";});
+$("kg-canvas").addEventListener("click",kgCanvasClick);
 for(const _cid of ["cloud-n2","cloud-n3"])
   $(_cid).onclick=()=>{cloudN=Number($(_cid).dataset.n);
     loadWordcloud().catch(()=>{});};

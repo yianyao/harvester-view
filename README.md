@@ -12,6 +12,31 @@
 > harvester-view 是架在接口之上的"看板"。视图坏了不影响数据，
 > 数据库不升级视图也能照常用（只要接口版本兼容）。
 
+## v0.82 新增（知识图谱，2026-10-19，机械关系图）
+
+主仓零代码改动（提案 docs/PROPOSAL-knowledge-graph-v1.md，用户 2026-10-19
+批准；复用 topics_meta / 卡片 anchors / 索引库三个既有真源）：
+
+- **图谱 tab**（词云之后）：A 档动作 `kgraph`（视图侧分析动作，无 CLI
+  cmd，同 dualtrack/topic_brief）一次组装 主题×卡片×关键词 三层节点 +
+  四类**机械边**：member（主题—成员会话，topics.members 注册时人给证据）/
+  anchor（卡片—锚点会话，frontmatter §8 冻结字段）/ topic_of（卡→主题，
+  锚点 sid ∈ 主题成员，与 cards validate 同判据）/ keyword（词→主题，
+  topics.keywords 人工定稿表）。**零语义臆造**；
+- **主题间无边**：现状数据面没有主题层级（成员会话唯一归属），主题树
+  （P7-②）缓行不是图坏了——图例固定声明，防误读；
+- **会话层懒加载**：基础图只画 主题+卡片+关键词（防节点爆炸）；点主题/
+  卡片才按 sids 发第二次 kgraph 动作展开成员/锚点会话（上限 400/次，
+  >60 个先确认）；点会话直达回合原文、点关键词灌进会话检索（真检索通路，
+  同词云下钻）；未入主题的会话不画节点、bar 如实给计数；
+- **确定性力导向布局**：canvas 自写（固定种子 + 固定迭代上限，节点按 id
+  排序参与计算——同数据必得同坐标，零第三方依赖）；
+- **诚实空态**：topics_meta 未配置 / 卡片目录空 / 展开全 missing 都用
+  hints 原样明说，绝不编节点；hint/标签逐字 esc；
+- **测试**：先红后绿——test_v66_kgraph.py 10 例（静态账/双层账/机械边
+  四类/空态/展开/主题间无边）+ 渲染门 render_kgraph.js 18 断言（作业
+  轮询/bar 账/确定性布局/懒加载展开/下钻/收起/空态×2/失败态×2）。
+
 ## v0.81 新增（词云导航，2026-10-19，P7-①）
 
 主仓零改动（`/api/keywords` v0.33 就有；启动脚本早已配 `--keywords-meta`）：
@@ -638,6 +663,7 @@ node tests/render_summary.js    # v0.74 卡片解释层 + v0.79 触发层（c-tr
 node tests/render_dualtrack.js  # v0.77 双轨时间线 + ts 锚点
 node tests/render_reports.js    # v0.79 报告索引 + 昨日卡全文
 node tests/render_wordcloud.js  # v0.81 词云导航（分档/下钻/空态）
+node tests/render_kgraph.js     # v0.82 知识图谱（确定性布局/懒加载/诚实空态）
 
 # v0.49 自查：把 5 个缺陷故意放回去，确认每道门都会红（末行打印 5/5 被抓）
 python docs/reports/mutation-check-v049.py

@@ -362,6 +362,22 @@ def _action_topic_brief(cfg: Config, params: dict) -> dict:
     return topicbrief.build(cfg, topic_id, level, tl)
 
 
+def _action_kgraph(cfg: Config, params: dict) -> dict:
+    """A 档：知识图谱（v0.82，机械关系图）。主题×卡片×关键词一次组装
+    （成员/锚点/归属/关键词四类机械边，零语义臆造）；会话层懒加载——
+    传 sids 才回该批会话的标题/来源/错误数（防节点爆炸）。
+    全部只读三库与卡片目录；诚实空态走 hints。"""
+    from .analysis import kgraph
+    sids = str(params.get("sids") or "").strip()
+    if sids:
+        lst = [s.strip() for s in sids.split(",") if s.strip()]
+        if len(lst) > 400:
+            raise _BadRequest("一次最多展开 400 个会话（收到 %d 个）——"
+                              "分批展开，图上才看得清" % len(lst))
+        return kgraph.build(cfg, sids)
+    return kgraph.build(cfg)
+
+
 # ---------- A 档通用执行器（v0.63：白名单补全，用户 2026-10-14「都加上」） ----------
 
 def _cli_report(argv: list[str]) -> dict:
@@ -889,6 +905,19 @@ ACTIONS: dict[str, dict] = {
         "reversible": "幂等（只读三库与 chain 文件，产物返回页面不落盘）",
         "writes": "",
         "handler": _action_topic_brief,
+    },
+    "kgraph": {
+        "tier": "A",
+        "label": "知识图谱（机械关系）",
+        "desc": "主题×卡片×关键词×会话四层机械关系一次组装：成员/锚点/"
+                "归属/关键词四类边全部来自既有真源，零语义臆造；"
+                "会话层懒加载（传 sids 展开，防节点爆炸）。只读，不落盘。",
+        "params": {"sids": {"type": "text", "src": "chips", "default": None,
+                            "label": "会话 sid 列表（逗号分隔；空=基础图）"}},
+        "est_sec": 3,
+        "reversible": "幂等（只读三库与卡片目录，产物返回页面不落盘）",
+        "writes": "",
+        "handler": _action_kgraph,
     },
     # ---- v0.63 白名单补全（用户 2026-10-14「还有哪些没加的？都加上」）----
     # 覆盖 commands.json 里**全部剩余 A 档命令**；执行一律走进程内真 CLI

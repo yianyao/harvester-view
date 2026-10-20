@@ -1,0 +1,13 @@
+{
+  "name": "harvester-view-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "harvester-view desktop shell (Electron): one window, three hidden services",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

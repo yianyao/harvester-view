@@ -131,6 +131,19 @@ class TestCommandHoverTitle(unittest.TestCase):
                                     or a.get("default") is not None,
                                     f"{c['cmd']} --sources 无示例值")
 
+    def test_cmd_palette_grid_has_no_phantom_cell(self):
+        # v0.90b 用户批注「这一边的空间用来干嘛的？」：命令台 grid 三列，
+        # main 下多出的空 <div id="cmd-intro"> 当了第 4 个格子，把布局
+        # 挤成两行——第二行中/右列整行空白（红框）；且 id 重复导致
+        # $("cmd-intro") 赋值永远命中第一个空 div。钉：cmd-intro 全页
+        # 唯一且必须落在 cmd-mid 内。
+        self.assertEqual(self.html.count('id="cmd-intro"'), 1,
+                         "cmd-intro 必须唯一（重复=grid 幽灵格+赋值失靶）")
+        mid = re.search(r'<div id="cmd-mid">.*?<div id="cmd-right">',
+                        self.html, re.S)
+        self.assertTrue(mid, "找不到 cmd-mid 区块")
+        self.assertIn('id="cmd-intro"', mid.group(0))
+
     def test_cmd_preview_and_write_panel_have_tooltip(self):
         # 命令台预览行与写动作面板也要有解释（不仅处理单）
         self.assertIn("命令行预览（与真实 CLI 同形，供核对参数", self.html)

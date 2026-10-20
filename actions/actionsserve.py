@@ -363,13 +363,13 @@ def _action_topic_brief(cfg: Config, params: dict) -> dict:
 
 
 def _action_kgraph(cfg: Config, params: dict) -> dict:
-    """A 档：知识图谱（v0.84，用户发起×相近聚合）。①只取用户先发起
-    （首条消息 role='user'）；②相近会话聚类（标题 Jaccard≥0.45 或共享
-    定稿关键词，机械判据）；③一簇一个代表节点+簇结构下发（显隐纯前端，
-    点击展开）；五类机械边零语义臆造；账目（过滤/聚合/截断/封顶）全进
+    """A 档：知识图谱（v0.86，大类总览+搜索子图）。默认态只画大类
+    （显隐前端）；params.q 非空=搜索模式：正文 FTS（messages 索引，
+    检索框同判据）命中会话+邻域子图——标题不含但正文含关键字的会话
+    也能命中。其余：只取用户先发起、机械聚类、五类机械边、账目全进
     meta。只读三库与卡片目录；诚实空态走 hints。"""
     from .analysis import kgraph
-    return kgraph.build(cfg)
+    return kgraph.build(cfg, query=str(params.get("q") or ""))
 
 
 # ---------- A 档通用执行器（v0.63：白名单补全，用户 2026-10-14「都加上」） ----------
@@ -902,12 +902,13 @@ ACTIONS: dict[str, dict] = {
     },
     "kgraph": {
         "tier": "A",
-        "label": "知识图谱（用户发起×相近聚合）",
-        "desc": "只取用户先发起的会话（首条消息 role='user'）；相近会话"
-                "聚类（标题 Jaccard≥0.45 或共享定稿关键词，机械判据）一簇"
-                "一个代表节点；成员/锚点/归属/关键词/标题含词五类边来自"
+        "label": "知识图谱（大类总览+搜索子图）",
+        "desc": "默认=大类总览（主题/卡片，显隐前端）；q 参数=搜索模式："
+                "正文 FTS（messages 索引，检索框同判据）命中会话+其邻域"
+                "子图。只取用户先发起；机械聚类一簇一个代表；五类边来自"
                 "既有真源，零语义臆造。只读，不落盘。",
-        "params": {},
+        "params": {"q": {"type": "string", "required": False,
+                          "desc": "搜索关键字（正文 FTS，空=大类总览）"}},
         "est_sec": 6,
         "reversible": "幂等（只读三库与卡片目录，产物返回页面不落盘）",
         "writes": "",

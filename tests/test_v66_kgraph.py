@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import sys
 import tempfile
@@ -27,6 +28,18 @@ if str(VIEW) not in sys.path:
     sys.path.insert(0, str(VIEW))
 
 HTML = (VIEW / "static" / "index.html").read_text(encoding="utf-8")
+
+
+def _cjk_bigram(text: str) -> str:
+    """索引侧 bigram 改写（与主仓 indexing._cjk_bigram 同规则）——
+    messages.text 必须模拟真索引形态，FTS 查询才能命中。"""
+    out: list[str] = []
+    for run in re.findall(r"[\u4e00-\u9fff]+|[A-Za-z0-9]+", text):
+        if "\u4e00" <= run[0] <= "\u9fff" and len(run) > 1:
+            out.extend(run[i:i + 2] for i in range(len(run) - 1))
+        else:
+            out.append(run)
+    return " ".join(out)
 
 
 def _mk_topics_db(path: Path, rows: list[tuple]) -> None:
@@ -60,7 +73,7 @@ def _mk_index_db(path: Path, sessions: list[tuple],
         role0 = fr.get(sid, "user")
         con.execute("INSERT INTO messages (sid, role, ts, text)"
                     " VALUES (?,?,?,?)", (sid, role0, "2026-10-19T09:00:00",
-                                          title))
+                                          _cjk_bigram(title)))
         con.execute("INSERT INTO messages (sid, role, ts, text)"
                     " VALUES (?,?,?,?)",
                     (sid, "assistant", "2026-10-19T09:01:00", "好的"))
@@ -152,17 +165,29 @@ class TestV66KgraphStatic(unittest.TestCase):
         self.assertIn("color-scheme:dark", body)    # 钉声明
         self.assertIn("#d8dae0", body)              # 前景浅色钉住
 
-    def test_04_js_bindings_and_cluster_ui(self):
+    def test_04_js_bindings_and_search_ui(self):
         for frag in ['loadKgraph()', 'kgFitView()', 'kgHover',
                      'kgCanvasClick(', 'kgWheel', 'kgMouseDown',
                      'kgMouseMove', 'kgMouseUp', 'kgDblClick',
-                     'kgAdjBuild()', 'kgVisible()', 'meta.merged']:
+                     'kgAdjBuild()', 'kgVisible()']:
             self.assertIn(frag, HTML)
         self.assertIn('{passive:false}', HTML)      # wheel 阻页面滚动
-        # 簇交互：点击代表 toggle 展开（kgOpened）
-        self.assertIn("kgOpened", HTML)
-        self.assertIn("点展开/收起簇", HTML)
-        self.assertIn("(+\"+(cl.length-1)+\")", HTML)  # 代表 +N 标记
+        # v0.86 搜索驱动（用户裁决「开始只显示大类，输入关键字再只显示
+        # 相关的」）：搜索框 + kgQuery 联动 + 会话节点蓝色
+        self.assertIn('id="kg-q"', HTML)
+        self.assertIn('kgQuery', HTML)
+        self.assertIn('if(kgQuery)p.q=kgQuery', HTML)
+        self.assertIn('if(kgQuery){ for(const nd of kgData.nodes)'
+                      'vis.add(nd.id); return vis; }', HTML)  # 搜索态全显
+        self.assertIn('session:"#4fb0ff"', HTML)    # 用户「黄圆圈改蓝」
+        self.assertNotIn("#ffab70", HTML)           # 旧黄不得残留
+        self.assertIn('正文 FTS', HTML)              # 搜索判据声明进图例
+        # v0.86 柔化（用户「图示太生硬」参考 ECharts graph force）：
+        # 曲线边+径向光晕+向心引力+弹簧理想边长，硬直线/实心圆不得回归
+        for frag in ["quadraticCurveTo(", "createRadialGradient(",
+                     "向心引力", "拉向理想长度"]:
+            self.assertIn(frag, HTML)
+        self.assertNotIn('ctx.lineTo(a.x,a.y); ctx.stroke()', HTML)
 
     def test_05_double_ledger(self):
         from actions import actionsserve, registrygen
@@ -171,7 +196,7 @@ class TestV66KgraphStatic(unittest.TestCase):
         ent = actionsserve.ACTIONS["kgraph"]
         self.assertEqual(ent["tier"], "A")
         self.assertEqual(ent["handler"].__name__, "_action_kgraph")
-        self.assertEqual(ent["params"], {})
+        self.assertIn("q", ent["params"])           # v0.86 搜索参数
         reg = json.loads(
             (VIEW / "actions" / "actions_registry.json")
             .read_text(encoding="utf-8"))
@@ -434,6 +459,49 @@ class TestV66KgraphData(unittest.TestCase):
         self.assertEqual(d["meta"]["merged_into_rep"], 1)
         merged = sess["s:S1"]["meta"].get("merged")
         self.assertEqual(merged, "S2")     # S2 updated_at 最新为代表
+
+    def test_19_search_fts_subgraph(self):
+        """v0.86 搜索模式：q 非空=正文 FTS（messages 索引）命中会话+
+        邻域子图——标题不含但正文含关键字的会话也能命中（「梦中救人」
+        标题只中 4 个的教训）。q 空=默认全量（大类态显隐前端管）。"""
+        from actions.actionsserve import Config
+        from actions.analysis import kgraph
+        tmp = self.tmp
+        tdb = tmp / "t.db"
+        _mk_topics_db(tdb, [("t1", "甲", '[]', '[]',
+                             "2026-10-19T00:00:00")])
+        idb = tmp / "h.db"
+        _mk_index_db(idb, [
+            ("S1", "部署网关重启", "trae", "2026-10-19T09:00:00"),
+            ("S2", "买菜清单", "claude", "2026-10-19T10:00:00"),
+        ])
+        glossary = tmp / "g.json"
+        glossary.write_text('{"terms": []}', encoding="utf-8")
+        cfg = Config(cards_root=tmp / "cards", db=idb, glossary=glossary,
+                     topics_meta=tdb)
+        # 搜索态：命中 S1（正文=标题），S2 排除；search 账如实
+        d = kgraph.build(cfg, query="部署")
+        sess = {n["id"] for n in d["nodes"] if n["kind"] == "session"}
+        self.assertEqual(sess, {"s:S1"})
+        self.assertEqual(d["meta"]["search"],
+                         {"q": "部署", "fts_matched": 1})
+        self.assertEqual(d["meta"]["sessions"]["drawn"], 1)
+        # 邻域随命中下发（词/主题边只连命中会话）
+        self.assertTrue(all(e["src"] != "k:买菜" for e in d["edges"]))
+        # FTS 语法字符清洗：不报错（引号/括号丢弃后按残余匹配）
+        d2 = kgraph.build(cfg, query='"部署"(')
+        self.assertEqual(d2["meta"]["search"]["q"], "部署")
+        # 查无此词：诚实空子图（无会话节点，search 账=0）
+        d3 = kgraph.build(cfg, query="不存在词xyzq")
+        self.assertEqual(
+            {n["id"] for n in d3["nodes"] if n["kind"] == "session"},
+            set())
+        self.assertEqual(d3["meta"]["search"]["fts_matched"], 0)
+        # 默认态：search=None，全量会话都在数据面
+        d4 = kgraph.build(cfg)
+        self.assertIsNone(d4["meta"]["search"])
+        self.assertEqual(len({n["id"] for n in d4["nodes"]
+                              if n["kind"] == "session"}), 2)
 
 
 if __name__ == "__main__":

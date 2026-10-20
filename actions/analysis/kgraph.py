@@ -231,11 +231,53 @@ def _first_user_sids(db: Path) -> tuple[set[str], int]:
         con.close()
 
 
-def _load_sessions(db: Path | None, hints: list[str], limit: int
-                   ) -> tuple[list[dict], dict]:
+def _clean_fts_query(query: str) -> str:
+    """FTS 查询清洗：只保留 CJK/ASCII 词与空格（FTS 语法字符丢弃，
+    不报错）。清洗结果同时用于检索与 meta.search.q（诚实账：bar 里
+    显示的就是实际参与匹配的串）。"""
+    clean = "".join(ch if ("\u4e00" <= ch <= "\u9fff" or ch.isascii()
+                           and (ch.isalnum() or ch == " ")) else " "
+                    for ch in query)
+    return " ".join(clean.split())
+
+
+def _fts_search_sids(db: Path, query: str) -> set[str]:
+    """正文 FTS 检索（messages 索引，检索框同判据同索引）——v0.86 搜索
+    模式的会话命中集。查询词 bigram 改写。"""
+    import sqlite3
+    clean = _clean_fts_query(query)
+    if not clean:
+        return set()
+    con = sqlite3.connect(str(db))
+    try:
+        return {r[0] for r in con.execute(
+            "SELECT DISTINCT sid FROM messages WHERE messages MATCH ?",
+            (_cjk_bigram_q(clean),))}
+    finally:
+        con.close()
+
+
+def _cjk_bigram_q(text: str) -> str:
+    """查询侧 CJK bigram 改写（与主仓 indexing._cjk_bigram 同规则，
+    零依赖复制——kgraph 不 import 主仓）。"""
+    out: list[str] = []
+    for run in re.findall(r"[\u4e00-\u9fff]+|[A-Za-z0-9]+", text):
+        if not ("\u4e00" <= run[0] <= "\u9fff"):
+            out.append(run)
+        elif len(run) == 1:
+            out.append(run)
+        else:
+            out.extend(run[i:i + 2] for i in range(len(run) - 1))
+    return " ".join(out)
+
+
+def _load_sessions(db: Path | None, hints: list[str], limit: int,
+                   query: str = "") -> tuple[list[dict], dict]:
     """会话装载：全量→用户发起过滤→updated_at 最新截断。
+    query 非空（v0.86 搜索模式）：再经正文 FTS 过滤（title 不含但正文
+    含关键字的会话也能命中——「梦中救人」标题只中 4 个的教训）。
     返回 (rows, 账目)。账目字段：total/user_initiated/filtered/drawn/
-    truncated。"""
+    truncated + 搜索态 fts_matched。"""
     acc = {"total": 0, "user_initiated": 0, "filtered": 0,
            "drawn": 0, "truncated": False}
     if db is None or not Path(db).is_file():
@@ -258,6 +300,11 @@ def _load_sessions(db: Path | None, hints: list[str], limit: int
     rows = [r for r in rows if r["sid"] in user_sids]
     acc["user_initiated"] = len(rows)
     acc["filtered"] = acc["total"] - len(rows)
+    q = " ".join(str(query or "").split())
+    if q:
+        hits = _fts_search_sids(Path(db), q)
+        acc["fts_matched"] = len(hits & {r["sid"] for r in rows})
+        rows = [r for r in rows if r["sid"] in hits]
     if acc["total"] and not rows:
         hints.append(
             f"没有「用户先发起」的会话（判据=首条消息 role='user'；"
@@ -270,14 +317,15 @@ def _load_sessions(db: Path | None, hints: list[str], limit: int
     return rows, acc
 
 
-def build(cfg, max_sessions: int | None = None) -> dict:
-    """v0.84 全量装载+聚类聚合：数据面一次下发全部节点/边与簇结构，
-    代表层显隐由前端控制（展开零等待）。max_sessions 仅供测试注入。"""
+def build(cfg, max_sessions: int | None = None, query: str = "") -> dict:
+    """v0.86：默认态=大类总览（数据面仍全量下发，前端默认只显主题/卡片）；
+    query 非空=搜索子图（正文 FTS 命中的会话+其邻域，检索框同索引）。
+    数据面一次下发全部节点/边与簇结构，max_sessions 仅供测试注入。"""
     hints: list[str] = []
     topics = _load_topics(cfg.topics_meta, hints)
     cards = _load_cards(cfg.cards_root, hints)
     cap = KG_MAX_SESSIONS if max_sessions is None else int(max_sessions)
-    sessions, sess_acc = _load_sessions(cfg.db, hints, cap)
+    sessions, sess_acc = _load_sessions(cfg.db, hints, cap, query=query)
 
     # kw_hit 判定表：关键词 → 标题含词的会话 sid 集（检索框同判据）。
     # 自动枢纽（v0.85）也进词命中表——但**只辐射不归簇**：真库实测共享
@@ -413,6 +461,9 @@ def build(cfg, max_sessions: int | None = None) -> dict:
         "kw_hit_capped": sorted(set(kw_hit_capped)),
         "cards_unlinked": cards_unlinked,
         "caps": {"sessions": cap, "kw_hits": KG_MAX_KW_HITS},
+        "search": ({"q": _clean_fts_query(str(query)),
+                    "fts_matched": sess_acc.get("fts_matched", 0)}
+                   if str(query or "").strip() else None),
         "criteria": {
             "user_initiated": "首条消息 role='user'（messages 表真源）",
             "cluster": f"标题 token Jaccard≥{KG_SIM_JACCARD} 或 bigram "

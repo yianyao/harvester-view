@@ -106,6 +106,8 @@ const FN_SRC = [
   extract("kgCanvasClick", "p"), extract("kgOpenSession", "sid"),
   extract("kgEnsureChart", ""), extract("renderKgraph", "d"),
   extract("loadKgraph", ""), extract("kgWaitJob", "jid"),
+  extract("kgNodePixels", ""), extract("kgBrushPick", "x0,y0,x1,y1"),
+  extract("kgBrushApply", "sel"),
 ].join("\n");
 
 /* eval 域：页面 let 变量在包装体内声明（赋值留在闭包里可读回） */
@@ -117,13 +119,18 @@ function mkScope(env) {
     "let kgData=null,kgIndex={},kgAdj={},kgPinId=null;\n" +
     "let kgQuery=\"\",kgDeb=null;\n" +
     "let kgChart=null;\n" +
+    "let kgBrushSel=null,kgWeakTopics=0;\n" +
     FN_SRC + "\n" +
     "return {get kgData(){return kgData;}, set kgData(v){kgData=v;},\n" +
     "  get kgPinId(){return kgPinId;},\n" +
     "  get kgChart(){return kgChart;}, set kgChart(v){kgChart=v;},\n" +
     "  get kgQuery(){return kgQuery;}, set kgQuery(v){kgQuery=v;},\n" +
+    "  get kgBrushSel(){return kgBrushSel;},\n" +
+    "  set kgBrushSel(v){kgBrushSel=v;},\n" +
+    "  get kgWeakTopics(){return kgWeakTopics;},\n" +
     "  kgVisible,kgAdjBuild,kgBar,kgOption,kgRender,kgFitView,\n" +
-    "  kgCanvasClick,kgOpenSession,kgEnsureChart,renderKgraph,loadKgraph,kgWaitJob};");
+    "  kgCanvasClick,kgOpenSession,kgEnsureChart,renderKgraph,loadKgraph,\n" +
+    "  kgWaitJob,kgNodePixels,kgBrushPick,kgBrushApply};");
   return factory(env.$, env.esc, env.errorBox, env.actJson, env.actApi,
     env.switchTab, env.openSession, env.jumpCloudWord,
     env.KG_KIND_COLOR, env.KG_KIND_SIZE, env.KG_KIND_NAME,
@@ -169,20 +176,31 @@ const DATA = {
   nodes: [
     { id: "t:t1", kind: "topic", label: "部署排障",
       meta: { cluster: ["t:t1", "s:S1", "s:S2", "s:S3"] } },
+    { id: "t:t2", kind: "topic", label: "部署规范",
+      meta: { cluster: ["t:t2", "s:S9"] } },
+    { id: "t:t3", kind: "topic", label: "吾好梦中救人",
+      meta: { cluster: ["t:t3", "s:S8"] } },
     { id: "c:c1", kind: "card", label: "部署卡" },
     { id: "k:部署", kind: "kw", label: "部署" },
+    { id: "k:孤立", kind: "kw", label: "孤立词" },
     { id: "s:S1", kind: "session", label: "网关重启", meta: { sid: "S1" } },
     { id: "s:S2", kind: "session", label: "买菜清单", meta: { sid: "S2" } },
   ],
   edges: [
     { src: "t:t1", dst: "c:c1", kind: "topic_of" },
+    { src: "t:t1", dst: "t:t2", kind: "shared_kw", weight: 2,
+      via: ["部署", "网关"] },
     { src: "t:t1", dst: "s:S1", kind: "member" },
+    { src: "t:t1", dst: "s:S2", kind: "member" },
+    { src: "t:t3", dst: "s:S1", kind: "member" },
     { src: "k:部署", dst: "t:t1", kind: "keyword" },
     { src: "k:部署", dst: "s:S1", kind: "kw_hit" },
+    { src: "k:孤立", dst: "s:S2", kind: "kw_hit" },
     { src: "s:S1", dst: "s:S2", kind: "member" },
   ],
   meta: { search: { q: "部署", fts_matched: 2 },
     clusters_multi: 1, merged_into_rep: 2, auto_hubs: 0,
+    topic_links: 1, topic_link_excluded_hubs: [],
     sessions: { user_initiated: 2, total: 3, filtered: 1 } },
   hints: [],
 };
@@ -208,11 +226,16 @@ scope.renderKgraph(DATA);
   /* 大类态：只发 topic/card 进 series（会话/关键词不画） */
   const ids = ser.data.map(n => n.id);
   check("大类态只显主题/卡片",
-    ids.includes("t:t1") && ids.includes("c:c1") &&
+    ids.includes("t:t1") && ids.includes("t:t2") && ids.includes("t:t3") &&
+    ids.includes("c:c1") &&
     !ids.includes("s:S1") && !ids.includes("k:部署"));
   const linkIds = ser.links.map(l => l.source + ">" + l.target);
   check("大类态边只在可见节点间（s1-s2 不画）",
     !linkIds.includes("s:S1>s:S2") && linkIds.includes("t:t1>c:c1"));
+  const skLink = ser.links.find(l => l.kind === "shared_kw");
+  check("P7-② 主题连线大类态画出+宽度按共享数 1+2*0.3",
+    skLink && skLink.source === "t:t1" && skLink.target === "t:t2" &&
+    Math.abs(skLink.lineStyle.width - 1.6) < 1e-9);
   const plainC = ser.data.find(n => n.id === "c:c1");
   check("普通卡片气泡走档位表",
     plainC && plainC.symbolSize === KG_KIND_SIZE.card);
@@ -258,6 +281,15 @@ scope.renderKgraph(DATA);
     s2links.includes("k:部署>t:t1"));
   check("搜索态：c1-t1 边不画（c1 不可见）",
     !s2links.includes("c:c1>t:t1") && !s2links.includes("t:t1>c:c1"));
+  /* v0.88 弱命中门槛（用户裁决）：主题需≥2 成员命中才显 */
+  check("搜索态：命中≥2 的主题进（t1 有 S1/S2 两成员命中）",
+    ids.includes("t:t1"));
+  check("搜索态：命中 1 次的弱主题不进（防人名带出大类）",
+    !ids.includes("t:t3"));
+  check("搜索态：无关关键词经 kw_hit 照进（k:孤立）",
+    ids.includes("k:孤立"));
+  check("搜索态：弱命中主题账进 bar（不静默）",
+    $("kg-bar").textContent.includes("已隐藏 1 个弱命中主题（成员命中<2）"));
   const rep = ser.data.find(n => n.id === "t:t1");
   check("簇代表名称带 (+3)", rep.name.includes("(+3)"));
   check("簇代表气泡 14+√4×3.2（照搬公式）",
@@ -312,15 +344,46 @@ scope.renderKgraph(DATA);
 
   scope.kgCanvasClick({ dataType: "node", data: nodeById["t:t1"] });
   check("主题点击锁定邻域（kgPinId）", scope.kgPinId === "t:t1");
-  const dimmed = refresh().data.find(n => n.id === "s:S2");
-  check("邻域外节点降透明度", dimmed && dimmed.itemStyle.opacity === 0.15);
-  const hotEdge = refresh().links.find(
+  /* v0.88 邻域锁改过滤（用户批注：点击后左边应过滤）——非邻域直接不画 */
+  const pinned = refresh();
+  check("邻域锁：邻域外节点直接隐藏（k:孤立 不在 series）",
+    !pinned.data.some(n => n.id === "k:孤立"));
+  check("邻域锁：邻域内节点保留（s:S2 在 series 且无降透明度）",
+    pinned.data.some(n => n.id === "s:S2") &&
+    pinned.data.every(n => n.itemStyle.opacity === undefined));
+  const hotEdge = pinned.links.find(
     l => (l.source === "t:t1" && l.target === "s:S1"));
   check("邻域边加宽提亮", hotEdge && hotEdge.lineStyle.width === 1.6);
   scope.kgCanvasClick({ dataType: "node", data: nodeById["t:t1"] });
   check("再点同一主题解锁", scope.kgPinId === null);
   scope.kgCanvasClick({ dataType: "edge", data: {} });
   check("非节点 payload 不误触", scope.kgPinId === null);
+
+  /* ④' 框选（v0.88）：指针手势在浏览器实测，这里测过滤内核 */
+  scope.kgBrushApply(new Set(["t:t1", "s:S1", "k:部署"]));
+  let brSer = refresh();
+  check("框选：只留框内节点",
+    brSer.data.length === 3 && brSer.data.every(n =>
+      ["t:t1", "s:S1", "k:部署"].includes(n.id)));
+  check("框选：只留两端都在框内的边（悬空线不画）",
+    brSer.links.length === 3 && brSer.links.every(l =>
+      ["k:部署>t:t1", "t:t1>s:S1", "k:部署>s:S1"].includes(
+        l.source + ">" + l.target)));
+  check("框选：还原按钮亮出",
+    els["kg-brush-clear"].style.display === "");
+  check("框选：账进 bar", $("kg-bar").textContent.includes("框选子图"));
+  scope.kgBrushApply(null);
+  brSer = refresh();
+  check("框选还原：全量恢复+按钮收起",
+    brSer.data.length > 3 &&
+    els["kg-brush-clear"].style.display === "none");
+  scope.kgBrushApply(new Set(["t:t1", "s:S1"]));
+  scope.kgCanvasClick({ dataType: "node", data: nodeById["t:t1"] });
+  check("点主题清框选（邻域锁与框选互斥）",
+    scope.kgPinId === "t:t1" && scope.kgBrushSel === null);
+  scope.kgCanvasClick({ dataType: "node", data: nodeById["t:t1"] });
+  check("kgBrushPick 布局坐标不可读 → null（fail loud）",
+    scope.kgBrushPick(0, 0, 10, 10) === null);
   scope.kgQuery = "";
 }
 
@@ -333,8 +396,8 @@ scope.renderKgraph(DATA);
     bar.includes("2 会话已聚入"));
   check("用户发起过滤账进 bar", bar.includes("用户发起 2/3") &&
     bar.includes("滤掉 1 非用户发起"));
-  check("显示边账进 bar（大类态可见边恰 1：t1>c1）",
-    bar.includes("显示边 1"));
+  check("显示边账进 bar（大类态可见边恰 2：t1>c1、t1~t2）",
+    bar.includes("显示边 2"));
 }
 
 /* ⑥ 复位＝重跑布局 */

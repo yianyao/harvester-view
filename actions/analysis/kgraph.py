@@ -15,16 +15,20 @@
    自己，点击直达原文；
 4. 黑底画布（CSS 层，见 index.html）。
 
-**机械关系，零语义臆造**（边五类，同 v0.83）：
+**机械关系，零语义臆造**（边六类；主题连线为 2026-10-20 用户解禁的
+P7-②，判据纯机械）：
 - 主题—成员会话 member（topics.members，注册时人工给证据）；
 - 卡片—锚点会话 anchor（frontmatter §8 冻结字段）；
 - 卡片—主题 topic_of（锚点 sid ∈ 主题成员，cards validate 同判据）；
 - 关键词—主题 keyword（topics.keywords 定稿表）；
-- 关键词—会话 kw_hit（标题含词，与检索框同判据）。
+- 关键词—会话 kw_hit（标题含词，与检索框同判据）；
+- 主题—主题 shared_kw（两主题共享≥2 个定稿关键词；被≥6 主题共用的
+  枢纽词不参与连线——防「分析」式高频枢纽把全图连成一团，同自动枢纽
+  不进聚类的防线）。
 
-诚实边界：主题间无边（P7-② 缓行）；会话间**无相似度边**——聚类是
-聚合展示手段，不是「语义相似边」；真语义近似待 M2/M4。被过滤/聚合的
-账目全部进 meta（画了多少/滤了多少/聚成几簇），UI 明示。
+诚实边界：会话间**无相似度边**——聚类是聚合展示手段，不是「语义相似
+边」；主题连线是关键词表的机械对账，不是语义相似（真语义待 M2/M4）。
+被过滤/聚合的账目全部进 meta（画了多少/滤了多少/聚成几簇），UI 明示。
 
 只读：harvester.db / topics_meta.db / 卡片目录全部 mode=ro 或纯读。
 """
@@ -44,6 +48,8 @@ KG_HUB_MIN_DF = 8        # 自动枢纽：文档频率下限（机械频率，�
 KG_HUB_MAX = 40          # 自动枢纽词数量上限
 KG_HUB_MAXLEN = 4        # 候选片段最大长度（CJK 子串 2~4 字 + ASCII 词）
 KG_HUB_STOP = set("的了与和及或是在")  # 含虚词字的片段不做枢纽（机械过滤）
+KG_TLINK_MIN_SHARED = 2  # P7-② 主题连线：共享定稿关键词数下限（机械对账）
+KG_TLINK_HUB_FAN = 6     # 被≥6 主题共用的词不参与连线（防枢纽连锁成团）
 
 
 def _con_ro(db: Path) -> sqlite3.Connection:
@@ -403,6 +409,29 @@ def build(cfg, max_sessions: int | None = None, query: str = "") -> dict:
                 edges.append({"src": f"t:{t['id']}", "dst": f"s:{rep}",
                               "kind": "member"})
 
+    # P7-② 主题连线（2026-10-20 用户解禁）：两主题共享≥2 个定稿关键词
+    # 则连边——keywords 来自 topics 定稿表，纯机械对账，零语义臆造；
+    # 被≥KG_TLINK_HUB_FAN 个主题引用的词不参与——防高频枢纽把全图连成
+    # 一团（「分析」枢纽教训，同自动枢纽不进聚类的防线）。边带 weight
+    # （共享词数，前端画宽）与 via（哪些词，可解释）。
+    kw_topics: dict[str, list[str]] = {}
+    for t in topics:
+        for kw in t["keywords"]:
+            kw_topics.setdefault(kw, []).append(f"t:{t['id']}")
+    pair_kws: dict[tuple[str, str], list[str]] = {}
+    for kw, ts in kw_topics.items():
+        if not 1 < len(ts) < KG_TLINK_HUB_FAN:
+            continue                     # 单主题词不连线；枢纽词整体排除
+        for i in range(len(ts)):
+            for j in range(i + 1, len(ts)):
+                pair_kws.setdefault((ts[i], ts[j]), []).append(kw)
+    topic_links = 0
+    for (a, b), kws in sorted(pair_kws.items()):
+        if len(kws) >= KG_TLINK_MIN_SHARED:
+            edges.append({"src": a, "dst": b, "kind": "shared_kw",
+                          "weight": len(kws), "via": sorted(kws)})
+            topic_links += 1
+
     # 自动枢纽节点（v0.85）：同 kw 层，badge 带文档频率账
     for w, dfc in auto_hubs.items():
         kid = f"k:{w}"
@@ -459,6 +488,10 @@ def build(cfg, max_sessions: int | None = None, query: str = "") -> dict:
         "merged_into_rep": sess_acc["drawn"] - len(clusters),
         "kw_hit_counts": kw_hit_counts,
         "kw_hit_capped": sorted(set(kw_hit_capped)),
+        "topic_links": topic_links,
+        "topic_link_excluded_hubs": sorted(
+            kw for kw, ts in kw_topics.items()
+            if len(ts) >= KG_TLINK_HUB_FAN),
         "cards_unlinked": cards_unlinked,
         "caps": {"sessions": cap, "kw_hits": KG_MAX_KW_HITS},
         "search": ({"q": _clean_fts_query(str(query)),
@@ -472,13 +505,17 @@ def build(cfg, max_sessions: int | None = None, query: str = "") -> dict:
             "hubs": f"自动枢纽=标题高频片段（文档频率≥{KG_HUB_MIN_DF} 的 "
                     f"2~{KG_HUB_MAXLEN} 字 CJK 子串/ASCII 词，虚词字过滤"
                     "+贪心去重，机械频率提取，无语义判断）",
+            "topic_links": f"两主题共享≥{KG_TLINK_MIN_SHARED} 个定稿关键词"
+                           f"（topics.keywords 机械对账）；被≥"
+                           f"{KG_TLINK_HUB_FAN} 个主题共用的词不参与"
+                           "（防枢纽连锁成团）",
             "representative": "簇内 updated_at 最新",
         },
         "source": "topics_meta.topics / cardlib.scan_cards / harvester.db",
         "derivation": "卡片→主题=锚点 sid∈主题成员；关键词→主题=定稿表；"
                       "关键词→会话=标题含词（检索框同判据）；"
-                      "主题间无边（P7-② 缓行）、会话间无相似度边（聚类只是"
-                      "聚合展示，不是语义边）",
+                      "主题→主题=共享≥2 定稿关键词（P7-② 机械对账）、"
+                      "会话间无相似度边（聚类只是聚合展示，不是语义边）",
     }
     if not nodes:
         hints.append("没有可画的节点（索引库/主题注册表/卡片目录都空或全被"

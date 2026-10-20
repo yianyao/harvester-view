@@ -9,7 +9,8 @@
 - 动作账：kgraph 双层账（ACTIONS×registrygen×注册表 JSON）；
 - 数据账：用户发起过滤（首条 role='user'，机械真源 messages 表）+
   聚类判据（标题 Jaccard≥0.45 或共享定稿关键词）+ 簇代表结构 +
-  五类机械边 + 账目诚实（过滤/聚合/截断/封顶）+ 无边诚实；
+  六类机械边（P7-② 主题连线=共享≥2 定稿关键词、枢纽词扇形≥6 排除）+
+  账目诚实（过滤/聚合/截断/封顶）+ 无边诚实；
 - 渲染账：render_kgraph.js（DOM 桩）——显隐集、簇展开/收起、
   缩放平移、hover 邻域、下钻、空态、失败态。
 """
@@ -152,6 +153,7 @@ class TestV66KgraphStatic(unittest.TestCase):
         self.assertIn("Jaccard", HTML)              # 聚类判据声明
         self.assertIn("黑底", HTML)
         self.assertIn("P7-②", HTML)
+        self.assertIn("共享关键词", HTML)             # P7-② 边类型图例
         self.assertIn("M2/M4", HTML)
         self.assertIn("标题含词", HTML)
 
@@ -195,8 +197,22 @@ class TestV66KgraphStatic(unittest.TestCase):
         self.assertIn('kgQuery', HTML)
         self.assertIn('if(kgQuery)p.q=kgQuery', HTML)
         self.assertIn('if(kgQuery&&sq===qn){', HTML)   # 搜索态命中子图（带守卫）
-        self.assertIn('nd.kind==="session")vis.add(nd.id)', HTML)
-        self.assertIn("e.src.charAt(0)===\"s\"", HTML)  # 只扩会话直接邻居
+        self.assertIn('if(nd.kind==="session"){vis.add(nd.id);'
+                      'hits.add(nd.id);}', HTML)      # 命中集起点
+        self.assertIn('(tHits[nd.id]||0)>=2', HTML)   # v0.88 主题≥2 门槛
+        self.assertIn("kgWeakTopics++", HTML)         # 弱命中主题记账
+        self.assertIn('other.charAt(0)==="t"', HTML)  # 未达门槛主题不借边混入
+        self.assertIn("kgBrushSel", HTML)             # v0.88 框选过滤
+        self.assertIn('id="kg-brush"', HTML)          # 框选开关
+        self.assertIn('id="kg-brush-layer"', HTML)    # 框选覆盖层（挡 roam）
+        self.assertIn('id="kg-brush-rect"', HTML)     # 选区矩形
+        self.assertIn('id="kg-full"', HTML)           # 全屏/恢复顶栏
+        self.assertIn('body.kg-full', HTML)           # 全屏态类
+        self.assertIn("kgNodePixels", HTML)           # 布局坐标取点
+        self.assertIn("kgBrushPick", HTML)            # 框内命中测试
+        self.assertIn("邻域锁与框选互斥", HTML)
+        self.assertIn('kind==="shared_kw"', HTML)     # P7-② 主题连线画宽
+        self.assertIn("已隐藏", HTML)                  # 弱命中账不静默
         self.assertIn("不得冒充命中集", HTML)           # 守卫声明在注释
         self.assertIn('session:"#4fb0ff"', HTML)    # 用户「黄圆圈改蓝」
         self.assertNotIn("#ffab70", HTML)           # 旧黄不得残留
@@ -364,7 +380,8 @@ class TestV66KgraphData(unittest.TestCase):
         self.assertTrue(any("用户先发起" in h for h in d2["hints"]))
 
     def test_15_no_semantic_edges(self):
-        # 死约定：主题间无边、会话间无相似度边（聚类只是聚合展示）
+        # 死约定：会话间无相似度边（聚类只是聚合展示）；主题间只允许
+        # shared_kw 机械连线（本夹具两主题仅共享 1 词，不达门槛无边）
         from actions.analysis import kgraph
         from actions.actionsserve import Config
         tdb = self.tmp / "t.db"
@@ -383,6 +400,7 @@ class TestV66KgraphData(unittest.TestCase):
             dk = e["dst"].split(":")[0]
             self.assertFalse(sk == "t" and dk == "t", f"主题间边混入：{e}")
             self.assertFalse(sk == "s" and dk == "s", f"会话间边混入：{e}")
+            self.assertNotEqual(e.get("kind"), "shared_kw")
 
     def test_16_criteria_declared(self):
         # 判据透明：meta.criteria 全声明（可解释，不黑箱）
@@ -395,6 +413,7 @@ class TestV66KgraphData(unittest.TestCase):
         self.assertIn("M2/M4", cr["cluster"])
         self.assertIn("文档频率", cr["hubs"])
         self.assertIn("无语义判断", cr["hubs"])
+        self.assertIn("机械对账", cr["topic_links"])   # P7-② 判据声明
         self.assertIn("updated_at", cr["representative"])
         self.assertEqual(d["meta"]["auto_hubs"],
                          sum(1 for n in d["nodes"]
@@ -515,6 +534,41 @@ class TestV66KgraphData(unittest.TestCase):
         self.assertIsNone(d4["meta"]["search"])
         self.assertEqual(len({n["id"] for n in d4["nodes"]
                               if n["kind"] == "session"}), 2)
+
+    def test_20_topic_links_shared_kw(self):
+        """P7-②（2026-10-20 用户解禁）：主题连线=两主题共享≥2 个定稿
+        关键词（topics.keywords 机械对账，零语义）；被≥6 主题共用的
+        枢纽词不参与连线——防「分析」式高频枢纽把全图连成一团（真库
+        实测教训，同自动枢纽不进聚类的防线）。"""
+        from actions.actionsserve import Config
+        from actions.analysis import kgraph
+        tmp = self.tmp
+        tdb = tmp / "t.db"
+        rows = [
+            ("tA", "甲", '["x1", "x2", "hub"]', '[]',
+             "2026-10-19T00:00:00"),
+            ("tB", "乙", '["x1", "x2", "hub"]', '[]',
+             "2026-10-19T00:00:00"),
+            ("tC", "丙", '["x3"]', '[]', "2026-10-19T00:00:00"),
+        ]
+        # 再加 5 个主题共用 hub → hub 扇形=7 ≥6 整体排除
+        for i in range(5):
+            rows.append((f"tH{i}", f"丁{i}", '["hub"]', '[]',
+                         "2026-10-19T00:00:00"))
+        _mk_topics_db(tdb, rows)
+        glossary = tmp / "g.json"
+        glossary.write_text('{"terms": []}', encoding="utf-8")
+        cfg = Config(cards_root=tmp / "cards", db=tmp / "h.db",
+                     glossary=glossary, topics_meta=tdb)
+        d = kgraph.build(cfg)
+        links = [e for e in d["edges"] if e["kind"] == "shared_kw"]
+        self.assertEqual(len(links), 1, "只应有 tA~tB 一条主题连线")
+        e = links[0]
+        self.assertEqual({e["src"], e["dst"]}, {"t:tA", "t:tB"})
+        self.assertEqual(e["weight"], 2)      # hub 被排除，只剩 x1/x2
+        self.assertEqual(e["via"], ["x1", "x2"])
+        self.assertEqual(d["meta"]["topic_links"], 1)
+        self.assertEqual(d["meta"]["topic_link_excluded_hubs"], ["hub"])
 
 
 if __name__ == "__main__":

@@ -12,6 +12,25 @@
 > harvester-view 是架在接口之上的"看板"。视图坏了不影响数据，
 > 数据库不升级视图也能照常用（只要接口版本兼容）。
 
+## v0.90 修订（词云 tab 下线，2026-10-20，用户裁决「没用，而且还重复」）
+
+v0.81 的词云导航被知识图谱（v0.86+ 两态模型）全面覆盖，用户裁决下线：
+
+- **重复的实锤**：同一数据源（keywords_meta 词频统计——图谱关键词节点
+  同源）、同一交互（点词灌进会话检索=图谱点关键词节点灌检索）、图谱
+  还多出尺寸/辐射边/主题态子图三样词云没有的；
+- **没用的实锤**：静态快照（要手动重跑 keywords 子命令重建，数据陈旧）；
+  主题体系定稿后裸 n-gram 词频的组织价值已被主题层取代；
+- **删除面**：词云 tab 按钮/section/CSS 五档/loadWordcloud/cloudN/档位
+  绑定 + render_wordcloud.js + test_v65_wordcloud.py；上游 kwstats.py/
+  keywords 子命令/keywords_meta.db **保留不动**（kgraph 关键词节点同源
+  依赖，CLI 独立设施）；`jumpCloudWord` 函数保留（图谱点关键词复用同一条
+  「切会话页+灌词检索」通路，仅改名意的事没做——函数名不动防渲染门桩
+  漂移，注释已标注来源）；
+- **测试**：render_kgraph 61/home/work/boot_sequence 渲染门全 PASS，
+  test_v1/v40_theme_contrast/v55/v66 unittest 全 OK（删门后连带复验）。
+  历史 v0.81 修订节保留作记录。
+
 ## v0.89 修订（点主题灌成员子图+辐射连线换判据，2026-10-20，用户批注裁决）
 
 用户第三张截图批注两条：**①「点击这些大的节点能不能直接把节点名字
@@ -208,7 +227,7 @@
 主仓零代码改动（提案 docs/PROPOSAL-knowledge-graph-v1.md，用户 2026-10-19
 批准；复用 topics_meta / 卡片 anchors / 索引库三个既有真源）：
 
-- **图谱 tab**（词云之后）：A 档动作 `kgraph`（视图侧分析动作，无 CLI
+- **图谱 tab**（会话检索之后）：A 档动作 `kgraph`（视图侧分析动作，无 CLI
   cmd，同 dualtrack/topic_brief）一次组装 主题×卡片×关键词 三层节点 +
   四类**机械边**：member（主题—成员会话，topics.members 注册时人给证据）/
   anchor（卡片—锚点会话，frontmatter §8 冻结字段）/ topic_of（卡→主题，
@@ -218,8 +237,7 @@
   （P7-②）缓行不是图坏了——图例固定声明，防误读；
 - **会话层懒加载**：基础图只画 主题+卡片+关键词（防节点爆炸）；点主题/
   卡片才按 sids 发第二次 kgraph 动作展开成员/锚点会话（上限 400/次，
-  >60 个先确认）；点会话直达回合原文、点关键词灌进会话检索（真检索通路，
-  同词云下钻）；未入主题的会话不画节点、bar 如实给计数；
+  >60 个先确认）；点会话直达回合原文、点关键词灌进会话检索（真检索通路）；未入主题的会话不画节点、bar 如实给计数；
 - **确定性力导向布局**：canvas 自写（固定种子 + 固定迭代上限，节点按 id
   排序参与计算——同数据必得同坐标，零第三方依赖）；
 - **诚实空态**：topics_meta 未配置 / 卡片目录空 / 展开全 missing 都用
@@ -853,7 +871,6 @@ node tests/render_work.js       # v0.49 处理单（对账报警 + 建议 + 命�
 node tests/render_summary.js    # v0.74 卡片解释层 + v0.79 触发层（c-trig）
 node tests/render_dualtrack.js  # v0.77 双轨时间线 + ts 锚点
 node tests/render_reports.js    # v0.79 报告索引 + 昨日卡全文
-node tests/render_wordcloud.js  # v0.81 词云导航（分档/下钻/空态）
 node tests/render_kgraph.js     # v0.87 知识图谱（ECharts 照搬账/两态/诚实空态）
 
 # v0.49 自查：把 5 个缺陷故意放回去，确认每道门都会红（末行打印 5/5 被抓）

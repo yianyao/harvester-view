@@ -305,16 +305,6 @@ h3.sec{font-size:14px;margin:18px 0 6px}
   border-left:2px solid var(--line);border-radius:0 6px 6px 0;
   padding:6px 8px;margin:6px 0;white-space:pre-wrap;word-break:break-word}
 .card-body .c-anc{margin-top:4px}
-/* P7-①（v0.81）：词云——字号=doc_freq 分位五档（展示密度非语义分组） */
-.cloud-wrap{line-height:2.1;word-break:break-word;margin:8px 2px}
-.cloud-wrap .cw{cursor:pointer;margin:0 7px;color:var(--ink);
-  border-bottom:1px dashed var(--line)}
-.cloud-wrap .cw:hover{text-decoration:underline}
-.cloud-wrap .c1{font-size:12px;color:var(--ink2)}
-.cloud-wrap .c2{font-size:14px;color:var(--ink2)}
-.cloud-wrap .c3{font-size:17px}
-.cloud-wrap .c4{font-size:20px}
-.cloud-wrap .c5{font-size:24px;font-weight:600}
 .chip{display:inline-block;border:1px solid var(--line);border-radius:11px;
   padding:1px 10px;font-size:12px;color:var(--ink2);cursor:pointer;
   margin:0 4px 4px 0;user-select:none}
@@ -408,7 +398,6 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
     <button data-tab="home" class="on">今日工作台</button>
     <button data-tab="work">处理单</button>
     <button data-tab="sessions">会话检索</button>
-    <button data-tab="cloud">词云</button>
     <button data-tab="kgraph">图谱</button>
     <button data-tab="triage">蒸馏队列</button>
     <button data-tab="reports">报告</button>
@@ -531,16 +520,6 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
   </main>
 </section>
 
-<!-- ============ Tab 1.5: 词云导航（P7-①） ============ -->
-<section class="tab" id="tab-cloud" style="display:none">
-  <div class="toolbar">
-    <button id="cloud-n2" data-n="2" class="on">二元词</button>
-    <button id="cloud-n3" data-n="3">三元词</button>
-    <span class="sub2" id="cloud-bar"></span>
-  </div>
-  <div class="sub2" style="margin:6px 2px">从高频词粗粒度漫游进会话：字号=命中会话数分位（纯展示密度，不是语义分类）；点词=以该词跑一次会话检索（下钻走真检索，不臆造词→会话归属）</div>
-  <div id="cloud-out" class="cloud-wrap"><div class="empty">尚未加载</div></div>
-</section>
 
 <!-- ============ Tab 1.6: 知识图谱（v0.84，用户发起×相近聚合×黑底） ============
   数据：A 档动作 kgraph——①只取用户先发起（首条消息 role='user'）；
@@ -1058,7 +1037,6 @@ function switchTab(name){
     if(name==="home") loadOverview().catch(()=>{});
     if(name==="work") loadWork().catch(()=>{});
     if(name==="sessions") loadAll().catch(()=>{});
-    if(name==="cloud") loadWordcloud().catch(()=>{});
     if(name==="kgraph") loadKgraph().catch(()=>{});
     if(name==="triage") loadTriage().catch(()=>{});
     if(name==="reports"){ loadReport().catch(()=>{}); loadReportsIndex().catch(()=>{}); }
@@ -1119,45 +1097,8 @@ function fillSelect(id,items){
   if([...sel.options].some(o=>o.value===cur)) sel.value=cur;
 }
 
-/* ---------- 词云导航（P7-①，v0.81）----------
- * 数据：/api/keywords（上游 keywords_meta 最新 run 的 n-gram 词频，
- * gram/freq/doc_freq 三字段，无词→会话回链——下钻走真检索，不臆造归属）。
- * 字号=doc_freq 分位五档（纯展示密度）；点词=把该词灌进会话检索
- * （复用 loadSessions 通路）。纪律：gram/提示一律 esc 原样展示；
- * 空态诚实（未生成→给生成命令；绝不编词）。 */
-let cloudN=2;
-async function loadWordcloud(){
-  const out=$("cloud-out"), bar=$("cloud-bar");
-  out.innerHTML="<div class='empty'>加载中…</div>"; bar.textContent="";
-  let d;
-  try{ d=await api("/api/keywords?n="+cloudN+"&limit=150"); }
-  catch(e){ out.innerHTML="<div class='empty'>词频加载失败："+
-    esc(e.message||e)+"</div>"; return; }
-  if(d.hint){
-    out.innerHTML="<div class='empty'>"+esc(d.hint)+"（命令："+
-      esc("python -m harvester keywords --db harvester.db")+"）</div>";
-    return;
-  }
-  const rows=d.rows||[];
-  if(!rows.length){
-    out.innerHTML="<div class='empty'>最新 run 没有词频数据（重跑 "
-      +esc("python -m harvester keywords")+" 重建）</div>";
-    return;
-  }
-  if(d.run) bar.textContent="最新 run #"+d.run.id+" @ "+
-    String(d.run.generated_at||"").slice(0,10)+"（数据截至该时点）｜档位 n="+
-    cloudN+"｜取前 "+rows.length+" 词";
-  /* doc_freq 五档分位 → 字号（20/40/60/80 分位） */
-  const dfs=rows.map(r=>r.doc_freq||0).sort((a,b)=>a-b);
-  const q=p=>dfs[Math.min(dfs.length-1,Math.floor(p*(dfs.length-1)))];
-  const tier=v=>v>=q(.8)?5:v>=q(.6)?4:v>=q(.4)?3:v>=q(.2)?2:1;
-  out.innerHTML=rows.map(r=>
-    "<span class='cw c"+tier(r.doc_freq||0)+"' data-w='"+esc(r.gram)+
-    "' title=\"freq "+esc(r.freq)+" × doc_freq "+esc(r.doc_freq)+
-    "（命中会话数）\">"+esc(r.gram)+"</span>").join(" ");
-  for(const el of out.querySelectorAll(".cw"))
-    el.onclick=()=>jumpCloudWord(el.dataset.w);
-}
+/* jumpCloudWord：词云下线的遗留通用件——图谱点关键词节点复用同一条
+ * 「切会话页+灌词检索」通路（v0.90 起词云段已删，函数保留）。 */
 function jumpCloudWord(w){
   if(!w)return;
   switchTab("sessions");
@@ -4876,9 +4817,6 @@ if(typeof echarts==="undefined"){
 }else{
   window.addEventListener("resize",()=>{if(kgChart)kgChart.resize();});
 }
-for(const _cid of ["cloud-n2","cloud-n3"])
-  $(_cid).onclick=()=>{cloudN=Number($(_cid).dataset.n);
-    loadWordcloud().catch(()=>{});};
 $("btn-search").onclick=()=>{state.q=$("f-q").value.trim();state.offset=0;
   loadSessions().catch(()=>{});};
 $("f-q").addEventListener("keydown",e=>{

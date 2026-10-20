@@ -148,6 +148,19 @@ class TestCommandHoverTitle(unittest.TestCase):
         self.assertIn("#cmd-right{grid-column:1/-1", self.html)
         self.assertNotIn("250px minmax(320px,1fr) 330px", self.html)
 
+    def test_cmd_params_prefilled_not_blank(self):
+        # v0.90c 用户批注「能否直接填满所有参数，直接执行就可以了！要不
+        # 然真的记不住」：参数预填三层回落（用户已输入>default>example）
+        # 全进输入框；预填值必须同步进 state（否则假预填——框里有值、
+        # 命令预览/执行不带）；用户改过的键绝不回写覆盖。
+        self.assertIn("const prefill=a=>state.cmdParams[a.dest]!==undefined",
+                      self.html)
+        self.assertIn("a.default!==null&&a.default!==undefined?a.default",
+                      self.html)
+        self.assertIn("v0.90c 预填对账", self.html)
+        self.assertIn('box.querySelectorAll("input[data-p]")', self.html)
+        self.assertIn("state.cmdParams[el.dataset.p]===undefined", self.html)
+
     def test_cmd_preview_and_write_panel_have_tooltip(self):
         # 命令台预览行与写动作面板也要有解释（不仅处理单）
         self.assertIn("命令行预览（与真实 CLI 同形，供核对参数", self.html)

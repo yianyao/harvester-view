@@ -3577,28 +3577,37 @@ function renderCmdParams(){
         "（"+esc(s.tier)+" 档）</option>").join("")+"</select>"+
       "<span class='sub2'>A 档子动作可在本页直接执行；B 档走两段提交。</span></div>";
   }
+  /* v0.90c 用户批注「能否直接填满所有参数，直接执行就可以了！要不然
+   * 真的记不住」：参数预填——用户已输入 > 注册表 default > example，
+   * 三层回落全进输入框（不是藏在 placeholder），进来就能点执行。
+   * 档位安全垫不动：B 档仍先预演、C 档仍只复制命令行、路径参数仍
+   * 服务端注入不暴露。 */
+  const prefill=a=>state.cmdParams[a.dest]!==undefined
+    ?state.cmdParams[a.dest]
+    :(a.default!==null&&a.default!==undefined?a.default
+      :(a.example!=null?a.example:""));
   h+=vis.length?"<h3 class='sec'>参数（"+esc(cur.cmd)+"）</h3>":"";
   for(const a of vis){
     const val=state.cmdParams[a.dest];
     h+="<div class='prow'><span class='pn'>"+esc(a.name)+"</span>";
     if(a.src==="chips"&&a.kind==="enum"){
+      const dv=(state.cmdParams[a.dest]!==undefined)?String(val)
+        :(a.default!=null&&a.default!==""?String(a.default):"");
       h+="<select data-p=\""+esc(a.dest)+"\"><option value=''>（缺省）</option>"+
-        (a.choices||[]).map(c=>"<option"+(String(val)===c?" selected":"")+
+        (a.choices||[]).map(c=>"<option"+(dv===c?" selected":"")+
         ">"+esc(c)+"</option>").join("")+"</select>";
     }else if(a.src==="chips"){
+      const pv=prefill(a);
       h+="<input type='number' data-p=\""+esc(a.dest)+"\" style='width:90px' "+
-        "value='"+(val===undefined||val===null?"":esc(val))+"' "+
+        "value='"+(pv===""?"":esc(pv))+"' "+
         "placeholder='缺省=全库'>";
     }else{
-      /* v0.90 用户批注：placeholder 只在有信息时出现，且优先给**示例
-       * 值**（example→default 回落——help 说「数据源声明文件」用户还
-       * 是不知道值长啥样，examples 才免翻命令行）；参数含义走 title
-       * 悬停（help+note+示例），不再只靠行尾小字 */
       const ex=a.example!=null?a.example:a.default;
       const ph=a.choices?esc(a.choices.slice(0,6).join("|"))
         :(ex!==null&&ex!==undefined?esc(ex):"");
+      const pv=prefill(a);
       h+="<input data-p=\""+esc(a.dest)+"\" style='width:230px' value='"+
-        esc(val===undefined||val===null?"":val)+"' placeholder='"+ph+"'"+
+        esc(pv===""?"":pv)+"' placeholder='"+ph+"'"+
         " title=\""+esc([a.help,a.note,
           ex!=null&&ex!==""?"示例："+ex:null]
           .filter(Boolean).join("；"))+"\">";
@@ -3621,6 +3630,14 @@ function renderCmdParams(){
     const v=el.value;
     if(v==="")delete state.cmdParams[el.dataset.p];
     else state.cmdParams[el.dataset.p]=v;
+  }
+  /* v0.90c 预填对账：input 里机器预填的值同步进 state——不同步就是
+     假预填（框里有值、命令预览/执行不带）。只补 state 未持有的键，
+     用户改过的值绝不回写覆盖。 */
+  for(const el of box.querySelectorAll("input[data-p]")){
+    if(el.value!==""&&state.cmdParams[el.dataset.p]===undefined)
+      state.cmdParams[el.dataset.p]=el.type==="number"
+        ?Number(el.value):el.value;
   }
   for(const el of box.querySelectorAll("[data-p]")){
     const ev=el.tagName==="SELECT"?"change":"input";

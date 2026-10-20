@@ -104,7 +104,7 @@ const FN_SRC = [
   extract("kgBar", ""), extract("kgOption", ""),
   extract("kgRender", ""), extract("kgFitView", ""),
   extract("kgCanvasClick", "p"), extract("kgOpenSession", "sid"),
-  extract("renderKgraph", "d"),
+  extract("kgEnsureChart", ""), extract("renderKgraph", "d"),
   extract("loadKgraph", ""), extract("kgWaitJob", "jid"),
 ].join("\n");
 
@@ -123,7 +123,7 @@ function mkScope(env) {
     "  get kgChart(){return kgChart;}, set kgChart(v){kgChart=v;},\n" +
     "  get kgQuery(){return kgQuery;}, set kgQuery(v){kgQuery=v;},\n" +
     "  kgVisible,kgAdjBuild,kgBar,kgOption,kgRender,kgFitView,\n" +
-    "  kgCanvasClick,kgOpenSession,renderKgraph,loadKgraph,kgWaitJob};");
+    "  kgCanvasClick,kgOpenSession,kgEnsureChart,renderKgraph,loadKgraph,kgWaitJob};");
   return factory(env.$, env.esc, env.errorBox, env.actJson, env.actApi,
     env.switchTab, env.openSession, env.jumpCloudWord,
     env.KG_KIND_COLOR, env.KG_KIND_SIZE, env.KG_KIND_NAME,
@@ -153,10 +153,13 @@ const scope = mkScope({
   check("空数据 bar 清空", $("kg-bar").textContent === "");
 
   scope.kgChart = null;
+  delete global.echarts;   // typeof echarts → undefined（惰性路径 fail loud）
   scope.renderKgraph({ nodes: [{ id: "t1", kind: "topic", label: "甲" }],
     edges: [] });
-  check("ECharts 未加载 → fail loud 不静默",
+  check("ECharts 未加载 → fail loud 不静默（惰性路径）",
     errBoxes.some(s => s.includes("ECharts 未加载")));
+  check("fail loud 时画布收起（不塌角落）",
+    $("kg-chart").style.display === "none");
 }
 
 /* ② 组装渲染：force 照搬账 + 两态节点集 */
@@ -208,6 +211,25 @@ scope.renderKgraph(DATA);
   const linkIds = ser.links.map(l => l.source + ">" + l.target);
   check("大类态边只在可见节点间（s1-s2 不画）",
     !linkIds.includes("s1>s2") && linkIds.includes("t1>c1"));
+}
+
+/* ②' 惰性 init：容器显示后才 echarts.init（display:none 时 init 拿
+ * 0×0，力导向塌左上角且画布外无鼠标事件——用户截图实测教训） */
+{
+  let initSize = null;
+  global.echarts = { init: (el) => {
+    initSize = { display: el.style.display };
+    const c = mkFakeChart();
+    c.on = () => {};
+    return c;
+  } };
+  scope.kgChart = null;
+  scope.renderKgraph(DATA);
+  check("容器显示后才 init（display 拉开再 init）",
+    initSize && initSize.display === "");
+  check("惰性 init 的实例接管渲染（setOption 已调）",
+    scope.kgChart && scope.kgChart._calls.length === 1);
+  scope.kgChart = chart;   // 恢复主桩，供后续用例
 }
 
 /* ③ 节点账：簇代表气泡 + 名称标记（搜索态全显） */

@@ -543,8 +543,8 @@ h3.sec{font-size:14px;margin:18px 0 6px}
   <div class="toolbar">
     <input type="search" id="kg-q" placeholder="搜关键字：只看相关（正文 FTS）"
       style="width:210px">
-    <button id="kg-reload">重新组装</button>
-    <button id="kg-fit">复位视图</button>
+    <button id="kg-reload">重新拉取</button>
+    <button id="kg-fit">复位缩放</button>
     <span class="sub2" id="kg-bar"></span>
   </div>
   <div class="sub2" style="margin:6px 2px" id="kg-legend">黑底机械关系图（不是语义图谱）｜<b>默认只显示大类</b>（主题/卡片）；上方搜索框输入关键字→<b>只显示正文命中的会话及其邻域</b>（FTS=检索框同索引，标题不含但正文含关键字的会话也能命中）｜<b style="color:#6ea8ff">●</b> 主题　<b style="color:#b48aff">●</b> 卡片　<b style="color:#4fd1a5">●</b> 关键词（含<b>自动枢纽</b>=标题高频片段 df≥8 机械提取，只辐射不归簇）　<b style="color:#4fb0ff">●</b> 会话（<b>只画用户先发起</b>；相近聚成一簇只显示代表 <b>(+N)</b>，代表点击直达原文；判据=Jaccard≥0.45、bigram 包含率≥0.6、共享定稿词）｜边：—成员 —锚点 —归属 —关键词 —标题含词｜<b>主题间无边=P7-② 缓行、会话间无相似度边（聚类只是聚合展示，真语义待 M2/M4）</b>｜滚轮缩放 · 拖拽平移 · 悬停亮邻居 · 单会话点击直达原文 · 点关键词灌进检索 · 双击复位</div>
@@ -1243,6 +1243,16 @@ async function kgWaitJob(jid){
     return job;
   }
 }
+/* ECharts 实例惰性初始化（容器必须已显示，否则 0×0 布局塌角落）；
+ * 返回 null = echarts 未加载（调用方 fail loud） */
+function kgEnsureChart(){
+  if(kgChart)return kgChart;
+  if(typeof echarts==="undefined")return null;
+  kgChart=echarts.init($("kg-chart"),null,{renderer:"canvas"});
+  kgChart.on("click",kgCanvasClick);
+  kgChart.on("dblclick",()=>kgFitView());
+  return kgChart;
+}
 function renderKgraph(d){
   const hints=d.hints||[], nodes=d.nodes||[];
   kgData=null; kgIndex={}; kgAdj={}; kgPinId=null;
@@ -1254,14 +1264,17 @@ function renderKgraph(d){
         :"没有可画的节点")+"</div>";
     return;
   }
-  if(!kgChart){
+  kgData={nodes:nodes,edges:d.edges||[],meta:d.meta||{},hints:hints};
+  for(const nd of kgData.nodes)kgIndex[nd.id]=nd;
+  $("kg-chart").style.display="";
+  /* 惰性 init（教训：容器 display:none 时 init 拿到 0×0，力导向挤在
+   * 左上角且画布外无鼠标事件——必须在容器显示后再 init） */
+  if(!kgEnsureChart()){
+    $("kg-chart").style.display="none";
     $("kg-msg").innerHTML=errorBox("ECharts 未加载（vendor/echarts.min.js "
       +"拉取失败，检查 /vendor 路由）");
     return;
   }
-  kgData={nodes:nodes,edges:d.edges||[],meta:d.meta||{},hints:hints};
-  for(const nd of kgData.nodes)kgIndex[nd.id]=nd;
-  $("kg-chart").style.display="";
   $("kg-msg").innerHTML="";
   kgAdjBuild();
   kgRender();
@@ -4657,11 +4670,10 @@ $("kg-q").addEventListener("keydown",e=>{
     if(v!==kgQuery)kgQuery=v;
     loadKgraph().catch(()=>{});}});
 $("kg-fit").onclick=()=>kgFitView();
-if(typeof echarts!=="undefined"){
-  kgChart=echarts.init($("kg-chart"),null,{renderer:"canvas"});
-  kgChart.on("click",kgCanvasClick);
-  kgChart.on("dblclick",()=>kgFitView());
-  window.addEventListener("resize",()=>kgChart.resize());
+if(typeof echarts==="undefined"){
+  /* 不初始化：renderKgraph 首次渲染时 kgEnsureChart fail loud */
+}else{
+  window.addEventListener("resize",()=>{if(kgChart)kgChart.resize();});
 }
 for(const _cid of ["cloud-n2","cloud-n3"])
   $(_cid).onclick=()=>{cloudN=Number($(_cid).dataset.n);

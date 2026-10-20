@@ -194,8 +194,10 @@ class TestV66KgraphStatic(unittest.TestCase):
         self.assertIn('id="kg-q"', HTML)
         self.assertIn('kgQuery', HTML)
         self.assertIn('if(kgQuery)p.q=kgQuery', HTML)
-        self.assertIn('if(kgQuery){ for(const nd of kgData.nodes)'
-                      'vis.add(nd.id); return vis; }', HTML)  # 搜索态全显
+        self.assertIn('if(kgQuery&&sq===qn){', HTML)   # 搜索态命中子图（带守卫）
+        self.assertIn('nd.kind==="session")vis.add(nd.id)', HTML)
+        self.assertIn("e.src.charAt(0)===\"s\"", HTML)  # 只扩会话直接邻居
+        self.assertIn("不得冒充命中集", HTML)           # 守卫声明在注释
         self.assertIn('session:"#4fb0ff"', HTML)    # 用户「黄圆圈改蓝」
         self.assertNotIn("#ffab70", HTML)           # 旧黄不得残留
         self.assertIn('正文 FTS', HTML)              # 搜索判据声明进图例

@@ -907,7 +907,7 @@ ACTIONS: dict[str, dict] = {
                 "正文 FTS（messages 索引，检索框同判据）命中会话+其邻域"
                 "子图。只取用户先发起；机械聚类一簇一个代表；五类边来自"
                 "既有真源，零语义臆造。只读，不落盘。",
-        "params": {"q": {"type": "string", "required": False,
+        "params": {"q": {"type": "text", "required": False,
                           "desc": "搜索关键字（正文 FTS，空=大类总览）"}},
         "est_sec": 6,
         "reversible": "幂等（只读三库与卡片目录，产物返回页面不落盘）",

@@ -167,18 +167,19 @@ const chart = mkFakeChart();
 scope.kgChart = chart;
 const DATA = {
   nodes: [
-    { id: "t1", kind: "topic", label: "部署排障",
-      meta: { cluster: ["t1", "s1", "s2", "s3"] } },
-    { id: "c1", kind: "card", label: "部署卡" },
-    { id: "k1", kind: "kw", label: "部署" },
-    { id: "s1", kind: "session", label: "网关重启", meta: { sid: "S1" } },
-    { id: "s2", kind: "session", label: "买菜清单", meta: { sid: "S2" } },
+    { id: "t:t1", kind: "topic", label: "部署排障",
+      meta: { cluster: ["t:t1", "s:S1", "s:S2", "s:S3"] } },
+    { id: "c:c1", kind: "card", label: "部署卡" },
+    { id: "k:部署", kind: "kw", label: "部署" },
+    { id: "s:S1", kind: "session", label: "网关重启", meta: { sid: "S1" } },
+    { id: "s:S2", kind: "session", label: "买菜清单", meta: { sid: "S2" } },
   ],
   edges: [
-    { src: "t1", dst: "c1", kind: "topic_of" },
-    { src: "t1", dst: "s1", kind: "member" },
-    { src: "k1", dst: "t1", kind: "keyword" },
-    { src: "s1", dst: "s2", kind: "member" },
+    { src: "t:t1", dst: "c:c1", kind: "topic_of" },
+    { src: "t:t1", dst: "s:S1", kind: "member" },
+    { src: "k:部署", dst: "t:t1", kind: "keyword" },
+    { src: "k:部署", dst: "s:S1", kind: "kw_hit" },
+    { src: "s:S1", dst: "s:S2", kind: "member" },
   ],
   meta: { search: { q: "部署", fts_matched: 2 },
     clusters_multi: 1, merged_into_rep: 2, auto_hubs: 0,
@@ -206,11 +207,15 @@ scope.renderKgraph(DATA);
 
   /* 大类态：只发 topic/card 进 series（会话/关键词不画） */
   const ids = ser.data.map(n => n.id);
-  check("大类态只显主题/卡片", ids.includes("t1") && ids.includes("c1") &&
-    !ids.includes("s1") && !ids.includes("k1"));
+  check("大类态只显主题/卡片",
+    ids.includes("t:t1") && ids.includes("c:c1") &&
+    !ids.includes("s:S1") && !ids.includes("k:部署"));
   const linkIds = ser.links.map(l => l.source + ">" + l.target);
   check("大类态边只在可见节点间（s1-s2 不画）",
-    !linkIds.includes("s1>s2") && linkIds.includes("t1>c1"));
+    !linkIds.includes("s:S1>s:S2") && linkIds.includes("t:t1>c:c1"));
+  const plainC = ser.data.find(n => n.id === "c:c1");
+  check("普通卡片气泡走档位表",
+    plainC && plainC.symbolSize === KG_KIND_SIZE.card);
 }
 
 /* ②' 惰性 init：容器显示后才 echarts.init（display:none 时 init 拿
@@ -240,17 +245,39 @@ scope.renderKgraph(DATA);
   scope.renderKgraph(DATA);
   const ser = chart._calls[0].opt.series[0];
   const ids = ser.data.map(n => n.id);
-  check("搜索态全显（含会话/关键词）",
-    ids.includes("s1") && ids.includes("s2") && ids.includes("k1"));
-  const rep = ser.data.find(n => n.id === "t1");
+  /* v0.87.1 搜索态收紧：命中会话+直接边邻居（不二次扩散） */
+  check("搜索态：命中会话全显",
+    ids.includes("s:S1") && ids.includes("s:S2"));
+  check("搜索态：会话的直接邻居进（主题 t1 / 枢纽 k1 经 kw_hit）",
+    ids.includes("t:t1") && ids.includes("k:部署"));
+  check("搜索态：隔主题一跳的卡片不进（不二次扩散）",
+    !ids.includes("c:c1"));
+  const s2links = ser.links.map(l => l.source + ">" + l.target);
+  check("搜索态：s1-s2 簇成员边可见", s2links.includes("s:S1>s:S2"));
+  check("搜索态：k1-t1 keyword 边两端可见才画",
+    s2links.includes("k:部署>t:t1"));
+  check("搜索态：c1-t1 边不画（c1 不可见）",
+    !s2links.includes("c:c1>t:t1") && !s2links.includes("t:t1>c:c1"));
+  const rep = ser.data.find(n => n.id === "t:t1");
   check("簇代表名称带 (+3)", rep.name.includes("(+3)"));
   check("簇代表气泡 14+√4×3.2（照搬公式）",
     Math.abs(rep.symbolSize - (14 + Math.sqrt(4) * 3.2)) < 1e-9);
-  const plain = ser.data.find(n => n.id === "c1");
-  check("普通卡片气泡走档位表", plain.symbolSize === KG_KIND_SIZE.card);
-  const sess = ser.data.find(n => n.id === "s1");
+  const plain = ser.data.find(n => n.id === "c:c1");
+  if (plain) check("普通卡片气泡走档位表",
+    plain.symbolSize === KG_KIND_SIZE.card);
+  const sess = ser.data.find(n => n.id === "s:S1");
   check("会话节点蓝色", sess.itemStyle.color === KG_KIND_COLOR.session);
   scope.kgQuery = "";
+
+  /* 搜索态有效性守卫：数据不是本关键词的搜索产物时降级大类态——
+   * 动作失败/未刷新时大类态旧数据的会话层不得冒充命中集全显 */
+  scope.kgQuery = "另一个词";
+  scope.renderKgraph(DATA);   // DATA.meta.search.q="部署" ≠ "另一个词"
+  const guardIds = chart._calls[chart._calls.length - 1].opt
+    .series[0].data.map(n => n.id);
+  check("守卫：数据与关键词不符 → 降级大类态（会话不显）",
+    !guardIds.includes("s:S1") && guardIds.includes("t:t1"));
+  scope.kgQuery = "部署";
 }
 
 /* ④ 点击分流（ECharts payload 形态） */
@@ -267,7 +294,7 @@ scope.renderKgraph(DATA);
   scope.renderKgraph(DATA);
   refresh();
   const before = chart._calls.length;
-  scope.kgCanvasClick({ dataType: "node", data: nodeById["s1"] });
+  scope.kgCanvasClick({ dataType: "node", data: nodeById["s:S1"] });
   check("搜索态会话点击直达原文（switchTab+openSession）",
     openCalls.includes("S1") && switchCalls.includes("sessions"));
   check("会话点击不重画（直达原文即返回）",
@@ -280,17 +307,17 @@ scope.renderKgraph(DATA);
   scope.kgQuery = "部署";
   scope.renderKgraph(DATA);
   refresh();
-  scope.kgCanvasClick({ dataType: "node", data: nodeById["k1"] });
+  scope.kgCanvasClick({ dataType: "node", data: nodeById["k:部署"] });
   check("关键词点击灌进检索（搜索态）", jumpCalls.includes("部署"));
 
-  scope.kgCanvasClick({ dataType: "node", data: nodeById["t1"] });
-  check("主题点击锁定邻域（kgPinId）", scope.kgPinId === "t1");
-  const dimmed = refresh().data.find(n => n.id === "s2");
+  scope.kgCanvasClick({ dataType: "node", data: nodeById["t:t1"] });
+  check("主题点击锁定邻域（kgPinId）", scope.kgPinId === "t:t1");
+  const dimmed = refresh().data.find(n => n.id === "s:S2");
   check("邻域外节点降透明度", dimmed && dimmed.itemStyle.opacity === 0.15);
   const hotEdge = refresh().links.find(
-    l => (l.source === "t1" && l.target === "s1"));
+    l => (l.source === "t:t1" && l.target === "s:S1"));
   check("邻域边加宽提亮", hotEdge && hotEdge.lineStyle.width === 1.6);
-  scope.kgCanvasClick({ dataType: "node", data: nodeById["t1"] });
+  scope.kgCanvasClick({ dataType: "node", data: nodeById["t:t1"] });
   check("再点同一主题解锁", scope.kgPinId === null);
   scope.kgCanvasClick({ dataType: "edge", data: {} });
   check("非节点 payload 不误触", scope.kgPinId === null);

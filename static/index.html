@@ -1169,13 +1169,31 @@ const KG_KIND_SIZE={topic:22,card:13,kw:9,session:7};
 const KG_KIND_NAME={topic:"主题",card:"卡片",kw:"关键词",session:"会话"};
 const KG_EDGE_LABEL={member:"成员",anchor:"锚点",topic_of:"归属",
   keyword:"关键词",kw_hit:"标题含词"};
-/* 可见集（v0.86 用户裁决「开始只显示大类，输入关键字再只显示相关的」）：
- * 大类态=只显主题/卡片；搜索态=后端已按正文 FTS 裁剪出命中子图，全显
- * （搜索态点会话一律直达原文，不再聚簇显隐） */
+/* 可见集（v0.86 两态模型；v0.87.1 搜索态收紧+有效性守卫，见函数内） */
 function kgVisible(){
   const vis=new Set();
   if(!kgData)return vis;
-  if(kgQuery){ for(const nd of kgData.nodes)vis.add(nd.id); return vis; }
+  /* 两态模型：大类态只显主题/卡片；搜索态（kgQuery 非空）=命中子图。
+   * v0.87.1 收紧（用户实测：搜小说主角人名，不相关大类横行——后端
+   * FTS 只过滤会话，主题/卡片/枢纽仍全量下发，此前搜索态全显把它们
+   * 全带出来）：改显「命中会话（后端下发的会话=FTS 命中集）+ 其直接
+   * 边邻居」（主题/卡片/关键词只在与命中会话有 member/anchor/kw_hit
+   * 边时才显，不二次扩散）。
+   * 搜索态有效性守卫：meta.search.q 与输入一致才算真搜索态——动作
+   * 失败/未刷新时，大类态旧数据的会话层（全量）不得冒充命中集全显。 */
+  const sq=(kgData.meta&&kgData.meta.search)?kgData.meta.search.q:null;
+  const qn=kgQuery.replace(/[^0-9A-Za-z\u4e00-\u9fff ]/g," ").trim();
+  if(kgQuery&&sq===qn){
+    for(const nd of kgData.nodes)if(nd.kind==="session")vis.add(nd.id);
+    for(const e of kgData.edges){
+      if(e.src.charAt(0)==="s"&&e.src.charAt(1)===":"){
+        if(!vis.has(e.dst))vis.add(e.dst);
+      }else if(e.dst.charAt(0)==="s"&&e.dst.charAt(1)===":"){
+        if(!vis.has(e.src))vis.add(e.src);
+      }
+    }
+    return vis;
+  }
   for(const nd of kgData.nodes)
     if(nd.kind==="topic"||nd.kind==="card")vis.add(nd.id);
   return vis;

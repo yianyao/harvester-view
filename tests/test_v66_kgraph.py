@@ -140,7 +140,7 @@ class TestV66KgraphStatic(unittest.TestCase):
     def test_01_tab_and_section(self):
         self.assertIn('data-tab="kgraph"', HTML)
         self.assertIn('id="tab-kgraph"', HTML)
-        self.assertIn('id="kg-canvas"', HTML)
+        self.assertIn('id="kg-chart"', HTML)
         self.assertIn('id="kg-legend"', HTML)
         self.assertIn('id="kg-fit"', HTML)
 
@@ -148,7 +148,7 @@ class TestV66KgraphStatic(unittest.TestCase):
         # 四点裁决全部进图例（防误读+防回退）
         self.assertIn("只画用户先发起", HTML)
         self.assertIn("只显示代表", HTML)
-        self.assertIn("点击展开", HTML)
+        self.assertIn("代表点击直达原文", HTML)
         self.assertIn("Jaccard", HTML)              # 聚类判据声明
         self.assertIn("黑底", HTML)
         self.assertIn("P7-②", HTML)
@@ -166,12 +166,29 @@ class TestV66KgraphStatic(unittest.TestCase):
         self.assertIn("#d8dae0", body)              # 前景浅色钉住
 
     def test_04_js_bindings_and_search_ui(self):
-        for frag in ['loadKgraph()', 'kgFitView()', 'kgHover',
-                     'kgCanvasClick(', 'kgWheel', 'kgMouseDown',
-                     'kgMouseMove', 'kgMouseUp', 'kgDblClick',
+        for frag in ['loadKgraph()', 'kgFitView()', 'kgCanvasClick(',
                      'kgAdjBuild()', 'kgVisible()']:
             self.assertIn(frag, HTML)
-        self.assertIn('{passive:false}', HTML)      # wheel 阻页面滚动
+        # v0.87 照搬 KnowAtlas graph.html（用户裁决「就照搬吧」）：
+        # ECharts graph force 渲染器（vendor 外链 + view.py 白名单路由），
+        # force/边/交互参数逐字照搬参考实现
+        self.assertIn('<script src="vendor/echarts.min.js"></script>', HTML)
+        self.assertIn('echarts.init(', HTML)
+        self.assertIn('type:"graph",layout:"force",roam:true,draggable:true',
+                      HTML)
+        self.assertIn('force:{repulsion:90,edgeLength:[30,120],'
+                      'gravity:0.08}', HTML)
+        self.assertIn('curveness:0.1', HTML)
+        self.assertIn('focus:"adjacency"', HTML)
+        self.assertIn('notMerge:true', HTML)
+        self.assertIn('kgChart.resize()', HTML)
+        # 手绘渲染与旧交互函数不得残留（kg 域已整体换渲染器）
+        self.assertNotIn('id="kg-canvas"', HTML)
+        for gone in ('kgWheel', 'kgMouseDown', 'kgMouseMove', 'kgMouseUp',
+                     'kgDblClick', 'kgHover', 'kgDraw', 'kgLayout',
+                     'kgPos', 'kgView', 'kgRng', 'quadraticCurveTo(',
+                     'createRadialGradient('):
+            self.assertNotIn(gone, HTML)
         # v0.86 搜索驱动（用户裁决「开始只显示大类，输入关键字再只显示
         # 相关的」）：搜索框 + kgQuery 联动 + 会话节点蓝色
         self.assertIn('id="kg-q"', HTML)
@@ -182,12 +199,6 @@ class TestV66KgraphStatic(unittest.TestCase):
         self.assertIn('session:"#4fb0ff"', HTML)    # 用户「黄圆圈改蓝」
         self.assertNotIn("#ffab70", HTML)           # 旧黄不得残留
         self.assertIn('正文 FTS', HTML)              # 搜索判据声明进图例
-        # v0.86 柔化（用户「图示太生硬」参考 ECharts graph force）：
-        # 曲线边+径向光晕+向心引力+弹簧理想边长，硬直线/实心圆不得回归
-        for frag in ["quadraticCurveTo(", "createRadialGradient(",
-                     "向心引力", "拉向理想长度"]:
-            self.assertIn(frag, HTML)
-        self.assertNotIn('ctx.lineTo(a.x,a.y); ctx.stroke()', HTML)
 
     def test_05_double_ledger(self):
         from actions import actionsserve, registrygen

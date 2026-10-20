@@ -12,6 +12,39 @@
 > harvester-view 是架在接口之上的"看板"。视图坏了不影响数据，
 > 数据库不升级视图也能照常用（只要接口版本兼容）。
 
+## v0.87 修订（照搬 KnowAtlas 图谱实现：ECharts graph force，2026-10-20，用户裁决）
+
+用户裁决（v0.86 柔化后仍嫌难看）：「这个图谱（或者说知识关系图）项目
+本地地址：C:\Users\yianyao\WorkBuddy\记录树\KnowAtlas。如果已读了人家的
+实现，就照搬吧 你做的这个实在是太难看」。
+
+- **渲染器整体换 ECharts graph**（照搬 KnowAtlas graph.html，即本机
+  8420 参考页）：`vendor/echarts.min.js`（1.0 MB，从 KnowAtlas vendor
+  原样复制）+ view.py 新增 `/vendor/<文件名>` 白名单路由（文件名字符集
+  白名单+".." 守卫防目录穿越，test_v1 2 例）；
+- **布局/边/交互参数逐字照搬**：force{repulsion:90, edgeLength:[30,120],
+  gravity:0.08}、边半透明 rgba(74,158,255,.45) + curveness 0.1、
+  emphasis focus:"adjacency"（hover 邻域亮化交给 ECharts 内置）、
+  roam:true + draggable:true（缩放/平移内置）、setOption notMerge:true
+  整体替换防旧节点残留、窗口 resize → chart.resize；
+- **簇代表气泡照搬其 category 公式**：size = 14+sqrt(簇成员数)*3.2，
+  名称带 (+N)；标签规则照搬（非会话常显、会话 ≤50 节点才显）；
+- **保留我方功能底座（不照搬的部分）**：两态模型（大类态/搜索态）、
+  正文 FTS 搜索、诚实账 kg-bar/图例、黑底 #12151c 钉色、会话蓝
+  #4fb0ff、邻域锁 kgPinId（实现改为 option 内透明度分层，不再手绘
+  重画）、点击分流（会话直达原文/关键词灌检索/主题卡片锁邻域）；
+- **删除手绘渲染层**：kgLayout/kgDraw/kgHit/kgHitEdge/kgShowTip/
+  kgHover/kgWheel/kgMouseDown/kgMouseMove/kgMouseUp/kgDblClick/kgRng
+  与 #kg-tip/#kg-canvas 全部清除（test_04 逐项禁归）——确定性布局让位
+  给 ECharts 力导向（观感优先，用户已裁决照搬）；
+- 零语义红线不破：KnowAtlas 的 LLM 语义分类层（semantic/）绝不引入，
+  只搬图谱渲染/交互/布局；
+- 测试：test_v66 test_04 重写为 ECharts 照搬账（vendor 外链/force 参数/
+  curveness/adjacency/notMerge/resize + 手绘函数禁归）+ 新 test_04 保留
+  两态/蓝色断言；render_kgraph.js 重写（DOM 桩 + echarts 桩：setOption/
+  on/resize 记录器），35 断言（语法门/照搬账/两态显隐/气泡公式/点击
+  分流/诚实账/复位/失败不静默）。
+
 ## v0.86 修订（大类总览+搜索子图，2026-10-20，用户裁决）
 
 用户裁决：「图谱开始只显示大类甚至啥也不用，给个搜索框，我输入关键字，
@@ -750,7 +783,7 @@ node tests/render_summary.js    # v0.74 卡片解释层 + v0.79 触发层（c-tr
 node tests/render_dualtrack.js  # v0.77 双轨时间线 + ts 锚点
 node tests/render_reports.js    # v0.79 报告索引 + 昨日卡全文
 node tests/render_wordcloud.js  # v0.81 词云导航（分档/下钻/空态）
-node tests/render_kgraph.js     # v0.82 知识图谱（确定性布局/懒加载/诚实空态）
+node tests/render_kgraph.js     # v0.87 知识图谱（ECharts 照搬账/两态/诚实空态）
 
 # v0.49 自查：把 5 个缺陷故意放回去，确认每道门都会红（末行打印 5/5 被抓）
 python docs/reports/mutation-check-v049.py

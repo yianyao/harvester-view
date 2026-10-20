@@ -203,6 +203,28 @@ class TestStaticAndForward(ViewFixture):
         self.assertEqual(status, 200)
         self.assertEqual(body["x_token"], "s3cret")
 
+    def test_vendor_js_served(self):
+        port = self.start_view({"upstreams": [self.add_mock()]})
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/vendor/echarts.min.js")
+        with urllib.request.urlopen(req, timeout=5) as r:
+            head = r.read(200)
+            self.assertEqual(r.status, 200)
+            self.assertIn("javascript", r.headers["Content-Type"])
+        self.assertGreater(len(head), 0)
+
+    def test_vendor_missing_and_traversal_rejected(self):
+        port = self.start_view({"upstreams": [self.add_mock()]})
+        status, body = _get(port, "/vendor/nope.js")
+        self.assertEqual(status, 404)
+        self.assertIn("error", body)
+        # %2F 不在白名单字符集；字面 .. 被 ".." 守卫拒绝
+        for p in ("/vendor/..%2Findex.html", "/vendor/..%5Cindex.html",
+                  "/vendor/nope.js"):
+            status, body = _get(port, p)
+            self.assertEqual(status, 404, p)
+            self.assertIn("error", body)
+
     def test_upstream_error_passthrough_401(self):
         port = self.start_view({"upstreams": [self.add_mock()]})
         status, body = _get(port, "/u/0/api/secret401")

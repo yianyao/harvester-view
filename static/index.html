@@ -387,10 +387,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 #kg-out{position:relative;border:1px solid #262b36;border-radius:8px;
   background:#12151c;min-height:220px;overflow:hidden;color-scheme:dark;
   color:#d8dae0}
-#kg-canvas{display:block}
-#kg-tip{position:absolute;display:none;max-width:300px;background:var(--panel);
-  border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;
-  box-shadow:0 2px 8px rgba(0,0,0,.12);pointer-events:none;z-index:30}
+#kg-chart{width:100%;height:620px;display:block}
 </style>
 </head>
 <body>
@@ -550,10 +547,10 @@ h3.sec{font-size:14px;margin:18px 0 6px}
     <button id="kg-fit">复位视图</button>
     <span class="sub2" id="kg-bar"></span>
   </div>
-  <div class="sub2" style="margin:6px 2px" id="kg-legend">黑底机械关系图（不是语义图谱）｜<b>默认只显示大类</b>（主题/卡片）；上方搜索框输入关键字→<b>只显示正文命中的会话及其邻域</b>（FTS=检索框同索引，标题不含但正文含关键字的会话也能命中）｜<b style="color:#6ea8ff">●</b> 主题　<b style="color:#b48aff">●</b> 卡片　<b style="color:#4fd1a5">●</b> 关键词（含<b>自动枢纽</b>=标题高频片段 df≥8 机械提取，只辐射不归簇）　<b style="color:#4fb0ff">●</b> 会话（<b>只画用户先发起</b>；相近聚成一簇只显示代表 <b>(+N)</b>，点击展开/收起；判据=Jaccard≥0.45、bigram 包含率≥0.6、共享定稿词）｜边：—成员 —锚点 —归属 —关键词 —标题含词｜<b>主题间无边=P7-② 缓行、会话间无相似度边（聚类只是聚合展示，真语义待 M2/M4）</b>｜滚轮缩放 · 拖拽平移 · 悬停亮邻居 · 单会话点击直达原文 · 点关键词灌进检索 · 双击复位</div>
+  <div class="sub2" style="margin:6px 2px" id="kg-legend">黑底机械关系图（不是语义图谱）｜<b>默认只显示大类</b>（主题/卡片）；上方搜索框输入关键字→<b>只显示正文命中的会话及其邻域</b>（FTS=检索框同索引，标题不含但正文含关键字的会话也能命中）｜<b style="color:#6ea8ff">●</b> 主题　<b style="color:#b48aff">●</b> 卡片　<b style="color:#4fd1a5">●</b> 关键词（含<b>自动枢纽</b>=标题高频片段 df≥8 机械提取，只辐射不归簇）　<b style="color:#4fb0ff">●</b> 会话（<b>只画用户先发起</b>；相近聚成一簇只显示代表 <b>(+N)</b>，代表点击直达原文；判据=Jaccard≥0.45、bigram 包含率≥0.6、共享定稿词）｜边：—成员 —锚点 —归属 —关键词 —标题含词｜<b>主题间无边=P7-② 缓行、会话间无相似度边（聚类只是聚合展示，真语义待 M2/M4）</b>｜滚轮缩放 · 拖拽平移 · 悬停亮邻居 · 单会话点击直达原文 · 点关键词灌进检索 · 双击复位</div>
   <div id="kg-out">
     <div id="kg-msg"></div>
-    <canvas id="kg-canvas" style="display:none"></canvas>
+    <div id="kg-chart" style="display:none"></div>
   </div>
 </section>
 
@@ -694,6 +691,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
   </main>
 </section>
 
+<script src="vendor/echarts.min.js"></script>
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
@@ -1145,29 +1143,32 @@ function jumpCloudWord(w){
   loadSessions().catch(()=>{});
 }
 
-/* ---------- 知识图谱（v0.84，用户发起 × 相近聚合 × 黑底）----------
- * 2026-10-20 用户四点裁决：① 只取用户先发起的会话（数据面判据=
+/* ---------- 知识图谱（v0.84→v0.87，用户发起 × 相近聚合 × 黑底）----------
+ * 2026-10-20 用户裁决史：① 只取用户先发起的会话（数据面判据=
  * 首条消息 role='user'）；② 相近会话聚类分层（数据面机械判据：标题
- * Jaccard≥0.45 或共享定稿关键词，真语义待 M2/M4）；③ 一簇只显示一个
- * 代表，点击才展开簇内成员（数据面一次下发，显隐纯前端，展开零等待；
- * 单会话代表点击直达原文）；④ 黑底画布。
- * 纪律不变：机械边零语义臆造（五类）；布局确定性（固定种子+自适应
- * 迭代）；诚实账：过滤/聚合/截断/封顶全进 bar 与图例。 */
-let kgData=null,kgPos={},kgIndex={},kgAdj={},kgHoverId=null,kgPinId=null;
-let kgView={x:0,y:0,k:1},kgDrag=null,kgQuery="",kgDeb=null;
+ * Jaccard≥0.45 或共享定稿关键词，真语义待 M2/M4）；③ v0.86 改两态
+ * 模型：大类态只显主题/卡片，搜索态（正文 FTS）命中子图全显，簇代表
+ * 点击直达原文（展开交互废除）；④ 黑底画布。
+ * 纪律不变：机械边零语义臆造（五类）；诚实账：过滤/聚合/截断/封顶
+ * 全进 bar 与图例。 */
+/* ---------- 知识图谱（v0.87 照搬 KnowAtlas graph.html）----------
+ * 渲染器换 ECharts graph force（vendor/echarts.min.js，view.py 白名单
+ * 路由 /vendor/* 服务）。布局/边/交互参数逐字照搬参考实现：
+ * force{repulsion:90, edgeLength:[30,120], gravity:0.08}、边半透明
+ * curveness 0.1、emphasis focus:adjacency、roam+draggable、
+ * notMerge 整体替换防旧节点残留。
+ * 保留我方功能底座（不照搬的部分）：两态模型（大类态/搜索态）、正文
+ * FTS 搜索、诚实账图例、黑底钉色、会话蓝 #4fb0ff、邻域锁。
+ * 零语义红线：KnowAtlas 的 LLM 语义分类层绝不引入。 */
+let kgData=null,kgIndex={},kgAdj={},kgPinId=null;
+let kgQuery="",kgDeb=null;
+let kgChart=null;
 const KG_KIND_COLOR={topic:"#6ea8ff",card:"#b48aff",kw:"#4fd1a5",
   session:"#4fb0ff"};
-const KG_KIND_SIZE={topic:13,card:9,kw:5,session:6};
+const KG_KIND_SIZE={topic:22,card:13,kw:9,session:7};
 const KG_KIND_NAME={topic:"主题",card:"卡片",kw:"关键词",session:"会话"};
 const KG_EDGE_LABEL={member:"成员",anchor:"锚点",topic_of:"归属",
   keyword:"关键词",kw_hit:"标题含词"};
-function kgRng(seed){
-  let s=seed>>>0;
-  return function(){ s|=0; s=(s+0x6D2B79F5)|0;
-    let t=Math.imul(s^(s>>>15),1|s);
-    t=(t+Math.imul(t^(t>>>7),61|t))^t;
-    return ((t^(t>>>14))>>>0)/4294967296; };
-}
 /* 可见集（v0.86 用户裁决「开始只显示大类，输入关键字再只显示相关的」）：
  * 大类态=只显主题/卡片；搜索态=后端已按正文 FTS 裁剪出命中子图，全显
  * （搜索态点会话一律直达原文，不再聚簇显隐） */
@@ -1179,61 +1180,7 @@ function kgVisible(){
     if(nd.kind==="topic"||nd.kind==="card")vis.add(nd.id);
   return vis;
 }
-/* 力导向布局（纯函数，确定性）：固定种子初始摆环 + 迭代上限按节点数
- * 自适应。节点按 id 排序参与计算——同数据同坐标（显隐变化=重排）。 */
-function kgLayout(nodes,edges,W,H){
-  const pos={};
-  const sorted=[...nodes].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
-  const n=sorted.length;
-  if(!n)return pos;
-  const rand=kgRng(20261019);
-  sorted.forEach((nd,i)=>{
-    const a=2*Math.PI*i/n, rad=0.25+0.45*rand();
-    pos[nd.id]={x:Math.min(W-30,Math.max(30,W/2+Math.cos(a)*W*rad)),
-                y:Math.min(H-30,Math.max(30,H/2+Math.sin(a)*H*rad))};
-  });
-  const idx={}; sorted.forEach((nd,i)=>{idx[nd.id]=i;});
-  const E=edges.map(e=>[idx[e.src],idx[e.dst]])
-    .filter(p=>p[0]!==undefined&&p[1]!==undefined);
-  const ITER=n>600?40:(n>300?60:150);
-  /* 柔化（参考 ECharts graph force 手感，2026-10-20 用户「图示太生硬」）：
-   * 弹簧边带理想长度 L（edgeLength 区间中值）+ 向心引力 G（把松散节点
-   * 拉向画布中心，布局聚拢不飞散）；斥力温和。全部确定性函数。 */
-  const REP=2600, ATTR=0.045, L=90, G=0.03, MAXV=n>300?14:8;
-  const cx=W/2, cy=H/2;
-  for(let it=0;it<ITER;it++){
-    const fx=new Array(n).fill(0), fy=new Array(n).fill(0);
-    for(let i=0;i<n;i++){
-      const pi=pos[sorted[i].id];
-      for(let j=i+1;j<n;j++){
-        const pj=pos[sorted[j].id];
-        const dx=pi.x-pj.x, dy=pi.y-pj.y;
-        const d2=dx*dx+dy*dy+0.01;
-        const f=REP/d2*0.001;
-        fx[i]+=dx*f; fy[i]+=dy*f;
-        fx[j]-=dx*f; fy[j]-=dy*f;
-      }
-    }
-    for(const e of E){
-      const a=pos[sorted[e[0]].id], b=pos[sorted[e[1]].id];
-      const dx=b.x-a.x, dy=b.y-a.y;
-      const d=Math.sqrt(dx*dx+dy*dy)+0.01;
-      const f=ATTR*(d-L)/d;          // 弹簧：拉向理想长度 L
-      fx[e[0]]+=dx*f; fy[e[0]]+=dy*f;
-      fx[e[1]]-=dx*f; fy[e[1]]-=dy*f;
-    }
-    for(let i=0;i<n;i++){
-      const p=pos[sorted[i].id];
-      fx[i]+=(cx-p.x)*G; fy[i]+=(cy-p.y)*G;   // 向心引力
-      p.x=Math.min(W-20,Math.max(20,p.x+Math.max(-MAXV,
-        Math.min(MAXV,fx[i]))));
-      p.y=Math.min(H-20,Math.max(20,p.y+Math.max(-MAXV,
-        Math.min(MAXV,fy[i]))));
-    }
-  }
-  return pos;
-}
-/* 邻接表（全量建）：hover 邻域高亮用（id → 相邻 id 集合） */
+/* 邻接表（全量建）：tooltip 度数账 + 邻域锁用（id → 相邻 id 集合） */
 function kgAdjBuild(){
   kgAdj={};
   if(!kgData)return;
@@ -1297,245 +1244,127 @@ async function kgWaitJob(jid){
   }
 }
 function renderKgraph(d){
-  const out=$("kg-out"), cv=$("kg-canvas");
   const hints=d.hints||[], nodes=d.nodes||[];
-  kgData=null; kgIndex={}; kgAdj={}; kgHoverId=null; kgPinId=null;
-  kgView={x:0,y:0,k:1}; kgDrag=null;
+  kgData=null; kgIndex={}; kgAdj={}; kgPinId=null;
   if(!nodes.length){
-    cv.style.display="none";
+    $("kg-chart").style.display="none";
     $("kg-bar").textContent="";
     $("kg-msg").innerHTML="<div class='empty'>"+
       (hints.length?hints.map(h=>esc(h)).join("<br>")
         :"没有可画的节点")+"</div>";
     return;
   }
+  if(!kgChart){
+    $("kg-msg").innerHTML=errorBox("ECharts 未加载（vendor/echarts.min.js "
+      +"拉取失败，检查 /vendor 路由）");
+    return;
+  }
   kgData={nodes:nodes,edges:d.edges||[],meta:d.meta||{},hints:hints};
   for(const nd of kgData.nodes)kgIndex[nd.id]=nd;
-  const W=Math.max(640,out.clientWidth||960), H=620;
-  cv.width=W; cv.height=H; cv.style.display="";
+  $("kg-chart").style.display="";
   $("kg-msg").innerHTML="";
-  kgAdjBuild(); kgBar();
-  if(kgVisible().size>300){
-    $("kg-msg").innerHTML="<div class='empty'>大图布局计算中（"+
-      kgVisible().size+" 节点，约 1 秒）…</div>";
-    setTimeout(()=>{kgRelayout();},30);
-  }else{
-    kgRelayout();
-  }
+  kgAdjBuild();
+  kgRender();
 }
-function kgRelayout(){
-  if(!kgData)return;
-  const cv=$("kg-canvas");
+/* 照搬 KnowAtlas render()：数据 → ECharts option（notMerge 整体替换，
+ * 防旧节点/旧布局残留）。focus（kgPinId 邻域锁）持久版＝非邻域节点与
+ * 边降透明度；hover 邻域亮化交给 emphasis focus:"adjacency"。
+ * 簇代表气泡照搬其 category 公式：14+sqrt(count)*3.2。 */
+function kgOption(){
   const vis=kgVisible();
+  const focus=kgPinId, near=focus?(kgAdj[focus]||new Set()):null;
   const sub=kgData.nodes.filter(nd=>vis.has(nd.id));
-  kgPos=kgLayout(sub,kgData.edges,cv.width||960,cv.height||620);
-  $("kg-msg").innerHTML="";
-  kgDraw();
+  const N=sub.length;
+  const nameOf={};
+  const nodes=sub.map(nd=>{
+    const cl=(nd.meta&&nd.meta.cluster||[]).length;
+    const lab=String(nd.label==null?"":nd.label);
+    const name=(lab.length>18?lab.slice(0,18)+"…":lab)+
+      (cl>1?" (+"+(cl-1)+")":"");
+    nameOf[nd.id]=name;
+    const size=nd.kind==="topic"&&cl>1
+      ?14+Math.sqrt(cl)*3.2
+      :(KG_KIND_SIZE[nd.kind]||7);
+    const hot=!near||nd.id===focus||near.has(nd.id);
+    return {id:nd.id,name:name,kind:nd.kind,raw:nd,
+      symbolSize:size,
+      itemStyle:{color:KG_KIND_COLOR[nd.kind]||"#9aa3b5",
+        opacity:near&&!hot?0.15:1},
+      label:{show:nd.kind!=="session"||N<=50,position:"right",
+        fontSize:nd.kind==="topic"?13:10,
+        color:near&&!hot?"#6b7f94":"#d8dae0"}};
+  });
+  const links=kgData.edges
+    .filter(e=>vis.has(e.src)&&vis.has(e.dst))
+    .map(e=>{
+      const hot=focus&&(e.src===focus||e.dst===focus);
+      return {source:e.src,target:e.dst,kind:e.kind,
+        lineStyle:{color:near&&!hot?"rgba(130,142,166,.4)"
+            :hot?"rgba(126,168,255,.85)":"rgba(74,158,255,.45)",
+          width:hot?1.6:1, opacity:near&&!hot?0.25:1,
+          curveness:0.1}};
+    });
+  return {tooltip:{backgroundColor:"#1a1f2b",borderColor:"#262b36",
+      textStyle:{color:"#d8dae0",fontSize:12},
+      formatter:p=>{
+        if(p.dataType==="edge"){
+          return esc(nameOf[p.data.source]||p.data.source)+" — "+
+            esc(KG_EDGE_LABEL[p.data.kind]||p.data.kind||"")+" → "+
+            esc(nameOf[p.data.target]||p.data.target);
+        }
+        const nd=p.data&&p.data.raw;
+        if(!nd)return esc(p.name||"");
+        const vis2=kgVisible();
+        const deg=[...(kgAdj[nd.id]||new Set())]
+          .filter(x=>vis2.has(x)).length;
+        const cl=(nd.meta&&nd.meta.cluster||[]).length;
+        return "<b>"+esc(String(nd.label==null?"":nd.label))+"</b>"+
+          (nd.badge?"（"+esc(nd.badge)+"）":"")+
+          "<br><span style='color:#8b93a7'>"+
+          esc(KG_KIND_NAME[nd.kind]||nd.kind)+" · "+deg+" 条边"+
+          (cl>1?" · 簇聚 "+cl+" 会话":"")+"</span>";
+      }},
+    series:[{type:"graph",layout:"force",roam:true,draggable:true,
+      force:{repulsion:90,edgeLength:[30,120],gravity:0.08},
+      data:nodes,links:links,
+      emphasis:{focus:"adjacency",lineStyle:{width:3}},
+      label:{position:"right"}}]};
 }
-/* 视图变换：屏幕 = 世界*k + (x,y)；世界 = (屏幕-x)/k。
- * 缩放以鼠标为锚点（滚轮处的点不动），拖拽平移，双击复位。 */
-function kgS2W(sx,sy){
-  return {x:(sx-kgView.x)/kgView.k, y:(sy-kgView.y)/kgView.k};
+function kgRender(){
+  if(!kgData||!kgChart)return;
+  kgChart.setOption(kgOption(),{notMerge:true});
+  kgBar();
 }
+/* 复位＝重跑力导向布局（ECharts roam 无内置 restore，notMerge 重设
+ * 即回到初始视角与布局） */
 function kgFitView(){
-  kgView={x:0,y:0,k:1};
-  kgDraw();
-}
-/* 黑底画布（用户裁决④）：固定深色配色画面，钉 color-scheme:dark
- * （CSS 层同款），canvas 内文字/线用浅色系，浅深模式都可读 */
-function kgDraw(){
-  const cv=$("kg-canvas"), ctx=cv.getContext("2d");
-  if(!ctx)return;
-  ctx.setTransform(1,0,0,1,0,0);
-  ctx.clearRect(0,0,cv.width,cv.height);
-  if(!kgData)return;
-  const vis=kgVisible();
-  const focus=kgPinId||kgHoverId;
-  const near=focus?(kgAdj[focus]||new Set()):null;
-  ctx.setTransform(kgView.k,0,0,kgView.k,kgView.x,kgView.y);
-  for(const e of kgData.edges){
-    if(!vis.has(e.src)||!vis.has(e.dst))continue;
-    const a=kgPos[e.src], b=kgPos[e.dst];
-    if(!a||!b)continue;
-    /* 柔化：曲线边（quadratic，控制点沿法线偏移 ≈ ECharts curveness
-     * 0.1）+ 邻域分层透明度——非邻域淡、邻域亮且加宽 */
-    const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
-    const nx=-(b.y-a.y), ny=(b.x-a.x);
-    const nl=Math.sqrt(nx*nx+ny*ny)||1;
-    const off=0.05*Math.sqrt((b.x-a.x)*(b.x-a.x)+(b.y-a.y)*(b.y-a.y));
-    const cxp=mx+nx/nl*off, cyp=my+ny/nl*off;
-    const hot=!near||e.src===focus||e.dst===focus;
-    ctx.globalAlpha=hot?(focus?0.9:0.5):0.08;
-    ctx.strokeStyle=hot&&focus?"rgba(126,168,255,0.85)"
-      :"rgba(130,142,166,0.4)";
-    ctx.lineWidth=hot&&focus?1.6:1;
-    ctx.beginPath(); ctx.moveTo(a.x,a.y);
-    ctx.quadraticCurveTo(cxp,cyp,b.x,b.y); ctx.stroke();
-    ctx.lineWidth=1;
-  }
-  ctx.globalAlpha=1;
-  ctx.font="12px sans-serif";
-  for(const nd of kgData.nodes){
-    if(!vis.has(nd.id))continue;
-    const p=kgPos[nd.id];
-    if(!p)continue;
-    const r=KG_KIND_SIZE[nd.kind]||6;
-    if(near&&nd.id!==focus&&!near.has(nd.id))ctx.globalAlpha=0.14;
-    else ctx.globalAlpha=1;
-    /* 柔化：径向渐变光晕（内亮外透）替代硬实心圆——黑底上节点有
-     * 发光感，与 ECharts 参考页的柔和观感对齐 */
-    const halo=ctx.createRadialGradient(p.x,p.y,r*0.3,p.x,p.y,r*2.4);
-    const core=KG_KIND_COLOR[nd.kind]||"#9aa3b5";
-    halo.addColorStop(0,core);
-    halo.addColorStop(0.42,core);
-    halo.addColorStop(1,"rgba(15,18,26,0)");
-    ctx.beginPath(); ctx.arc(p.x,p.y,r*2.4,0,Math.PI*2);
-    ctx.fillStyle=halo; ctx.fill();
-    ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2);
-    ctx.fillStyle=core; ctx.fill();
-    if(nd.id===focus){
-      ctx.strokeStyle="#ff6b5e"; ctx.lineWidth=2/kgView.k;
-      ctx.beginPath(); ctx.arc(p.x,p.y,r+3,0,Math.PI*2); ctx.stroke();
-      ctx.lineWidth=1;
-    }
-    /* 标签：非会话常显；会话放大或聚焦邻域时显示；簇代表带 +N 标记 */
-    const showLabel=nd.kind!=="session"||kgView.k>1.4||
-      (near&&(nd.id===focus||near.has(nd.id)));
-    if(showLabel){
-      ctx.fillStyle="#d8dae0";
-      let lab=String(nd.label==null?"":nd.label);
-      const cl=nd.meta.cluster||[];
-      if(cl.length)lab+=" (+"+(cl.length-1)+")";
-      ctx.fillText(lab.length>18?lab.slice(0,18)+"…":lab,p.x+r+3,p.y+4);
-    }
-  }
-  ctx.globalAlpha=1;
-}
-function kgHit(sx,sy){
-  if(!kgData)return null;
-  const vis=kgVisible();
-  const w=kgS2W(sx,sy);
-  let best=null, bd=1e18;
-  const pad=6/kgView.k;
-  for(const nd of kgData.nodes){
-    if(!vis.has(nd.id))continue;
-    const p=kgPos[nd.id];
-    if(!p)continue;
-    const dx=w.x-p.x, dy=w.y-p.y, d2=dx*dx+dy*dy;
-    const r=(KG_KIND_SIZE[nd.kind]||6)+pad;
-    if(d2<=r*r&&d2<bd){bd=d2;best=nd;}
-  }
-  return best;
-}
-function kgHitEdge(sx,sy){
-  if(!kgData)return null;
-  const vis=kgVisible();
-  const w=kgS2W(sx,sy);
-  for(const e of kgData.edges){
-    if(!vis.has(e.src)||!vis.has(e.dst))continue;
-    const a=kgPos[e.src], b=kgPos[e.dst];
-    if(!a||!b)continue;
-    const dx=b.x-a.x, dy=b.y-a.y, len2=dx*dx+dy*dy;
-    if(!len2)continue;
-    let t=((w.x-a.x)*dx+(w.y-a.y)*dy)/len2;
-    t=Math.max(0,Math.min(1,t));
-    const px=a.x+t*dx-w.x, py=a.y+t*dy-w.y;
-    const tol=5/kgView.k;
-    if(px*px+py*py<=tol*tol)return e;
-  }
-  return null;
-}
-function kgShowTip(html,sx,sy){
-  const tip=$("kg-tip");
-  tip.innerHTML=html;
-  tip.style.display="block";
-  const pw=(tip.parentElement&&tip.parentElement.clientWidth)||960;
-  tip.style.left=Math.min(sx+12,pw-300)+"px";
-  tip.style.top=(sy+12)+"px";
-}
-function kgHover(e){
-  if(kgDrag){$("kg-tip").style.display="none";return;}
-  const nd=kgHit(e.offsetX,e.offsetY);
-  if(nd){
-    if(kgHoverId!==nd.id){kgHoverId=nd.id;kgDraw();}
-    const badge=nd.badge?"（"+nd.badge+"）":"";
-    const vis=kgVisible();
-    const deg=[...(kgAdj[nd.id]||new Set())].filter(x=>vis.has(x)).length;
-    kgShowTip("<b>"+esc(String(nd.label==null?"":nd.label))+"</b> "+
-      esc(badge)+"<br><span class='sub2'>"+
-      esc(KG_KIND_NAME[nd.kind]||nd.kind)+" · "+deg+" 条边"+
-      ((nd.meta.cluster||[]).length
-        ?" · 簇"+nd.meta.cluster.length+"（聚"+nd.meta.cluster.length+
-        " 会话）":"")+
-      "</span>",
-      e.offsetX,e.offsetY);
-    return;
-  }
-  const ed=kgHitEdge(e.offsetX,e.offsetY);
-  if(ed){
-    const s=kgIndex[ed.src], d2=kgIndex[ed.dst];
-    kgShowTip(esc(String(s?s.label:ed.src))+" → "+
-      esc(String(d2?d2.label:ed.dst))+
-      "（"+esc(KG_EDGE_LABEL[ed.kind]||ed.kind)+"）",
-      e.offsetX,e.offsetY);
-    if(kgHoverId){kgHoverId=null;kgDraw();}
-    return;
-  }
-  $("kg-tip").style.display="none";
-  if(kgHoverId){kgHoverId=null;kgDraw();}
+  if(kgChart&&kgData)kgRender();
 }
 function kgOpenSession(sid){
   if(!sid)return;
   switchTab("sessions");
   openSession(sid).catch(()=>{});
 }
-function kgCanvasClick(e){
-  const nd=kgHit(e.offsetX,e.offsetY);
-  if(!nd){
-    if(kgPinId){kgPinId=null;kgDraw();}
+/* 照搬 KnowAtlas chart.on("click") 分流（ECharts 事件 payload）：
+ * 会话（含簇代表）→ 直达原文；关键词 → 灌进检索；主题/卡片 →
+ * kgPinId 邻域锁（持久邻域高亮，再点同一节点或空白解锁）。
+ * 缩放/平移由 roam:true 内置，双击＝复位（重跑布局）。 */
+function kgCanvasClick(p){
+  if(!p||p.dataType!=="node"||!p.data){
+    if(kgPinId){kgPinId=null;kgRender();}
     return;
   }
-  if(nd.kind==="session"){
+  const d=p.data, nd=d.raw;
+  if(!nd)return;
+  if(d.kind==="session"){
     /* v0.86：会话节点只在搜索态可见（后端 FTS 子图），点击一律直达
      * 原文；簇代表也是会话（badge 带簇N 账），不再做展开显隐 */
     kgOpenSession(nd.meta.sid);
     return;
   }
-  if(nd.kind==="kw"){ jumpCloudWord(nd.label); return; }
-  /* 主题/卡片：点击锁定邻域（再点空白或重按解锁）——不加无凭据的跳转 */
-  kgPinId=(kgPinId===nd.id)?null:nd.id;
-  kgDraw();
-}
-function kgWheel(e){
-  if(!kgData)return;
-  e.preventDefault();
-  const f=e.deltaY<0?1.15:1/1.15;
-  const k2=Math.min(8,Math.max(0.2,kgView.k*f));
-  const mx=e.offsetX, my=e.offsetY;
-  kgView.x=mx-(mx-kgView.x)*k2/kgView.k;
-  kgView.y=my-(my-kgView.y)*k2/kgView.k;
-  kgView.k=k2;
-  kgDraw();
-}
-function kgMouseDown(e){
-  if(!kgData)return;
-  kgDrag={x:e.offsetX,y:e.offsetY,vx:kgView.x,vy:kgView.y,moved:false};
-}
-function kgMouseMove(e){
-  if(!kgDrag)return;
-  const dx=e.offsetX-kgDrag.x, dy=e.offsetY-kgDrag.y;
-  if(Math.abs(dx)>3||Math.abs(dy)>3)kgDrag.moved=true;
-  if(kgDrag.moved){
-    kgView.x=kgDrag.vx+dx; kgView.y=kgDrag.vy+dy;
-    $("kg-tip").style.display="none";
-    kgDraw();
-  }
-}
-function kgMouseUp(){
-  kgDrag=null;
-}
-function kgDblClick(){
-  kgFitView();
+  if(d.kind==="kw"){ jumpCloudWord(nd.label); return; }
+  kgPinId=(kgPinId===d.id)?null:d.id;
+  kgRender();
 }
 
 /* ---------- 会话列表 ---------- */
@@ -4812,8 +4641,8 @@ function renderSuppressed(d){
 }
 
 /* ---------- 事件绑定 ---------- */
-/* 知识图谱（v0.83 全量）：组装/复位视图 + canvas 交互（缩放/平移/hover
- * 邻域/点击下钻）。wheel 需 passive:false 才能 preventDefault 阻止页面滚动 */
+/* 知识图谱（v0.87 照搬 KnowAtlas）：组装/复位 + ECharts 事件。
+ * 缩放/平移由 roam 内置；双击复位；hover 邻域由 emphasis adjacency。 */
 $("kg-reload").onclick=()=>loadKgraph().catch(()=>{});
 $("kg-q").addEventListener("input",()=>{
   clearTimeout(kgDeb);
@@ -4828,15 +4657,12 @@ $("kg-q").addEventListener("keydown",e=>{
     if(v!==kgQuery)kgQuery=v;
     loadKgraph().catch(()=>{});}});
 $("kg-fit").onclick=()=>kgFitView();
-$("kg-canvas").addEventListener("mousemove",(e)=>{kgMouseMove(e);kgHover(e);});
-$("kg-canvas").addEventListener("mouseleave",
-  ()=>{kgDrag=null;$("kg-tip").style.display="none";
-    if(kgHoverId){kgHoverId=null;kgDraw();}});
-$("kg-canvas").addEventListener("click",kgCanvasClick);
-$("kg-canvas").addEventListener("dblclick",kgDblClick);
-$("kg-canvas").addEventListener("wheel",kgWheel,{passive:false});
-$("kg-canvas").addEventListener("mousedown",kgMouseDown);
-window.addEventListener("mouseup",kgMouseUp);
+if(typeof echarts!=="undefined"){
+  kgChart=echarts.init($("kg-chart"),null,{renderer:"canvas"});
+  kgChart.on("click",kgCanvasClick);
+  kgChart.on("dblclick",()=>kgFitView());
+  window.addEventListener("resize",()=>kgChart.resize());
+}
 for(const _cid of ["cloud-n2","cloud-n3"])
   $(_cid).onclick=()=>{cloudN=Number($(_cid).dataset.n);
     loadWordcloud().catch(()=>{});};

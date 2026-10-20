@@ -277,6 +277,19 @@ def make_handler(cfg: dict, static_html: Path,
             if path == "/favicon.ico":
                 self._send(204, b"", "image/x-icon")
                 return
+            m = re.fullmatch(r"/vendor/([A-Za-z0-9._-]+)", path)
+            if m:
+                # vendored 前端库（白名单文件名，拒绝 ".." 与路径分隔符，
+                # 防目录穿越）：kgraph 照搬 KnowAtlas 用 ECharts graph force。
+                fp = static_html.parent / "vendor" / m.group(1)
+                if ".." in m.group(1) or not fp.is_file():
+                    self._json({"error": f"vendor 文件不存在: "
+                                         f"{m.group(1)}"}, 404)
+                    return
+                ctype = ("application/javascript; charset=utf-8"
+                         if fp.suffix == ".js" else "application/octet-stream")
+                self._send(200, fp.read_bytes(), ctype)
+                return
             m = re.fullmatch(r"/u/(all|\d+)(/.*)", path)
             if not m:
                 self._json({"error": f"未知路由 {path}（页面在 /，代理在 "

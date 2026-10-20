@@ -185,7 +185,7 @@ check("「在命令台打开」带上了预填参数",
 /* ②c 悬停说明（用户 2026-10-15 批注：命令最好有个悬停提示其作用——
    所有命令，不仅这一条，也不仅这个页面）+ 真源行白话解释 */
 check("命令包每条命令框带悬停说明",
-  pkg.includes("class='wi-cmd' title=") && pkg.includes("这条命令干嘛用"),
+  pkg.includes("class='wi-cmd' title=") && pkg.includes("复制到仓根目录"),
   "裸命令行没有解释=谜语；hover 必须给出「干嘛用+怎么用+参数含义」");
 check("命令包每条命令带「复制」按钮（用户批注：复制到终端执行的命令要能一键复制）",
   (pkg.match(/data-clicopy=/g) || []).length === rows.filter(r => r.cli).length &&

@@ -3416,11 +3416,14 @@ function renderCmdActions(){
     "——点下面任意一条，右边出参数和执行方式。命令=照命令行干活的工具"+
     "（A 档可在本页直接跑）；写动作=会改库的操作（先预演、你确认才写）。";
   let h="<div class='chiprow'>"+cmds.map(c=>{
-    /* 悬停说明（用户批注：要有提示，简短接地气，不照搬 doc 文案） */
-    const tip=(c.help?stripMd(c.help)+"；":"")+
-      (c.tier==="A"?"A 档：本页可直接执行"
-        :(c.tier==="B"?"B 档：会写库，先预演、你确认才写"
-          :"C 档：只生成命令，不代执行"));
+    /* 悬停=这条命令干嘛用（v0.90 用户批注：档位到处都写了——chip 上有
+     * tierbadge、卡说明有档位语义，悬停再复读一遍是正确的废话）。
+     * 三级回落取真用途：命令 help（上游 argparse）→ A 档动作说明
+     * （ACTIONS.desc）→ 卡 desc。 */
+    const spec=actionSpec(c.cmd);
+    const tip=stripMd(c.help||(spec&&spec.desc)||
+      ((state.act.commands.cards||[])
+        .find(x=>x.card_id===c.card_id)||{}).desc||"");
     return "<span class='chip"+(state.actionId===c.cmd?" on":"")+
       "' data-cmd=\""+esc(c.cmd)+"\" title=\""+esc(tip)+"\">"+
       esc(c.cmd)+" <span class='tierbadge "+esc(c.tier)+"'>"+
@@ -3579,9 +3582,18 @@ function renderCmdParams(){
         "value='"+(val===undefined||val===null?"":esc(val))+"' "+
         "placeholder='缺省=全库'>";
     }else{
+      /* v0.90 用户批注：placeholder 只在有信息时出现，且优先给**示例
+       * 值**（example→default 回落——help 说「数据源声明文件」用户还
+       * 是不知道值长啥样，examples 才免翻命令行）；参数含义走 title
+       * 悬停（help+note+示例），不再只靠行尾小字 */
+      const ex=a.example!=null?a.example:a.default;
+      const ph=a.choices?esc(a.choices.slice(0,6).join("|"))
+        :(ex!==null&&ex!==undefined?esc(ex):"");
       h+="<input data-p=\""+esc(a.dest)+"\" style='width:230px' value='"+
-        esc(val===undefined||val===null?"":val)+"' placeholder='"+
-        (a.choices?esc(a.choices.slice(0,6).join("|")):"自由文本")+"'>";
+        esc(val===undefined||val===null?"":val)+"' placeholder='"+ph+"'"+
+        " title=\""+esc([a.help,a.note,
+          ex!=null&&ex!==""?"示例："+ex:null]
+          .filter(Boolean).join("；"))+"\">";
     }
     if(a.choices&&a.src!=="chips")
       h+="<span class='sub2'>可选："+esc(a.choices.join(" / "))+"</span>";
@@ -3807,12 +3819,15 @@ function cmdNameOf(cli){
 }
 function argsHelp(c){
   const hs=((c&&(c.args||[]))||[]).filter(a=>a.help&&a.src!=="server")
-    .map(a=>a.name+"："+a.help);
+    .map(a=>a.name+"："+a.help+
+      (a.example!=null?"（示例值 "+a.example+"）":""));
   return hs.length?("参数含义："+hs.join("；")):"";
 }
 function cmdHoverTitle(row){
   const parts=[];
-  if(row.label)parts.push("这条命令干嘛用："+stripMd(row.label));
+  /* v0.90 用户批注：悬停前缀（label 前那串「告诉人这是干嘛用的」引导语）
+   * 是废话——label 本身就是用途，直接说。 */
+  if(row.label)parts.push(stripMd(row.label));
   if(row.note)parts.push(stripMd(row.note));
   parts.push(row.action_id
     ?"可点「在命令台打开」就地执行（A 档直接跑；B 档先预演、你确认才写）；也可复制到仓根目录自己跑。"

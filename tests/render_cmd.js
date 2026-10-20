@@ -276,7 +276,7 @@ state.act.actions.pop();
 const ht = cmdHoverTitle({ label: "跑一次效果评估", note: "**两指标**都要不升",
   cli: "python -m harvester harvest-eval --db x", action_id: null });
 check("悬停说明含去星号的作用与自跑退路",
-  ht.includes("这条命令干嘛用：跑一次效果评估") && ht.includes("两指标") &&
+  ht.startsWith("跑一次效果评估") && ht.includes("两指标") &&
   !ht.includes("**") && ht.includes("复制到仓根目录"));
 const ht2 = cmdHoverTitle({ label: "补 pattern 批注", note: "",
   cli: "python -m harvester suggest-status --meta m",

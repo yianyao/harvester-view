@@ -31,6 +31,27 @@ v0.81 的词云导航被知识图谱（v0.86+ 两态模型）全面覆盖，用�
   test_v1/v40_theme_contrast/v55/v66 unittest 全 OK（删门后连带复验）。
   历史 v0.81 修订节保留作记录。
 
+## v0.90b 修订（命令悬停去废话+示例值，2026-10-20，用户两轮批注）
+
+用户批注「悬停只会说本页可执行（正确的废话）」「help 说清概念仍不知
+值长啥样，到头来还得翻命令行」：
+
+- **chip 悬停**：删档位复读（「A 档：本页可直接执行」——tierbadge 和卡
+  说明已有），三级回落取真用途：命令 help → A 档动作 desc → 卡 desc；
+- **参数框**：placeholder 禁「自由文本」类裸类型名，优先显示**示例值**
+  （example→default 回落）；title 悬停=help+note+「示例：值」三段；
+- **处理单/命令悬停**：删「这条命令干嘛用：」前缀（label 本身就是
+  用途），argsHelp 参数段带「（示例值 …）」；
+- **数据面**：13 个 help=null 的参数按主仓语义补 help；11 个 `--sources`
+  补 `example: sources.json`（probe 缺省产物名，主仓实证）；sync/update
+  等用 default 表达同款语义（前端回落等价）；`commandgen --check` 对账
+  绿（help/note/example 手维字段不进对账）；
+- **防回归钉**（test_v55 新增 3 测试）：chip 禁档位废话+回落链在；
+  placeholder 禁裸类型名+示例回落链在；全部 `--sources` 必须能示出值
+  （example 或 default 任一）；
+- **测试**：36 个 py 模块 unittest 全 OK + 14 个 JS 渲染门全 PASSED
+  （render_cmd/render_work 断言同步：悬停产物不再含前缀、含自跑退路）。
+
 ## v0.89 修订（点主题灌成员子图+辐射连线换判据，2026-10-20，用户批注裁决）
 
 用户第三张截图批注两条：**①「点击这些大的节点能不能直接把节点名字

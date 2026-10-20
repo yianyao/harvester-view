@@ -125,7 +125,8 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": null,
+     "help": "数据源声明文件（probe 产出的 sources.json：各 adapter 的根路径；相对仓根）",
+        "example": "sources.json",
      "note": null
     }
    ],
@@ -171,7 +172,8 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": null,
+     "help": "数据源声明文件（probe 产出的 sources.json：各 adapter 的根路径；相对仓根）",
+        "example": "sources.json",
      "note": null
     },
     {
@@ -183,7 +185,7 @@
      "choices": null,
      "src": "auto_out",
      "negates": null,
-     "help": null,
+     "help": "聚合导出路径（缺省 corpus.md；命令台自动命名 reports/<动词>-<日期>.md）",
      "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
     },
     {
@@ -229,7 +231,7 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": null,
+     "help": "服务监听端口（缺省 8765）",
      "note": null
     },
     {
@@ -1142,6 +1144,7 @@
      "src": "none",
      "negates": null,
      "help": "probe 产出的路径配置",
+        "example": "sources.json",
      "note": null
     },
     {
@@ -1480,7 +1483,8 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": null,
+     "help": "数据源声明文件（probe 产出的 sources.json：各 adapter 的根路径；相对仓根）",
+        "example": "sources.json",
      "note": null
     },
     {
@@ -1877,7 +1881,8 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": null,
+     "help": "数据源声明文件（probe 产出的 sources.json：各 adapter 的根路径；相对仓根）",
+        "example": "sources.json",
      "note": null
     },
     {
@@ -2087,7 +2092,8 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": null,
+     "help": "数据源声明文件（probe 产出的 sources.json：各 adapter 的根路径；相对仓根）",
+        "example": "sources.json",
      "note": null
     },
     {
@@ -2099,7 +2105,7 @@
      "choices": null,
      "src": "auto_out",
      "negates": null,
-     "help": null,
+     "help": "打包产物路径（缺省 context_pack.md；命令台自动命名）",
      "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
     }
    ],
@@ -2121,7 +2127,7 @@
      "choices": null,
      "src": "auto_out",
      "negates": null,
-     "help": null,
+     "help": "探测结果输出路径（缺省 sources.json——它是其余命令 --sources 的输入）",
      "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
     },
     {
@@ -2167,7 +2173,8 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": null,
+     "help": "数据源声明文件（probe 产出的 sources.json：各 adapter 的根路径；相对仓根）",
+        "example": "sources.json",
      "note": null
     },
     {
@@ -2597,7 +2604,8 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": null,
+     "help": "数据源声明文件（probe 产出的 sources.json：各 adapter 的根路径；相对仓根）",
+        "example": "sources.json",
      "note": null
     },
     {
@@ -2702,6 +2710,7 @@
      "src": "none",
      "negates": null,
      "help": "probe 产出的路径配置",
+        "example": "sources.json",
      "note": null
     },
     {
@@ -2771,7 +2780,7 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": null,
+     "help": "最多返回多少条命中（缺省 20）",
      "note": null
     },
     {
@@ -4251,7 +4260,7 @@
      "choices": null,
      "src": "auto_out",
      "negates": null,
-     "help": null,
+     "help": "账号配置输出路径（缺省 webchat.accounts.json）",
      "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
     }
    ],

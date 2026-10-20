@@ -91,8 +91,45 @@ class TestCommandHoverTitle(unittest.TestCase):
 
     def test_hover_title_helper_exists_and_covers_usage(self):
         self.assertIn("function cmdHoverTitle(row)", self.html)
-        self.assertIn("这条命令干嘛用：", self.html)
+        # v0.90 用户批注：「这条命令干嘛用：」前缀是正确的废话——label
+        # 本身就是用途，直接说；前缀禁止回归
+        self.assertNotIn("这条命令干嘛用：", self.html)
+        self.assertIn('if(row.label)parts.push(stripMd(row.label));',
+                      self.html)
         self.assertIn("复制到仓根目录", self.html)
+
+    def test_cmd_chip_tooltip_says_what_for_not_tier(self):
+        # v0.90 用户批注：命令 chip 悬停不许复读档位（「A 档：本页可
+        # 直接执行」——tierbadge 和卡说明已有，悬停只说用途）；三级
+        # 回落 help → 动作说明 → 卡 desc
+        self.assertNotIn("A 档：本页可直接执行", self.html)
+        self.assertNotIn("B 档：会写库，先预演、你确认才写", self.html)
+        self.assertNotIn("C 档：只生成命令，不代执行", self.html)
+        self.assertIn("const spec=actionSpec(c.cmd);", self.html)
+        self.assertIn("c.help||(spec&&spec.desc)||", self.html)
+
+    def test_cmd_param_placeholder_not_type_nonsense(self):
+        # v0.90 用户批注：placeholder「自由文本」是正确的废话——只在有
+        # 信息时出现，且优先给示例值（example→default 回落：help 说清
+        # 概念用户仍不知值长啥样，示例才免翻命令行）；参数含义走 title
+        # 悬停（help+note+示例）
+        self.assertNotIn("自由文本", self.html)
+        self.assertIn("const ex=a.example!=null?a.example:a.default;",
+                      self.html)
+        self.assertIn('"示例："+ex', self.html)
+        self.assertIn('[a.help,a.note,', self.html)
+        # 数据面：--sources 这类路径参数必须能示出值——example 或
+        # default 任一（前端 placeholder/悬停示例 example→default 回落，
+        # 对用户等价；sync/update 等用 default 表达同款语义）
+        reg = json.loads((VIEW_ROOT / "actions" / "commands.json")
+                         .read_text(encoding="utf-8"))
+        for c in reg["commands"]:
+            for a in c["args"]:
+                if a["src"] != "server" and a["kind"] != "switch" \
+                        and a["name"] == "--sources":
+                    self.assertTrue(a.get("example") is not None
+                                    or a.get("default") is not None,
+                                    f"{c['cmd']} --sources 无示例值")
 
     def test_cmd_preview_and_write_panel_have_tooltip(self):
         # 命令台预览行与写动作面板也要有解释（不仅处理单）

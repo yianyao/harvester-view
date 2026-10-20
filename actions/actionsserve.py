@@ -366,10 +366,13 @@ def _action_kgraph(cfg: Config, params: dict) -> dict:
     """A 档：知识图谱（v0.86，大类总览+搜索子图）。默认态只画大类
     （显隐前端）；params.q 非空=搜索模式：正文 FTS（messages 索引，
     检索框同判据）命中会话+邻域子图——标题不含但正文含关键字的会话
-    也能命中。其余：只取用户先发起、机械聚类、五类机械边、账目全进
-    meta。只读三库与卡片目录；诚实空态走 hints。"""
+    也能命中。params.topic 非空（v0.89 主题态，用户批注①②）：该主题
+    成员会话 ∪ FTS 命中——主题点击灌成员子图（label 整串 FTS 几乎必
+    0 命中，纯 FTS 必孤点）。其余：只取用户先发起、机械聚类、机械边、
+    账目全进 meta。只读三库与卡片目录；诚实空态走 hints。"""
     from .analysis import kgraph
-    return kgraph.build(cfg, query=str(params.get("q") or ""))
+    return kgraph.build(cfg, query=str(params.get("q") or ""),
+                        topic=str(params.get("topic") or ""))
 
 
 # ---------- A 档通用执行器（v0.63：白名单补全，用户 2026-10-14「都加上」） ----------
@@ -908,7 +911,10 @@ ACTIONS: dict[str, dict] = {
                 "子图。只取用户先发起；机械聚类一簇一个代表；五类边来自"
                 "既有真源，零语义臆造。只读，不落盘。",
         "params": {"q": {"type": "text", "required": False,
-                          "desc": "搜索关键字（正文 FTS，空=大类总览）"}},
+                          "desc": "搜索关键字（正文 FTS，空=大类总览）"},
+                   "topic": {"type": "text", "required": False,
+                             "desc": "主题 id（v0.89 主题态：成员子图 ∪ "
+                                     "FTS 命中；点主题时与 q 同传）"}},
         "est_sec": 6,
         "reversible": "幂等（只读三库与卡片目录，产物返回页面不落盘）",
         "writes": "",

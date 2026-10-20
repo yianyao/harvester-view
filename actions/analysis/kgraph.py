@@ -48,8 +48,14 @@ KG_HUB_MIN_DF = 8        # 自动枢纽：文档频率下限（机械频率，�
 KG_HUB_MAX = 40          # 自动枢纽词数量上限
 KG_HUB_MAXLEN = 4        # 候选片段最大长度（CJK 子串 2~4 字 + ASCII 词）
 KG_HUB_STOP = set("的了与和及或是在")  # 含虚词字的片段不做枢纽（机械过滤）
-KG_TLINK_MIN_SHARED = 2  # P7-② 主题连线：共享定稿关键词数下限（机械对账）
-KG_TLINK_HUB_FAN = 6     # 被≥6 主题共用的词不参与连线（防枢纽连锁成团）
+KG_TLINK_MIN_SHARED = 2  # P7-② 主题连线（一）：共享定稿关键词数下限
+KG_TLINK_HUB_FAN = 6     # 词被≥6 主题共用/辐射≥6 主题 → 不参与连线
+KG_TLINK_FTS_MIN = 3     # P7-② 主题连线（二）：A 的定稿词正文 FTS 命中
+                         # B 成员≥3 条 → A~B 连边（2026-10-20 换判据：
+                         # 真库 16 主题定稿词两两零共享，共享≥2 永远
+                         # 0 连线；辐射对账=关键词表×FTS 索引×成员表
+                         # 三表机械对账，零语义；「梦中救人」辐射技法
+                         # 主题是真实跨主题关联）
 
 
 def _con_ro(db: Path) -> sqlite3.Connection:
@@ -278,12 +284,15 @@ def _cjk_bigram_q(text: str) -> str:
 
 
 def _load_sessions(db: Path | None, hints: list[str], limit: int,
-                   query: str = "") -> tuple[list[dict], dict]:
+                   query: str = "", topic_sids: frozenset[str] | None = None
+                   ) -> tuple[list[dict], dict]:
     """会话装载：全量→用户发起过滤→updated_at 最新截断。
     query 非空（v0.86 搜索模式）：再经正文 FTS 过滤（title 不含但正文
     含关键字的会话也能命中——「梦中救人」标题只中 4 个的教训）。
+    topic_sids 非空（v0.89 主题态）：FTS 命中 ∪ 主题成员——主题点击
+    直接下发成员子图（label 整串 FTS 几乎必 0 命中，纯 FTS 必孤点）。
     返回 (rows, 账目)。账目字段：total/user_initiated/filtered/drawn/
-    truncated + 搜索态 fts_matched。"""
+    truncated + 搜索态 fts_matched/topic_members。"""
     acc = {"total": 0, "user_initiated": 0, "filtered": 0,
            "drawn": 0, "truncated": False}
     if db is None or not Path(db).is_file():
@@ -307,10 +316,20 @@ def _load_sessions(db: Path | None, hints: list[str], limit: int,
     acc["user_initiated"] = len(rows)
     acc["filtered"] = acc["total"] - len(rows)
     q = " ".join(str(query or "").split())
-    if q:
-        hits = _fts_search_sids(Path(db), q)
-        acc["fts_matched"] = len(hits & {r["sid"] for r in rows})
-        rows = [r for r in rows if r["sid"] in hits]
+    tids = topic_sids or frozenset()
+    if q or tids:
+        hits = _fts_search_sids(Path(db), q) if q else set()
+        if q:
+            acc["fts_matched"] = len(hits & {r["sid"] for r in rows})
+        if tids:
+            in_rows = {r["sid"] for r in rows}
+            acc["topic_members"] = len(tids & in_rows)
+        if q and tids:
+            rows = [r for r in rows if r["sid"] in hits or r["sid"] in tids]
+        elif q:
+            rows = [r for r in rows if r["sid"] in hits]
+        else:
+            rows = [r for r in rows if r["sid"] in tids]
     if acc["total"] and not rows:
         hints.append(
             f"没有「用户先发起」的会话（判据=首条消息 role='user'；"
@@ -323,15 +342,25 @@ def _load_sessions(db: Path | None, hints: list[str], limit: int,
     return rows, acc
 
 
-def build(cfg, max_sessions: int | None = None, query: str = "") -> dict:
+def build(cfg, max_sessions: int | None = None, query: str = "",
+          topic: str = "") -> dict:
     """v0.86：默认态=大类总览（数据面仍全量下发，前端默认只显主题/卡片）；
-    query 非空=搜索子图（正文 FTS 命中的会话+其邻域，检索框同索引）。
+    query 非空=搜索子图（正文 FTS 命中的会话+其邻域，检索框同索引）；
+    topic 非空（v0.89 主题态，用户批注①②）：该主题成员会话 ∪ FTS 命中
+    ——主题点击灌成员子图（label 整串 FTS 必 0 命中，纯 FTS 必孤点）。
     数据面一次下发全部节点/边与簇结构，max_sessions 仅供测试注入。"""
     hints: list[str] = []
     topics = _load_topics(cfg.topics_meta, hints)
     cards = _load_cards(cfg.cards_root, hints)
     cap = KG_MAX_SESSIONS if max_sessions is None else int(max_sessions)
-    sessions, sess_acc = _load_sessions(cfg.db, hints, cap, query=query)
+    tid = str(topic or "").strip().removeprefix("t:")
+    topic_row = next((t for t in topics if t["id"] == tid), None) \
+        if tid else None
+    if tid and topic_row is None:
+        hints.append(f"topic 参数 {tid!r} 不在主题注册表：按纯 FTS 搜索处理")
+    topic_sids = frozenset(topic_row["member_sids"]) if topic_row else None
+    sessions, sess_acc = _load_sessions(cfg.db, hints, cap, query=query,
+                                        topic_sids=topic_sids)
 
     # kw_hit 判定表：关键词 → 标题含词的会话 sid 集（检索框同判据）。
     # 自动枢纽（v0.85）也进词命中表——但**只辐射不归簇**：真库实测共享
@@ -432,6 +461,50 @@ def build(cfg, max_sessions: int | None = None, query: str = "") -> dict:
                           "weight": len(kws), "via": sorted(kws)})
             topic_links += 1
 
+    # P7-② 主题连线（二）v0.89 换判据：关键词 FTS 辐射对账——主题 A 的
+    # 定稿词正文 FTS 命中主题 B 的成员会话≥KG_TLINK_FTS_MIN 条 → A~B 连
+    # 边。真库实测：16 主题定稿词两两零共享，「共享≥2」永远 0 连线；辐射
+    # 判据=关键词表×messages FTS 索引×成员表三表机械对账（kw_hit 同源），
+    # 零语义臆造。词辐射主题数≥KG_TLINK_HUB_FAN → 该词排除（「梦中救人」
+    # 类书名词在小说族内横跨是真实关联，跨 6+ 主题的是「描写」类泛词枢纽，
+    # 连了必成团——同自动枢纽不进聚类的防线）。
+    topic_fts_links = 0
+    fts_excluded: list[str] = []
+    if cfg.db and Path(cfg.db).is_file() and topics:
+        members_of_t = {f"t:{t['id']}": set(t["member_sids"]) for t in topics}
+        hit_cache: dict[str, set[str]] = {}
+        rad_topics: dict[str, int] = {}
+        pair_hits: dict[tuple[str, str], dict[str, int]] = {}
+        for t in topics:
+            for kw in t["keywords"]:
+                if kw in fts_excluded:
+                    continue
+                if kw not in hit_cache:
+                    hit_cache[kw] = _fts_search_sids(Path(cfg.db), kw)
+                hits = hit_cache[kw]
+                if not hits:
+                    continue
+                for other in topics:
+                    if other["id"] == t["id"]:
+                        continue
+                    inter = hits & members_of_t[f"t:{other['id']}"]
+                    if len(inter) >= KG_TLINK_FTS_MIN:
+                        pair = tuple(sorted((f"t:{t['id']}",
+                                             f"t:{other['id']}")))
+                        pair_hits.setdefault(pair, {})[kw] = len(inter)
+                        rad_topics[kw] = rad_topics.get(kw, 0) + 1
+        for kw, n in rad_topics.items():
+            if n >= KG_TLINK_HUB_FAN:
+                fts_excluded.append(kw)
+        for (a, b), kws in sorted(pair_hits.items()):
+            kws = {k: v for k, v in kws.items() if k not in fts_excluded}
+            if not kws:
+                continue
+            edges.append({"src": a, "dst": b, "kind": "topic_fts",
+                          "weight": max(kws.values()),
+                          "via": sorted(kws)})
+            topic_fts_links += 1
+
     # 自动枢纽节点（v0.85）：同 kw 层，badge 带文档频率账
     for w, dfc in auto_hubs.items():
         kid = f"k:{w}"
@@ -489,14 +562,19 @@ def build(cfg, max_sessions: int | None = None, query: str = "") -> dict:
         "kw_hit_counts": kw_hit_counts,
         "kw_hit_capped": sorted(set(kw_hit_capped)),
         "topic_links": topic_links,
+        "topic_fts_links": topic_fts_links,
         "topic_link_excluded_hubs": sorted(
-            kw for kw, ts in kw_topics.items()
-            if len(ts) >= KG_TLINK_HUB_FAN),
+            set(kw for kw, ts in kw_topics.items()
+                if len(ts) >= KG_TLINK_HUB_FAN) | set(fts_excluded)),
         "cards_unlinked": cards_unlinked,
         "caps": {"sessions": cap, "kw_hits": KG_MAX_KW_HITS},
         "search": ({"q": _clean_fts_query(str(query)),
-                    "fts_matched": sess_acc.get("fts_matched", 0)}
-                   if str(query or "").strip() else None),
+                    "fts_matched": sess_acc.get("fts_matched", 0),
+                    "topic": tid if topic_row else None,
+                    "topic_members": sess_acc.get("topic_members", 0),
+                    "member_ids": sorted(topic_sids)
+                    if topic_sids else None}
+                   if (str(query or "").strip() or topic_row) else None),
         "criteria": {
             "user_initiated": "首条消息 role='user'（messages 表真源）",
             "cluster": f"标题 token Jaccard≥{KG_SIM_JACCARD} 或 bigram "
@@ -505,16 +583,19 @@ def build(cfg, max_sessions: int | None = None, query: str = "") -> dict:
             "hubs": f"自动枢纽=标题高频片段（文档频率≥{KG_HUB_MIN_DF} 的 "
                     f"2~{KG_HUB_MAXLEN} 字 CJK 子串/ASCII 词，虚词字过滤"
                     "+贪心去重，机械频率提取，无语义判断）",
-            "topic_links": f"两主题共享≥{KG_TLINK_MIN_SHARED} 个定稿关键词"
-                           f"（topics.keywords 机械对账）；被≥"
-                           f"{KG_TLINK_HUB_FAN} 个主题共用的词不参与"
+            "topic_links": f"两主题连线双判据（P7-② 机械对账）：①共享≥"
+                           f"{KG_TLINK_MIN_SHARED} 个定稿关键词；②A 的定稿"
+                           f"词正文 FTS 命中 B 成员≥{KG_TLINK_FTS_MIN} 条"
+                           f"（关键词表×FTS 索引×成员表）；被≥"
+                           f"{KG_TLINK_HUB_FAN} 个主题共用/辐射的词不参与"
                            "（防枢纽连锁成团）",
             "representative": "簇内 updated_at 最新",
         },
         "source": "topics_meta.topics / cardlib.scan_cards / harvester.db",
         "derivation": "卡片→主题=锚点 sid∈主题成员；关键词→主题=定稿表；"
                       "关键词→会话=标题含词（检索框同判据）；"
-                      "主题→主题=共享≥2 定稿关键词（P7-② 机械对账）、"
+                      "主题→主题=共享≥2 定稿关键词 或 关键词 FTS 辐射"
+                      "≥3 成员（P7-② 机械对账）、"
                       "会话间无相似度边（聚类只是聚合展示，不是语义边）",
     }
     if not nodes:

@@ -9,7 +9,8 @@
 - 动作账：kgraph 双层账（ACTIONS×registrygen×注册表 JSON）；
 - 数据账：用户发起过滤（首条 role='user'，机械真源 messages 表）+
   聚类判据（标题 Jaccard≥0.45 或共享定稿关键词）+ 簇代表结构 +
-  六类机械边（P7-② 主题连线=共享≥2 定稿关键词、枢纽词扇形≥6 排除）+
+  七类机械边（P7-② 主题连线双判据=共享≥2 定稿关键词 或 关键词 FTS
+  辐射命中 B 成员≥3 条、枢纽词扇形/辐射≥6 排除）+
   账目诚实（过滤/聚合/截断/封顶）+ 无边诚实；
 - 渲染账：render_kgraph.js（DOM 桩）——显隐集、簇展开/收起、
   缩放平移、hover 邻域、下钻、空态、失败态。
@@ -154,6 +155,8 @@ class TestV66KgraphStatic(unittest.TestCase):
         self.assertIn("黑底", HTML)
         self.assertIn("P7-②", HTML)
         self.assertIn("共享关键词", HTML)             # P7-② 边类型图例
+        self.assertIn("关键词辐射", HTML)             # P7-② 判据（二）边类型
+        self.assertIn("展开该主题成员子图", HTML)      # v0.89 点主题交互
         self.assertIn("M2/M4", HTML)
         self.assertIn("标题含词", HTML)
 
@@ -196,7 +199,8 @@ class TestV66KgraphStatic(unittest.TestCase):
         self.assertIn('id="kg-q"', HTML)
         self.assertIn('kgQuery', HTML)
         self.assertIn('if(kgQuery)p.q=kgQuery', HTML)
-        self.assertIn('if(kgQuery&&sq===qn){', HTML)   # 搜索态命中子图（带守卫）
+        self.assertIn('if(kgQuery&&(sq===qn||(sm.topic&&sm.topic==='
+                      'kgTopicId))){', HTML)   # 搜索态命中子图（v0.89 双守卫）
         self.assertIn('if(nd.kind==="session"){vis.add(nd.id);'
                       'hits.add(nd.id);}', HTML)      # 命中集起点
         self.assertIn('(tHits[nd.id]||0)>=2', HTML)   # v0.88 主题≥2 门槛
@@ -213,7 +217,19 @@ class TestV66KgraphStatic(unittest.TestCase):
         self.assertIn("邻域锁与框选互斥", HTML)
         self.assertIn('kind==="shared_kw"', HTML)     # P7-② 主题连线画宽
         self.assertIn("已隐藏", HTML)                  # 弱命中账不静默
+        # v0.89 主题点击=节点名置换进搜索框重新查询（用户批注①②：
+        # 大类态锁邻域必孤点——邻域全是不可见会话；灌搜索重新关联）
+        self.assertIn('if(d.kind==="topic"){', HTML)
+        self.assertIn('$("kg-q").value=lab; kgQuery=lab;', HTML)
+        self.assertIn("卡片点击保留邻域锁", HTML)
         self.assertIn("不得冒充命中集", HTML)           # 守卫声明在注释
+        self.assertIn("kgTopicId=(nd.meta&&nd.meta.topic_id)||null;",
+                      HTML)                     # 主题点击带 topic id
+        self.assertIn('if(sm.topic&&sm.topic===kgTopicId)'
+                      'vis.add("t:"+sm.topic);',
+                      HTML)                     # 目标主题白名单（防孤点）
+        self.assertIn("if(kgQuery&&kgTopicId)p.topic=kgTopicId;",
+                      HTML)                     # 主题态随请求下发
         self.assertIn('session:"#4fb0ff"', HTML)    # 用户「黄圆圈改蓝」
         self.assertNotIn("#ffab70", HTML)           # 旧黄不得残留
         self.assertIn('正文 FTS', HTML)              # 搜索判据声明进图例
@@ -226,6 +242,7 @@ class TestV66KgraphStatic(unittest.TestCase):
         self.assertEqual(ent["tier"], "A")
         self.assertEqual(ent["handler"].__name__, "_action_kgraph")
         self.assertIn("q", ent["params"])           # v0.86 搜索参数
+        self.assertIn("topic", ent["params"])       # v0.89 主题态参数
         reg = json.loads(
             (VIEW / "actions" / "actions_registry.json")
             .read_text(encoding="utf-8"))
@@ -381,7 +398,8 @@ class TestV66KgraphData(unittest.TestCase):
 
     def test_15_no_semantic_edges(self):
         # 死约定：会话间无相似度边（聚类只是聚合展示）；主题间只允许
-        # shared_kw 机械连线（本夹具两主题仅共享 1 词，不达门槛无边）
+        # shared_kw/topic_fts 机械连线（P7-② 双判据；本夹具两主题仅共享
+        # 1 词、索引库不存在无辐射对账，均不达门槛无边）
         from actions.analysis import kgraph
         from actions.actionsserve import Config
         tdb = self.tmp / "t.db"
@@ -516,7 +534,8 @@ class TestV66KgraphData(unittest.TestCase):
         sess = {n["id"] for n in d["nodes"] if n["kind"] == "session"}
         self.assertEqual(sess, {"s:S1"})
         self.assertEqual(d["meta"]["search"],
-                         {"q": "部署", "fts_matched": 1})
+                         {"q": "部署", "fts_matched": 1, "topic": None,
+                          "topic_members": 0, "member_ids": None})
         self.assertEqual(d["meta"]["sessions"]["drawn"], 1)
         # 邻域随命中下发（词/主题边只连命中会话）
         self.assertTrue(all(e["src"] != "k:买菜" for e in d["edges"]))
@@ -528,7 +547,10 @@ class TestV66KgraphData(unittest.TestCase):
         self.assertEqual(
             {n["id"] for n in d3["nodes"] if n["kind"] == "session"},
             set())
-        self.assertEqual(d3["meta"]["search"]["fts_matched"], 0)
+        self.assertEqual(d3["meta"]["search"],
+                         {"q": "不存在词xyzq", "fts_matched": 0,
+                          "topic": None, "topic_members": 0,
+                          "member_ids": None})
         # 默认态：search=None，全量会话都在数据面
         d4 = kgraph.build(cfg)
         self.assertIsNone(d4["meta"]["search"])
@@ -569,6 +591,132 @@ class TestV66KgraphData(unittest.TestCase):
         self.assertEqual(e["via"], ["x1", "x2"])
         self.assertEqual(d["meta"]["topic_links"], 1)
         self.assertEqual(d["meta"]["topic_link_excluded_hubs"], ["hub"])
+
+    def test_21_topic_fts_links(self):
+        """P7-② v0.89 判据（二）：关键词 FTS 辐射对账——主题 A 的定稿词
+        正文 FTS 命中主题 B 的成员会话≥KG_TLINK_FTS_MIN 条 → A~B 连
+        topic_fts 边（真库实测：16 主题定稿词两两零共享，「共享≥2」永远
+        0 连线；辐射判据=关键词表×FTS 索引×成员表三表机械对账，零语义）。
+        夹具取真库形态：技法族成员正文讨论「梦中救人」（标题带书名）。"""
+        from actions.actionsserve import Config
+        from actions.analysis import kgraph
+        tmp = self.tmp
+        tdb = tmp / "t.db"
+        _mk_topics_db(tdb, [
+            ("tA", "小说讨论", '["梦中救人"]',
+             '[{"sid": "SA1", "evidence": "e"},'
+             ' {"sid": "SA2", "evidence": "e"}]',
+             "2026-10-19T00:00:00"),
+            ("tB", "写作技法", '["词语释义"]',
+             '[{"sid": "SB1", "evidence": "e"},'
+             ' {"sid": "SB2", "evidence": "e"},'
+             ' {"sid": "SB3", "evidence": "e"}]',
+             "2026-10-19T00:00:00")])
+        idb = tmp / "h.db"
+        _mk_index_db(idb, [
+            ("SA1", "情节讨论：主角设定", "trae", "2026-10-19T09:00:00"),
+            ("SA2", "结局追评", "trae", "2026-10-19T09:30:00"),
+            ("SB1", "梦中救人第3卷情节", "trae", "2026-10-19T10:00:00"),
+            ("SB2", "梦中救人第4卷追更", "trae", "2026-10-19T11:00:00"),
+            ("SB3", "梦中救人结局评价", "claude", "2026-10-19T12:00:00"),
+        ])
+        glossary = tmp / "g.json"
+        glossary.write_text('{"terms": []}', encoding="utf-8")
+        cfg = Config(cards_root=tmp / "cards", db=idb, glossary=glossary,
+                     topics_meta=tdb)
+        d = kgraph.build(cfg)
+        links = [e for e in d["edges"] if e["kind"] == "topic_fts"]
+        self.assertEqual(len(links), 1, "只应有 tA~tB 一条辐射连线")
+        e = links[0]
+        self.assertEqual({e["src"], e["dst"]}, {"t:tA", "t:tB"})
+        self.assertEqual(e["weight"], 3)      # SB1~SB3 三条成员命中
+        self.assertEqual(e["via"], ["梦中救人"])
+        self.assertEqual(d["meta"]["topic_fts_links"], 1)
+        self.assertEqual(d["meta"]["topic_link_excluded_hubs"], [])
+
+    def test_22_topic_fts_hub_excluded(self):
+        """反例：词辐射≥KG_TLINK_HUB_FAN 主题 → 进 topic_link_excluded_hubs
+        不连线（「描写」类泛词枢纽防线，同自动枢纽不进聚类）；同库内
+        非枢纽词照常连线（对照证明辐射通路本身是通的，排除不是假绿）。"""
+        from actions.actionsserve import Config
+        from actions.analysis import kgraph
+        tmp = self.tmp
+        tdb = tmp / "t.db"
+        rows = [
+            ("tC", "技法总纲", '["描写", "梦中救人"]', '[]',
+             "2026-10-19T00:00:00"),
+            ("tB", "小说讨论", '["技法"]',
+             '[{"sid": "SB1", "evidence": "e"},'
+             ' {"sid": "SB2", "evidence": "e"},'
+             ' {"sid": "SB3", "evidence": "e"}]',
+             "2026-10-19T00:00:00")]
+        # 6 个主题共用同一批「描写」成员 → 描写辐射=6 恰达枢纽线
+        for i in range(6):
+            rows.append((f"tR{i}", f"分支{i}", f'["rw{i}"]',
+                         '[{"sid": "M1", "evidence": "e"},'
+                         ' {"sid": "M2", "evidence": "e"},'
+                         ' {"sid": "M3", "evidence": "e"}]',
+                         "2026-10-19T00:00:00"))
+        _mk_topics_db(tdb, rows)
+        idb = tmp / "h.db"
+        _mk_index_db(idb, [
+            ("SB1", "梦中救人第3卷情节", "trae", "2026-10-19T10:00:00"),
+            ("SB2", "梦中救人第4卷追更", "trae", "2026-10-19T11:00:00"),
+            ("SB3", "梦中救人结局评价", "claude", "2026-10-19T12:00:00"),
+            ("M1", "描写手法：环境", "trae", "2026-10-19T13:00:00"),
+            ("M2", "描写手法：动作", "trae", "2026-10-19T14:00:00"),
+            ("M3", "描写手法：对白", "claude", "2026-10-19T15:00:00"),
+        ])
+        glossary = tmp / "g.json"
+        glossary.write_text('{"terms": []}', encoding="utf-8")
+        cfg = Config(cards_root=tmp / "cards", db=idb, glossary=glossary,
+                     topics_meta=tdb)
+        d = kgraph.build(cfg)
+        fts = [e for e in d["edges"] if e["kind"] == "topic_fts"]
+        self.assertEqual(len(fts), 1, "描写被枢纽线排除，只剩 tC~tB 一条")
+        self.assertEqual({fts[0]["src"], fts[0]["dst"]}, {"t:tC", "t:tB"})
+        self.assertEqual(fts[0]["via"], ["梦中救人"])
+        self.assertEqual(d["meta"]["topic_fts_links"], 1)
+        self.assertEqual(d["meta"]["topic_link_excluded_hubs"], ["描写"])
+
+    def test_23_topic_mode_member_union(self):
+        """v0.89 主题态（用户批注①②）：build(topic=t) → 成员会话 ∪ FTS
+        命中——主题 label 整串 FTS 必 0 命中，纯 FTS 必孤点；成员子图
+        兜底。search 账带 topic/topic_members/member_ids；不在注册表的
+        topic 诚实降级（hints 声明，不冒充命中集）。"""
+        from actions.actionsserve import Config
+        from actions.analysis import kgraph
+        tmp = self.tmp
+        tdb = tmp / "t.db"
+        _mk_topics_db(tdb, [("t1", "甲主题", '["k1"]',
+                             '[{"sid": "S1", "evidence": "e"}]',
+                             "2026-10-19T00:00:00")])
+        idb = tmp / "h.db"
+        _mk_index_db(idb, [
+            ("S1", "买菜清单周末火锅", "trae", "2026-10-19T09:00:00"),
+            ("S2", "部署网关重启", "claude", "2026-10-19T10:00:00"),
+        ])
+        glossary = tmp / "g.json"
+        glossary.write_text('{"terms": []}', encoding="utf-8")
+        cfg = Config(cards_root=tmp / "cards", db=idb, glossary=glossary,
+                     topics_meta=tdb)
+        # 纯主题态：只要成员 S1（S2 非成员且 FTS 不中）；t: 前缀容忍
+        d = kgraph.build(cfg, topic="t:t1")
+        self.assertEqual({n["id"] for n in d["nodes"]
+                          if n["kind"] == "session"}, {"s:S1"})
+        self.assertEqual(d["meta"]["search"],
+                         {"q": "", "fts_matched": 0, "topic": "t1",
+                          "topic_members": 1, "member_ids": ["S1"]})
+        # 成员 ∪ FTS：q 与 topic 同传——S1 靠成员入选、S2 靠 FTS 入选
+        d2 = kgraph.build(cfg, query="部署", topic="t1")
+        self.assertEqual({n["id"] for n in d2["nodes"]
+                          if n["kind"] == "session"}, {"s:S1", "s:S2"})
+        self.assertEqual(d2["meta"]["search"]["topic_members"], 1)
+        self.assertEqual(d2["meta"]["search"]["fts_matched"], 1)
+        # 不在注册表：诚实降级（hints 声明+按纯 FTS；q 空=不过滤全量）
+        d3 = kgraph.build(cfg, topic="tX")
+        self.assertTrue(any("不在主题注册表" in h for h in d3["hints"]))
+        self.assertIsNone(d3["meta"]["search"])
 
 
 if __name__ == "__main__":

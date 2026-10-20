@@ -563,7 +563,7 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
     <button id="kg-full" title="隐藏顶栏，图谱占满窗口；再点恢复">全屏</button>
     <span class="sub2" id="kg-bar"></span>
   </div>
-  <div class="sub2" style="margin:6px 2px" id="kg-legend">黑底机械关系图（不是语义图谱）——默认只显示大类；搜索框输关键字→只看正文命中子图｜<b style="color:#6ea8ff">●</b>主题　<b style="color:#b48aff">●</b>卡片　<b style="color:#4fd1a5">●</b>关键词　<b style="color:#4fb0ff">●</b>会话<details style="display:inline;margin-left:4px"><summary style="cursor:pointer;display:inline">判据与边类型说明</summary><div style="margin:6px 0;line-height:1.7"><b>会话层</b>：<b>只画用户先发起</b>（首条消息 role='user'）；正文 FTS（messages 索引，检索框同判据）命中会话及其直接邻域；相近聚成一簇<b>只显示代表</b> (+N)，<b>代表点击直达原文</b>；判据=<b>Jaccard</b>≥0.45、bigram 包含率≥0.6、共享定稿词｜<b>边</b>：—成员 —锚点 —归属 —关键词 —<b>标题含词</b> —共享关键词（<b>主题连线=P7-②</b>：两主题共享≥2 个定稿关键词才连边，被≥6 主题共用的枢纽词不参与）｜<b>黑底</b>固定配色；自动枢纽=标题高频片段 df≥8 机械提取，只辐射不归簇；主题连线是关键词表的机械对账，不是语义相似（真语义待 M2/M4）；会话间无相似度边（聚类只是聚合展示）｜搜索态主题需≥2 个成员命中才显示（弱命中主题隐藏并记账）｜滚轮缩放 · 拖拽平移 · 悬停亮邻居 · 点主题过滤邻域 · 点关键词灌进检索 · 框选只看框内子图 · 双击复位</div></details></div>
+  <div class="sub2" style="margin:6px 2px" id="kg-legend">黑底机械关系图（不是语义图谱）——默认只显示大类；<b>点主题大节点=展开该主题成员子图</b>；搜索框输关键字→只看正文命中子图｜<b style="color:#6ea8ff">●</b>主题　<b style="color:#b48aff">●</b>卡片　<b style="color:#4fd1a5">●</b>关键词　<b style="color:#4fb0ff">●</b>会话<details style="display:inline;margin-left:4px"><summary style="cursor:pointer;display:inline">判据与边类型说明</summary><div style="margin:6px 0;line-height:1.7"><b>会话层</b>：<b>只画用户先发起</b>（首条消息 role='user'）；正文 FTS（messages 索引，检索框同判据）命中会话及其直接邻域；相近聚成一簇<b>只显示代表</b> (+N)，<b>代表点击直达原文</b>；判据=<b>Jaccard</b>≥0.45、bigram 包含率≥0.6、共享定稿词｜<b>边</b>：—成员 —锚点 —归属 —关键词 —<b>标题含词</b> —<b>共享关键词</b>/—<b>关键词辐射</b>（主题连线=P7-② 双判据：共享≥2 个定稿关键词，或 A 的定稿词正文 FTS 命中 B 成员≥3 条；被≥6 主题共用/辐射的泛词不参与，防连锁成团；纯关键词表×FTS 索引×成员表机械对账）｜<b>黑底</b>固定配色；自动枢纽=标题高频片段 df≥8 机械提取，只辐射不归簇；主题连线是数据表机械对账，不是语义相似（真语义待 M2/M4）；会话间无相似度边（聚类只是聚合展示）｜搜索态主题需≥2 个成员命中才显示（弱命中主题隐藏并记账）；点主题走成员子图 ∪ FTS 不受此限｜滚轮缩放 · 拖拽平移 · 悬停亮邻居 · 点卡片过滤邻域 · 点关键词灌进检索 · 框选只看框内子图 · 双击复位</div></details></div>
   <div id="kg-out">
     <div id="kg-msg"></div>
     <div id="kg-chart" style="display:none"></div>
@@ -1184,6 +1184,7 @@ function jumpCloudWord(w){
  * 零语义红线：KnowAtlas 的 LLM 语义分类层绝不引入。 */
 let kgData=null,kgIndex={},kgAdj={},kgPinId=null;
 let kgQuery="",kgDeb=null;
+let kgTopicId=null;    /* v0.89 主题态：点主题灌的 topic id（守卫用） */
 let kgChart=null;
 let kgBrushSel=null;   /* v0.88 框选：保留节点 id 集（null=未框选） */
 let kgWeakTopics=0;    /* 搜索态弱命中主题账（kgVisible 现算） */
@@ -1192,7 +1193,8 @@ const KG_KIND_COLOR={topic:"#6ea8ff",card:"#b48aff",kw:"#4fd1a5",
 const KG_KIND_SIZE={topic:22,card:13,kw:9,session:7};
 const KG_KIND_NAME={topic:"主题",card:"卡片",kw:"关键词",session:"会话"};
 const KG_EDGE_LABEL={member:"成员",anchor:"锚点",topic_of:"归属",
-  keyword:"关键词",kw_hit:"标题含词",shared_kw:"共享关键词"};
+  keyword:"关键词",kw_hit:"标题含词",shared_kw:"共享关键词",
+  topic_fts:"关键词辐射"};
 /* 可见集（v0.86 两态模型；v0.87.1 搜索态收紧+有效性守卫，见函数内） */
 function kgVisible(){
   const vis=new Set();
@@ -1203,11 +1205,13 @@ function kgVisible(){
    * 全带出来）：改显「命中会话（后端下发的会话=FTS 命中集）+ 其直接
    * 边邻居」（主题/卡片/关键词只在与命中会话有 member/anchor/kw_hit
    * 边时才显，不二次扩散）。
-   * 搜索态有效性守卫：meta.search.q 与输入一致才算真搜索态——动作
-   * 失败/未刷新时，大类态旧数据的会话层（全量）不得冒充命中集全显。 */
-  const sq=(kgData.meta&&kgData.meta.search)?kgData.meta.search.q:null;
+   * 搜索态有效性守卫：meta.search.q 与输入一致（或 meta.search.topic
+   * 与点灌的主题 id 一致）才算真搜索态——动作失败/未刷新时，大类态
+   * 旧数据的会话层（全量）不得冒充命中集全显。 */
+  const sm=(kgData.meta&&kgData.meta.search)||null;
+  const sq=sm?sm.q:null;
   const qn=kgQuery.replace(/[^0-9A-Za-z\u4e00-\u9fff ]/g," ").trim();
-  if(kgQuery&&sq===qn){
+  if(kgQuery&&(sq===qn||(sm.topic&&sm.topic===kgTopicId))){
     /* v0.88 弱命中门槛（用户裁决）：主题需≥2 个成员会话命中才显示——
      * 防一个主角人名把不相关大类带出来；弱命中主题数量进诚实账不静默 */
     kgWeakTopics=0;
@@ -1223,6 +1227,9 @@ function kgVisible(){
         if((tHits[nd.id]||0)>=2)vis.add(nd.id);
         else if(tHits[nd.id])kgWeakTopics++;
       }
+    /* v0.89 主题态：目标主题白名单强制进——1 成员主题 tHits=1 过不了
+     * ≥2 门槛，不白名单则点它又孤点（成员子图的主节点不能被门槛藏） */
+    if(sm.topic&&sm.topic===kgTopicId)vis.add("t:"+sm.topic);
     /* 邻域补入：只从命中会话扩一层；主题不直接扩入（走≥2 门槛） */
     for(const e of kgData.edges){
       const ss=e.src.charAt(0)==="s"&&e.src.charAt(1)===":";
@@ -1268,8 +1275,14 @@ function kgBar(){
   const sa=m.sessions||{};
   let t="主题 "+(c.topic||0)+"｜卡片 "+(c.card||0)+"｜关键词 "+(c.kw||0)+
     "｜会话节点 "+(c.session||0);
-  if(m.search)t+="搜索 '"+m.search.q+"'：命中 "+m.search.fts_matched+
-    " 会话｜";
+  if(m.search){
+    if(m.search.topic){
+      const tn=kgIndex["t:"+m.search.topic];
+      t+="主题子图 '"+(tn?tn.label:m.search.topic)+"'：成员 "+
+        m.search.topic_members+" ∪ FTS 命中 "+m.search.fts_matched+"｜";
+    }else t+="搜索 '"+m.search.q+"'：命中 "+m.search.fts_matched+
+      " 会话｜";
+  }
   if(m.clusters_multi)t+="（含 "+m.clusters_multi+" 个簇代表，"+
     m.merged_into_rep+" 会话已聚入）";
   if(m.auto_hubs)t+="｜自动枢纽 "+m.auto_hubs;
@@ -1291,6 +1304,7 @@ async function loadKgraph(){
     "</div>";
   $("kg-bar").textContent="";
   const p={}; if(kgQuery)p.q=kgQuery;
+  if(kgQuery&&kgTopicId)p.topic=kgTopicId;   /* v0.89 主题态：成员子图∪FTS */
   const r=await actJson("/api/actions/run",{action_id:"kgraph",
     params:p,view_actions_api:1});
   if(r.__err){$("kg-msg").innerHTML=errorBox("图谱入队失败："+r.__err);return;}
@@ -1456,7 +1470,19 @@ function kgCanvasClick(p){
     return;
   }
   if(d.kind==="kw"){ jumpCloudWord(nd.label); return; }
-  kgPinId=(kgPinId===d.id)?null:d.id;
+  if(d.kind==="topic"){
+    /* v0.89 用户批注①：点击大节点=节点名置换进搜索框重新执行查询
+     * 重新关联；带 topic id 走成员子图 ∪ FTS（label 整串 FTS 几乎必
+     * 0 命中，纯 FTS 必孤点=批注②「点主题只剩一个点」的根因） */
+    const lab=String(nd.label==null?"":nd.label).trim();
+    if(!lab)return;
+    $("kg-q").value=lab; kgQuery=lab;
+    kgTopicId=(nd.meta&&nd.meta.topic_id)||null;
+    kgPinId=null;
+    loadKgraph().catch(()=>{});
+    return;
+  }
+  kgPinId=(kgPinId===d.id)?null:d.id;   /* 卡片点击保留邻域锁 */
   if(kgPinId)kgBrushSel=null;   /* 邻域锁与框选互斥（两个过滤器不打架） */
   kgRender();
 }
@@ -4782,13 +4808,13 @@ $("kg-q").addEventListener("input",()=>{
   clearTimeout(kgDeb);
   kgDeb=setTimeout(()=>{const v=$("kg-q").value.trim();
     if(v===kgQuery)return;
-    kgQuery=v;
+    kgQuery=v; kgTopicId=null;   /* 手动改词=退出主题态（纯 FTS） */
     loadKgraph().catch(()=>{});},400);
 });
 $("kg-q").addEventListener("keydown",e=>{
   if(e.key==="Enter"){clearTimeout(kgDeb);
     const v=$("kg-q").value.trim();
-    if(v!==kgQuery)kgQuery=v;
+    if(v!==kgQuery){kgQuery=v;kgTopicId=null;}
     loadKgraph().catch(()=>{});}});
 $("kg-fit").onclick=()=>kgFitView();
 /* v0.88 框选手势：覆盖层挡住 roam 拖拽，pointer 画矩形；选区过滤

@@ -117,7 +117,7 @@ function mkScope(env) {
     "openSession", "jumpCloudWord",
     "KG_KIND_COLOR", "KG_KIND_SIZE", "KG_KIND_NAME", "KG_EDGE_LABEL",
     "let kgData=null,kgIndex={},kgAdj={},kgPinId=null;\n" +
-    "let kgQuery=\"\",kgDeb=null;\n" +
+    "let kgQuery=\"\",kgDeb=null,kgTopicId=null;\n" +
     "let kgChart=null;\n" +
     "let kgBrushSel=null,kgWeakTopics=0;\n" +
     FN_SRC + "\n" +
@@ -125,6 +125,8 @@ function mkScope(env) {
     "  get kgPinId(){return kgPinId;},\n" +
     "  get kgChart(){return kgChart;}, set kgChart(v){kgChart=v;},\n" +
     "  get kgQuery(){return kgQuery;}, set kgQuery(v){kgQuery=v;},\n" +
+    "  get kgTopicId(){return kgTopicId;},\n" +
+    "  set kgTopicId(v){kgTopicId=v;},\n" +
     "  get kgBrushSel(){return kgBrushSel;},\n" +
     "  set kgBrushSel(v){kgBrushSel=v;},\n" +
     "  get kgWeakTopics(){return kgWeakTopics;},\n" +
@@ -138,10 +140,12 @@ function mkScope(env) {
 }
 
 const switchCalls = [], openCalls = [], jumpCalls = [], errBoxes = [];
+const actCalls = [];
 const scope = mkScope({
   $: $, esc: esc,
   errorBox: s => { errBoxes.push(s); return "<div class='err'>" + s + "</div>"; },
-  actJson: async () => ({ __err: null, job_id: "J1" }),
+  actJson: async (...a) => { actCalls.push(a);
+    return { __err: null, job_id: "J1" }; },
   actApi: async () => ({ status: "done", result: { nodes: [], edges: [] } }),
   switchTab: t => switchCalls.push(t),
   openSession: s => { openCalls.push(s); return Promise.resolve(); },
@@ -175,7 +179,8 @@ scope.kgChart = chart;
 const DATA = {
   nodes: [
     { id: "t:t1", kind: "topic", label: "部署排障",
-      meta: { cluster: ["t:t1", "s:S1", "s:S2", "s:S3"] } },
+      meta: { topic_id: "t1",
+        cluster: ["t:t1", "s:S1", "s:S2", "s:S3"] } },
     { id: "t:t2", kind: "topic", label: "部署规范",
       meta: { cluster: ["t:t2", "s:S9"] } },
     { id: "t:t3", kind: "topic", label: "吾好梦中救人",
@@ -342,24 +347,8 @@ scope.renderKgraph(DATA);
   scope.kgCanvasClick({ dataType: "node", data: nodeById["k:部署"] });
   check("关键词点击灌进检索（搜索态）", jumpCalls.includes("部署"));
 
-  scope.kgCanvasClick({ dataType: "node", data: nodeById["t:t1"] });
-  check("主题点击锁定邻域（kgPinId）", scope.kgPinId === "t:t1");
-  /* v0.88 邻域锁改过滤（用户批注：点击后左边应过滤）——非邻域直接不画 */
-  const pinned = refresh();
-  check("邻域锁：邻域外节点直接隐藏（k:孤立 不在 series）",
-    !pinned.data.some(n => n.id === "k:孤立"));
-  check("邻域锁：邻域内节点保留（s:S2 在 series 且无降透明度）",
-    pinned.data.some(n => n.id === "s:S2") &&
-    pinned.data.every(n => n.itemStyle.opacity === undefined));
-  const hotEdge = pinned.links.find(
-    l => (l.source === "t:t1" && l.target === "s:S1"));
-  check("邻域边加宽提亮", hotEdge && hotEdge.lineStyle.width === 1.6);
-  scope.kgCanvasClick({ dataType: "node", data: nodeById["t:t1"] });
-  check("再点同一主题解锁", scope.kgPinId === null);
-  scope.kgCanvasClick({ dataType: "edge", data: {} });
-  check("非节点 payload 不误触", scope.kgPinId === null);
-
-  /* ④' 框选（v0.88）：指针手势在浏览器实测，这里测过滤内核 */
+  /* ④' 框选（v0.88）：指针手势在浏览器实测，这里测过滤内核
+   * （搜索态语境：kgQuery 仍为「部署」） */
   scope.kgBrushApply(new Set(["t:t1", "s:S1", "k:部署"]));
   let brSer = refresh();
   check("框选：只留框内节点",
@@ -377,14 +366,64 @@ scope.renderKgraph(DATA);
   check("框选还原：全量恢复+按钮收起",
     brSer.data.length > 3 &&
     els["kg-brush-clear"].style.display === "none");
-  scope.kgBrushApply(new Set(["t:t1", "s:S1"]));
+
+  /* v0.89 主题点击=节点名置换进搜索框+带 topic id 重新查询（用户批注
+   * ①②）：大类态锁邻域会孤点（邻域全是不可见会话），label 整串 FTS
+   * 几乎必 0 命中——成员子图 ∪ FTS 才是用户要的「点大节点看它的图」；
+   * 放块尾防 kgQuery 污染上文语境 */
   scope.kgCanvasClick({ dataType: "node", data: nodeById["t:t1"] });
-  check("点主题清框选（邻域锁与框选互斥）",
-    scope.kgPinId === "t:t1" && scope.kgBrushSel === null);
-  scope.kgCanvasClick({ dataType: "node", data: nodeById["t:t1"] });
-  check("kgBrushPick 布局坐标不可读 → null（fail loud）",
-    scope.kgBrushPick(0, 0, 10, 10) === null);
-  scope.kgQuery = "";
+  check("主题点击置换搜索框（input value+kgQuery）",
+    $("kg-q").value === "部署排障" && scope.kgQuery === "部署排障");
+  check("主题点击带 topic id（成员子图 ∪ FTS，防孤点）",
+    actCalls.length === 1 &&
+    JSON.stringify(actCalls[0]).includes("kgraph") &&
+    JSON.stringify(actCalls[0]).includes('"topic":"t1"'));
+  check("主题点击不进邻域锁（kgPinId 保持空）", scope.kgPinId === null);
+  scope.kgQuery = ""; $("kg-q").value = ""; scope.kgTopicId = null;
+
+  /* v0.89 守卫扩展：meta.search.topic 与 kgTopicId 一致也算真搜索态
+   * （label 整串 FTS 0 命中时 sq!==qn，纯 q 守卫会降级大类态孤点）。
+   * DATA2=1 成员主题场景：目标主题白名单强制进，成员会话照进 */
+  const DATA2 = {
+    ...DATA,
+    nodes: [...DATA.nodes,
+      { id: "s:S9", kind: "session", label: "规范讨论", meta: { sid: "S9" } }],
+    edges: [...DATA.edges,
+      { src: "t:t2", dst: "s:S9", kind: "member" }],
+    meta: { ...DATA.meta,
+      search: { q: "", fts_matched: 0, topic: "t2",
+        topic_members: 1, member_ids: ["S9"] } },
+  };
+  scope.kgQuery = "吾好梦中救人";
+  scope.kgTopicId = "t2";
+  scope.renderKgraph(DATA2);
+  const tser = refresh();
+  check("主题态守卫：topic 匹配 → 真搜索态（目标主题白名单强制进）",
+    tser.data.some(n => n.id === "t:t2"));
+  check("主题态：成员会话 s:S9 进（不再孤点）",
+    tser.data.some(n => n.id === "s:S9"));
+  check("主题态：成员边可见",
+    tser.links.some(l => l.source === "t:t2" && l.target === "s:S9"));
+  scope.kgQuery = ""; scope.kgTopicId = null;
+
+  /* 卡片点击保留邻域锁（大类态）：邻域外节点直接不画 */
+  scope.renderKgraph(DATA);
+  refresh();
+  scope.kgCanvasClick({ dataType: "node", data: nodeById["c:c1"] });
+  check("卡片点击锁定邻域（kgPinId）", scope.kgPinId === "c:c1");
+  const pinned = refresh();
+  check("邻域锁：邻域外节点直接隐藏（t2 不在 series）",
+    !pinned.data.some(n => n.id === "t:t2"));
+  check("邻域锁：邻域内节点保留（t1 在且无降透明度）",
+    pinned.data.some(n => n.id === "t:t1") &&
+    pinned.data.every(n => n.itemStyle.opacity === undefined));
+  const hotEdge = pinned.links.find(
+    l => (l.source === "t:t1" && l.target === "c:c1"));
+  check("邻域边加宽提亮", hotEdge && hotEdge.lineStyle.width === 1.6);
+  scope.kgCanvasClick({ dataType: "node", data: nodeById["c:c1"] });
+  check("再点同一卡片解锁", scope.kgPinId === null);
+  scope.kgCanvasClick({ dataType: "edge", data: {} });
+  check("非节点 payload 不误触", scope.kgPinId === null);
 }
 
 /* ⑤ 诚实账 kg-bar */
@@ -409,6 +448,9 @@ scope.renderKgraph(DATA);
 
 /* ⑦ 动作失败不静默（loadKgraph 管线） */
 (async () => {
+  /* 排干 ④ 块主题点击触发的 loadKgraph 残留微任务链（其空结果
+   * renderKgraph 晚于本块 errorBox 落地会覆盖 kg-msg） */
+  await new Promise(r => setImmediate(r));
   els["kg-msg"].innerHTML = "";
   const scope2 = mkScope({
     $: $, esc: esc,

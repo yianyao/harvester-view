@@ -143,6 +143,10 @@ class TestCommandHoverTitle(unittest.TestCase):
                         self.html, re.S)
         self.assertTrue(mid, "找不到 cmd-mid 区块")
         self.assertIn('id="cmd-intro"', mid.group(0))
+        # v0.90b 用户批注「这一列在右侧太局促」：结果抽屉+台账挪底部整行
+        # （grid-column:1/-1），内部两栏；main 三列模板不再含右列
+        self.assertIn("#cmd-right{grid-column:1/-1", self.html)
+        self.assertNotIn("250px minmax(320px,1fr) 330px", self.html)
 
     def test_cmd_preview_and_write_panel_have_tooltip(self):
         # 命令台预览行与写动作面板也要有解释（不仅处理单）
@@ -233,11 +237,13 @@ class TestEnvprobeAndCopyButtons(unittest.TestCase):
         # 命令台预览行 + 处理单两处命令框都要有一键复制
         self.assertIn("btn-cmd-copy", self.html)
         self.assertGreaterEqual(self.html.count("data-clicopy="), 2)
-        # 三处按钮的 title 都带「复制到剪贴板」标记（test_v51 白名单按行扫
-        # 「复制命令」，按钮文案用「复制」不触雷；title 标记保证白名单成立）
-        self.assertGreaterEqual(self.html.count("复制到剪贴板"), 3)
-        # 每处按钮 title 都要交代粘贴位置（仓根），不只是一颗孤零零的按钮
-        self.assertGreaterEqual(self.html.count("到仓根目录的终端里粘贴执行"), 3)
+        # v0.90b 用户批注「这是啥意思？」：粘贴位置说明必须说人话——
+        # 操作步骤（开终端 → cd 到哪 → 粘贴回车）+为什么（相对路径基准）；
+        # 「仓根的终端」「到仓根目录的终端里粘贴执行」类黑话禁止回归
+        self.assertGreaterEqual(self.html.count("粘贴到终端运行"), 4)
+        self.assertGreaterEqual(self.html.count("cd 到 session-harvester"), 3)
+        self.assertNotIn("到仓根目录的终端里粘贴执行", self.html)
+        self.assertNotIn("粘贴位置：仓根", self.html)
 
     def test_target_line_speaks_human(self):
         self.assertIn("function targetHuman(t)", self.html)

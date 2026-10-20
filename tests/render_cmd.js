@@ -277,7 +277,7 @@ const ht = cmdHoverTitle({ label: "跑一次效果评估", note: "**两指标**�
   cli: "python -m harvester harvest-eval --db x", action_id: null });
 check("悬停说明含去星号的作用与自跑退路",
   ht.startsWith("跑一次效果评估") && ht.includes("两指标") &&
-  !ht.includes("**") && ht.includes("复制到仓根目录"));
+  !ht.includes("**") && ht.includes("cd 到 session-harvester"));
 const ht2 = cmdHoverTitle({ label: "补 pattern 批注", note: "",
   cli: "python -m harvester suggest-status --meta m",
   action_id: "suggest_status" });
@@ -295,12 +295,13 @@ state.cmdCard = "errors";
 state.actionId = "report_errors";
 state.cmdParams = { since: 7 };
 updateCmdPreview();
-check("命令行预览带「复制」按钮（复制到剪贴板）",
+check("命令行预览带「复制」按钮（复制命令行）",
   $("cmd-banner").innerHTML.includes("btn-cmd-copy") &&
-  $("cmd-banner").innerHTML.includes("复制到剪贴板"));
-check("命令行预览写明粘贴位置（仓根）",
-  $("cmd-banner").innerHTML.includes("仓根") &&
-  $("cmd-banner").innerHTML.includes("session-harvester"));
+  $("cmd-banner").innerHTML.includes("复制命令行（粘贴到终端运行）"));
+check("命令行预览写明粘贴步骤（cd 到上游仓+相对路径基准）",
+  $("cmd-banner").innerHTML.includes("cd 到") &&
+  $("cmd-banner").innerHTML.includes("session-harvester") &&
+  $("cmd-banner").innerHTML.includes("相对路径"));
 check("cmdLine 用 envprobe 前缀（不写死 python，可整体换 uv 形）",
   cmdLine({ cmd: "report-errors", args: [] }, {})
     .startsWith(state.cliPrefix));

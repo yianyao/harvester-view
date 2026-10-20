@@ -146,8 +146,13 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 .tl-node .anchor{font-family:Consolas,monospace;font-size:12px;
   color:var(--accent);margin-right:8px}
 /* ---- P2-4：命令台（动词面板 v0） ---- */
-#tab-cmd main{display:grid;grid-template-columns:250px minmax(320px,1fr) 330px;
+/* v0.90b 用户批注「这一列在右侧太局促」：结果抽屉+台账挪底部整行，
+ * 内部再分两栏（抽屉窄/台账宽——台账表三列需要横向空间）。 */
+#tab-cmd main{display:grid;grid-template-columns:250px minmax(320px,1fr);
   gap:12px;padding:10px 14px;align-items:start}
+#cmd-right{grid-column:1/-1;display:grid;
+  grid-template-columns:minmax(260px,2fr) minmax(360px,3fr);gap:12px;
+  align-items:start;border-top:1px solid var(--line);padding-top:10px}
 #cmd-cards{display:flex;flex-direction:column;gap:4px}
 .cmd-card{border:1px solid var(--line);border-radius:6px;padding:6px 9px;
   cursor:pointer;background:var(--panel);text-align:left}
@@ -634,7 +639,7 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
       <span class="sub2">演进链长文打开主题即自动展示，不占这里；fine/artifact
 细档在命令台选（需指定成员会话）。</span>
       <button id="btn-topic-cmd" class="xbtn" disabled
-        title="复制到剪贴板，请自行开终端粘贴执行（本视图绝不执行命令）">复制命令</button>
+        title="复制命令行（粘贴到终端运行；开终端 cd 到 session-harvester 目录再粘贴，--db 等相对路径按该目录解析）">复制命令</button>
       <button id="btn-topic-gocmd" class="xbtn" disabled
         title="跳到命令台并预填 topic pack 参数，在那里核对后执行">去命令台</button>
       <button id="btn-topic-brief" class="xbtn"
@@ -679,10 +684,14 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
     <div id="cmd-browsable"></div>
   </div>
   <div id="cmd-right">
-    <h3 class="sec">结果抽屉</h3>
-    <div id="job-out"><div class="empty">尚未执行任何动作</div></div>
-    <h3 class="sec">动作台账（写库留痕）</h3>
-    <div id="ledger-out"><div class="empty">加载中…</div></div>
+    <div class="cmd-pane">
+      <h3 class="sec">结果抽屉</h3>
+      <div id="job-out"><div class="empty">尚未执行任何动作</div></div>
+    </div>
+    <div class="cmd-pane">
+      <h3 class="sec">动作台账（写库留痕）</h3>
+      <div id="ledger-out"><div class="empty">加载中…</div></div>
+    </div>
   </div>
   </main>
 </section>
@@ -1961,7 +1970,7 @@ async function _renderTriage(out,t0){
     esc("python -m harvester cards new --sid "+
         (x.samples&&x.samples.length?x.samples[0].sid:"<sid>")+
         " --type pitfall")+
-    "\" title='复制到剪贴板，请自行开终端粘贴执行（本视图绝不执行命令）'>复制命令</button>"+
+    "\" title='复制命令行（粘贴到终端运行；开终端 cd 到 session-harvester 目录再粘贴，--db 等相对路径按该目录解析）'>复制命令</button>"+
     "</td></tr>").join("")+"</tbody></table>")
     :"<div class='empty'>窗口内无首次出现的错误 pattern</div>";
   html+="<h3 class='sec'>B. 旧坑重现（检查旧卡/建议池是否要更新）</h3>";
@@ -3696,10 +3705,13 @@ function updateCmdPreview(){
          (c.tier==="C"?"C 档只生成命令，不代执行。":"按下方按钮/提示操作。"))+
         (argsHelp(c)?" "+argsHelp(c):""))+"\">"+
     esc(cmdLine(c,state.cmdParams))+"</div>"+
-    "<button class='xbtn' id='btn-cmd-copy' title='复制到剪贴板（到仓根目录的终端里粘贴执行）'>复制</button>"+
-    "<span class='sub2'>粘贴位置：仓根 "+
-    esc(displayPath(state.repoRoot)||"上游 session-harvester 目录")+
-    " 的终端（--db 等路径参数都是仓根相对的）</span>";
+    "<button class='xbtn' id='btn-cmd-copy' title='复制命令行（粘贴到终端运行）'>复制</button>"+
+    /* v0.90b 用户批注「这是啥意思？」：「仓根的终端」是黑话——说清
+     * 操作步骤：开终端 → cd 到上游仓 → 粘贴回车；顺带说为什么（相对
+     * 路径基准），不让人猜。 */
+    "<span class='sub2'>复制后这样跑：开一个终端（PowerShell），先 "+
+    "cd 到 "+esc(displayPath(state.repoRoot)||"上游 session-harvester 目录")+
+    "，再粘贴回车（--db 等相对路径都按这个目录解析）</span>";
   bar.style.display="";
   if(act&&act.tier==="B"&&!writeDisabled()){
     $("btn-cmd-run").disabled=false;
@@ -3829,8 +3841,8 @@ function cmdHoverTitle(row){
   if(row.label)parts.push(stripMd(row.label));
   if(row.note)parts.push(stripMd(row.note));
   parts.push(row.action_id
-    ?"可点「在命令台打开」就地执行（A 档直接跑；B 档先预演、你确认才写）；也可复制到仓根目录自己跑。"
-    :"复制到仓根目录粘贴执行（本条暂不能在页面就地执行）。");
+    ?"可点「在命令台打开」就地执行（A 档直接跑；B 档先预演、你确认才写）；也可复制整条命令，开终端 cd 到 session-harvester 目录粘贴运行。"
+    :"复制整条命令，开终端 cd 到 session-harvester 目录粘贴运行（本条暂不能在页面就地执行）。");
   const c=cmdCommands().find(x=>x.cmd===cmdNameOf(row.cli));
   const h=argsHelp(c);
   if(h)parts.push(h);
@@ -4594,7 +4606,7 @@ function renderWorkPkg(d){
       "<div class='wi-cmd' title=\""+esc(cmdHoverTitle(r))+"\">"+
       esc(r.cli||"（服务端未给命令行文本）")+
       (r.cli?" <button class='xbtn' data-clicopy=\""+esc(r.cli)+
-        "\" title='复制到剪贴板（到仓根目录的终端里粘贴执行）'>复制"+
+        "\" title='复制命令行（粘贴到终端运行；开终端 cd 到 session-harvester 目录再粘贴，--db 等相对路径按该目录解析）'>复制"+
         "</button>":"")+"</div>"+
       (r.action_id?("<button class='xbtn' data-wact=\""+esc(r.action_id)+
         "\" data-wparams=\""+esc(JSON.stringify(r.params))+
@@ -4642,7 +4654,7 @@ function renderWorkItems(d){
         :"<div class='wi-cmd' title=\""+esc(cmdHoverTitle(c))+"\">"+
          esc(c.cli||"")+
          (c.cli?" <button class='xbtn' data-clicopy=\""+esc(c.cli)+
-           "\" title='复制到剪贴板（到仓根目录的终端里粘贴执行）'>复制"+
+           "\" title='复制命令行（粘贴到终端运行；开终端 cd 到 session-harvester 目录再粘贴，--db 等相对路径按该目录解析）'>复制"+
            "</button>":"")+"</div>")+
       (c.action_id?("<button class='xbtn' data-wact=\""+esc(c.action_id)+
         "\" data-wparams='"+esc(JSON.stringify(c.params||{}))+

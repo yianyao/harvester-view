@@ -55,7 +55,8 @@ class TestP53EmptyStates(unittest.TestCase):
     def test_copy_cmd_confined_to_tier_c_allowlist(self):
         """全站「复制命令」逐行白名单：只允许 C 档按钮本体与代码注释。"""
         allow_markers = (
-            "复制到剪贴板",           # 按钮本体 title（C 档兜底按钮）
+            "复制命令行（粘贴到终端运行",  # 按钮本体 title（C 档兜底按钮，
+                                          # v0.90b 人话版）
             "保留作动作面不可达时的兜底",  # 注释：按钮保留原因
             "页面按档位只给",           # 注释：命令台档位说明
             "纯文本复制命令",           # render_smoke 注释同类（本文件无，防误伤）

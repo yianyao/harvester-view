@@ -363,18 +363,12 @@ def _action_topic_brief(cfg: Config, params: dict) -> dict:
 
 
 def _action_kgraph(cfg: Config, params: dict) -> dict:
-    """A 档：知识图谱（v0.82，机械关系图）。主题×卡片×关键词一次组装
-    （成员/锚点/归属/关键词四类机械边，零语义臆造）；会话层懒加载——
-    传 sids 才回该批会话的标题/来源/错误数（防节点爆炸）。
-    全部只读三库与卡片目录；诚实空态走 hints。"""
+    """A 档：知识图谱（v0.84，用户发起×相近聚合）。①只取用户先发起
+    （首条消息 role='user'）；②相近会话聚类（标题 Jaccard≥0.45 或共享
+    定稿关键词，机械判据）；③一簇一个代表节点+簇结构下发（显隐纯前端，
+    点击展开）；五类机械边零语义臆造；账目（过滤/聚合/截断/封顶）全进
+    meta。只读三库与卡片目录；诚实空态走 hints。"""
     from .analysis import kgraph
-    sids = str(params.get("sids") or "").strip()
-    if sids:
-        lst = [s.strip() for s in sids.split(",") if s.strip()]
-        if len(lst) > 400:
-            raise _BadRequest("一次最多展开 400 个会话（收到 %d 个）——"
-                              "分批展开，图上才看得清" % len(lst))
-        return kgraph.build(cfg, sids)
     return kgraph.build(cfg)
 
 
@@ -908,13 +902,13 @@ ACTIONS: dict[str, dict] = {
     },
     "kgraph": {
         "tier": "A",
-        "label": "知识图谱（机械关系）",
-        "desc": "主题×卡片×关键词×会话四层机械关系一次组装：成员/锚点/"
-                "归属/关键词四类边全部来自既有真源，零语义臆造；"
-                "会话层懒加载（传 sids 展开，防节点爆炸）。只读，不落盘。",
-        "params": {"sids": {"type": "text", "src": "chips", "default": None,
-                            "label": "会话 sid 列表（逗号分隔；空=基础图）"}},
-        "est_sec": 3,
+        "label": "知识图谱（用户发起×相近聚合）",
+        "desc": "只取用户先发起的会话（首条消息 role='user'）；相近会话"
+                "聚类（标题 Jaccard≥0.45 或共享定稿关键词，机械判据）一簇"
+                "一个代表节点；成员/锚点/归属/关键词/标题含词五类边来自"
+                "既有真源，零语义臆造。只读，不落盘。",
+        "params": {},
+        "est_sec": 6,
         "reversible": "幂等（只读三库与卡片目录，产物返回页面不落盘）",
         "writes": "",
         "handler": _action_kgraph,

@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
-"""v66 知识图谱（v0.82，机械关系图）门禁。
+"""v66 知识图谱（v0.84，用户发起×相近聚合×黑底）门禁。
 
-用户裁决（2026-10-19 批准 PROPOSAL-knowledge-graph-v1）后的配套门禁：
-- 静态账：UI 骨架/事件绑定/懒加载纪律（防线：手滑删 section、hover 不挂、
-  直接画全量会话导致爆炸）；
+用户裁决（2026-10-20 四点）：①只取用户先发起的会话；②相近会话聚类
+分层；③一簇只显示一个代表，点击才展开；④黑底画布。
+
+- 静态账：UI 骨架/黑底钉色/簇交互绑定/四点声明进图例（防线：手滑删
+  section、黑底没钉 scheme、展开交互丢失）；
 - 动作账：kgraph 双层账（ACTIONS×registrygen×注册表 JSON）；
-- 数据账：机械边四类（member/anchor/topic_of/keyword）+ 诚实空态 +
-  展开模式（sids）——零语义臆造，全部来自既有真源；
-- 渲染账：render_kgraph.js（Puppeteer）——canvas 画出节点、确定性布局
-  （同数据两次坐标一致）、下钻/回退/hover/空态真实走通。
+- 数据账：用户发起过滤（首条 role='user'，机械真源 messages 表）+
+  聚类判据（标题 Jaccard≥0.45 或共享定稿关键词）+ 簇代表结构 +
+  五类机械边 + 账目诚实（过滤/聚合/截断/封顶）+ 无边诚实；
+- 渲染账：render_kgraph.js（DOM 桩）——显隐集、簇展开/收起、
+  缩放平移、hover 邻域、下钻、空态、失败态。
 """
 from __future__ import annotations
 
@@ -37,15 +40,30 @@ def _mk_topics_db(path: Path, rows: list[tuple]) -> None:
     con.close()
 
 
-def _mk_index_db(path: Path, sessions: list[tuple]) -> None:
+def _mk_index_db(path: Path, sessions: list[tuple],
+                 first_roles: dict[str, str] | None = None) -> None:
+    """sessions: (sid, title, source, updated_at)。
+    first_roles: sid -> 首条消息 role（默认全 user）；
+    messages 行按传入顺序视作时间序（ts 递增生成）。"""
     con = sqlite3.connect(path)
     con.execute("CREATE TABLE IF NOT EXISTS sessions (sid TEXT PRIMARY KEY,"
                 " title TEXT, source TEXT, updated_at TEXT)")
     con.execute("CREATE TABLE IF NOT EXISTS steps (sid TEXT, no INTEGER,"
                 " status TEXT, kind TEXT, detail TEXT)")
-    for sid, title, source in sessions:
+    con.execute("CREATE VIRTUAL TABLE IF NOT EXISTS messages USING"
+                " fts5(sid UNINDEXED, role UNINDEXED, ts UNINDEXED, text)")
+    for sid, title, source, updated in sessions:
         con.execute("INSERT OR REPLACE INTO sessions VALUES (?,?,?,?)",
-                    (sid, title, source, "2026-10-19T00:00:00"))
+                    (sid, title, source, updated))
+    fr = first_roles or {}
+    for sid, title, _s, _u in sessions:
+        role0 = fr.get(sid, "user")
+        con.execute("INSERT INTO messages (sid, role, ts, text)"
+                    " VALUES (?,?,?,?)", (sid, role0, "2026-10-19T09:00:00",
+                                          title))
+        con.execute("INSERT INTO messages (sid, role, ts, text)"
+                    " VALUES (?,?,?,?)",
+                    (sid, "assistant", "2026-10-19T09:01:00", "好的"))
     con.commit()
     con.close()
 
@@ -88,41 +106,63 @@ def _mk_cfg(tmp: Path, with_topics=True, with_cards=True, with_db=True):
         croot.mkdir(exist_ok=True)  # Config 要求路径非 None：空目录=没有卡
     idb = tmp / "harvester.db"
     if with_db:
-        _mk_index_db(idb, [("S1", "部署会话", "trae"),
-                           ("S2", "无关会话", "claude")])
+        _mk_index_db(idb, [
+            ("S1", "部署会话：网关重启", "trae", "2026-10-19T10:00:00"),
+            ("S2", "无关会话：买菜清单", "claude", "2026-10-19T11:00:00"),
+        ])
+        con = sqlite3.connect(idb)
+        con.execute("INSERT INTO steps VALUES ('S1', 1, 'error', 'tool',"
+                    " 'boom')")
+        con.commit()
+        con.close()
     return Config(cards_root=croot,
-                  db=(idb if with_db else None),
+                  db=idb,  # with_db=False 时不建文件：不存在=诚实空态路径
                   glossary=glossary,
                   topics_meta=(tdb if with_topics else None))
 
 
 class TestV66KgraphStatic(unittest.TestCase):
-    """静态账：UI 骨架、懒加载纪律、双层账。"""
+    """静态账：UI 骨架、四点纪律、黑底钉色、双层账。"""
 
     def test_01_tab_and_section(self):
         self.assertIn('data-tab="kgraph"', HTML)
         self.assertIn('id="tab-kgraph"', HTML)
         self.assertIn('id="kg-canvas"', HTML)
         self.assertIn('id="kg-legend"', HTML)
+        self.assertIn('id="kg-fit"', HTML)
 
-    def test_02_legend_fixed_declarations(self):
-        self.assertIn("机械关系", HTML)
-        self.assertIn("主题间无边", HTML)
+    def test_02_legend_four_points(self):
+        # 四点裁决全部进图例（防误读+防回退）
+        self.assertIn("只画用户先发起", HTML)
+        self.assertIn("只显示代表", HTML)
+        self.assertIn("点击展开", HTML)
+        self.assertIn("Jaccard", HTML)              # 聚类判据声明
+        self.assertIn("黑底", HTML)
         self.assertIn("P7-②", HTML)
-        self.assertIn("懒加载", HTML)
+        self.assertIn("M2/M4", HTML)
+        self.assertIn("标题含词", HTML)
 
-    def test_03_js_bindings(self):
-        for frag in ['loadKgraph()', 'kgReset()', 'kgHover', 'kgCanvasClick',
-                     'kgExpandNode(', 'kgMergeExpand(']:
+    def test_03_dark_canvas_pinned(self):
+        # 黑底固定配色画面：钉 color-scheme:dark（v40 配色门镜像先例）
+        m = list(__import__("re").finditer(
+            r"#kg-out\{[^}]*\}", HTML))
+        self.assertTrue(m, "找不到 #kg-out 规则")
+        body = m[0].group(0)
+        self.assertIn("#12151c", body)              # 深底写死
+        self.assertIn("color-scheme:dark", body)    # 钉声明
+        self.assertIn("#d8dae0", body)              # 前景浅色钉住
+
+    def test_04_js_bindings_and_cluster_ui(self):
+        for frag in ['loadKgraph()', 'kgFitView()', 'kgHover',
+                     'kgCanvasClick(', 'kgWheel', 'kgMouseDown',
+                     'kgMouseMove', 'kgMouseUp', 'kgDblClick',
+                     'kgAdjBuild()', 'kgVisible()', 'meta.merged']:
             self.assertIn(frag, HTML)
-
-    def test_04_lazy_expand_discipline(self):
-        # 会话层必须懒加载：无预画全量会话的通路；展开前必须先有节点数据
-        self.assertNotIn('kind:"session" ', HTML)
-        self.assertIn("meta.member_sids", HTML)
-        self.assertIn("meta.anchor_sids", HTML)
-        # 关键词下钻走真检索通路（复用词云的 jumpCloudWord）
-        self.assertIn('jumpCloudWord(nd.label)', HTML)
+        self.assertIn('{passive:false}', HTML)      # wheel 阻页面滚动
+        # 簇交互：点击代表 toggle 展开（kgOpened）
+        self.assertIn("kgOpened", HTML)
+        self.assertIn("点展开/收起簇", HTML)
+        self.assertIn("(+\"+(cl.length-1)+\")", HTML)  # 代表 +N 标记
 
     def test_05_double_ledger(self):
         from actions import actionsserve, registrygen
@@ -131,7 +171,7 @@ class TestV66KgraphStatic(unittest.TestCase):
         ent = actionsserve.ACTIONS["kgraph"]
         self.assertEqual(ent["tier"], "A")
         self.assertEqual(ent["handler"].__name__, "_action_kgraph")
-        # 注册表 JSON 已再生且含 kgraph（视图侧动作进 read_actions）
+        self.assertEqual(ent["params"], {})
         reg = json.loads(
             (VIEW / "actions" / "actions_registry.json")
             .read_text(encoding="utf-8"))
@@ -139,8 +179,6 @@ class TestV66KgraphStatic(unittest.TestCase):
         self.assertIn("kgraph", ids)
 
     def test_06_no_cmd_wiring_consistent(self):
-        # kgraph 是 view 侧动作（无 CLI cmd），同 dualtrack/topic_brief：
-        # commands.json 不含；对账门 test_v35/v38/v54 维持绿的通行条件
         cj = json.loads(
             (VIEW / "actions" / "commands.json").read_text(encoding="utf-8"))
         cmds = [c.get("name") for c in cj.get("commands", [])]
@@ -148,74 +186,254 @@ class TestV66KgraphStatic(unittest.TestCase):
 
 
 class TestV66KgraphData(unittest.TestCase):
-    """数据账：机械边四类 + 空态诚实 + 展开模式。"""
+    """数据账：用户发起过滤 + 聚类 + 簇代表 + 五类机械边 + 账目诚实。"""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="v66kg_"))
 
-    def test_10_base_edges_mechanical(self):
+    def test_10_user_initiated_filter(self):
+        from actions.analysis import kgraph
+        tmp = self.tmp
+        tdb = tmp / "t.db"
+        _mk_topics_db(tdb, [("t1", "甲", '[]', '[]',
+                             "2026-10-19T00:00:00")])
+        idb = tmp / "h.db"
+        _mk_index_db(idb, [
+            ("SU", "用户会话", "trae", "2026-10-19T10:00:00"),
+            ("SB", "机器会话", "trae", "2026-10-19T11:00:00"),
+        ], first_roles={"SU": "user", "SB": "assistant"})
+        glossary = tmp / "g.json"
+        glossary.write_text('{"terms": []}', encoding="utf-8")
+        from actions.actionsserve import Config
+        cfg = Config(cards_root=tmp / "cards", db=idb, glossary=glossary,
+                     topics_meta=tdb)
+        d = kgraph.build(cfg, max_sessions=100)
+        sids = {n["id"] for n in d["nodes"] if n["kind"] == "session"}
+        self.assertEqual(sids, {"s:SU"})            # 机器发起的 SB 不画
+        sa = d["meta"]["sessions"]
+        self.assertEqual(sa["total"], 2)
+        self.assertEqual(sa["user_initiated"], 1)
+        self.assertEqual(sa["filtered"], 1)
+        self.assertTrue(any("role='user'" in h for h in d["hints"])
+                        if not d["nodes"] else True)
+
+    def test_11_cluster_by_title_jaccard(self):
+        from actions.analysis import kgraph
+        tmp = self.tmp
+        tdb = tmp / "t.db"
+        _mk_topics_db(tdb, [("t1", "甲", '[]', '[]',
+                             "2026-10-19T00:00:00")])
+        idb = tmp / "h.db"
+        _mk_index_db(idb, [
+            ("S1", "部署排障网关重启失败", "trae", "2026-10-19T09:00:00"),
+            ("S2", "部署排障网关重启超时", "trae", "2026-10-19T10:00:00"),
+            ("S3", "买菜清单周末火锅", "claude", "2026-10-19T11:00:00"),
+        ])
+        glossary = tmp / "g.json"
+        glossary.write_text('{"terms": []}', encoding="utf-8")
+        from actions.actionsserve import Config
+        cfg = Config(cards_root=tmp / "cards", db=idb, glossary=glossary,
+                     topics_meta=tdb)
+        d = kgraph.build(cfg, max_sessions=100)
+        sess = {n["id"]: n for n in d["nodes"] if n["kind"] == "session"}
+        # S1/S2 标题高重叠→同簇；S3 独立。
+        # 数据面一次下发全部会话节点（显隐聚合是前端 kgVisible 的账）：
+        # 代表带 cluster 成员账、成员带 merged 并入标记、单会话两者皆无。
+        self.assertEqual(len(sess), 3)
+        rep = sess["s:S2"]                          # updated_at 最新为代表
+        self.assertEqual(sorted(rep["meta"]["cluster"]),
+                         ["S1", "S2"])
+        self.assertIn("簇2", rep["badge"])
+        self.assertNotIn("merged", rep["meta"])
+        self.assertEqual(sess["s:S1"]["meta"]["merged"], "S2")
+        lone = sess["s:S3"]
+        self.assertNotIn("cluster", lone["meta"])
+        self.assertNotIn("merged", lone["meta"])
+        m = d["meta"]
+        self.assertEqual(m["clusters"], 2)
+        self.assertEqual(m["clusters_multi"], 1)
+        self.assertEqual(m["merged_into_rep"], 1)
+
+    def test_12_cluster_by_shared_keyword(self):
+        # 共享定稿关键词也归簇（kw_hit 同判据：标题含词）
+        from actions.analysis import kgraph
+        tmp = self.tmp
+        tdb = tmp / "t.db"
+        _mk_topics_db(tdb, [("t1", "部署", '["部署"]', '[]',
+                             "2026-10-19T00:00:00")])
+        idb = tmp / "h.db"
+        _mk_index_db(idb, [
+            ("S1", "部署：环境准备", "trae", "2026-10-19T09:00:00"),
+            ("S2", "部署：网关切流", "trae", "2026-10-19T10:00:00"),
+        ])
+        glossary = tmp / "g.json"
+        glossary.write_text('{"terms": []}', encoding="utf-8")
+        from actions.actionsserve import Config
+        cfg = Config(cards_root=tmp / "cards", db=idb, glossary=glossary,
+                     topics_meta=tdb)
+        d = kgraph.build(cfg, max_sessions=100)
+        sess = {n["id"]: n for n in d["nodes"] if n["kind"] == "session"}
+        self.assertEqual(len(sess), 2)              # 数据面全下发（显隐前端管）
+        rep = sess["s:S2"]                          # updated_at 最新为代表
+        self.assertEqual(len(rep["meta"]["cluster"]), 2)
+        self.assertEqual(sess["s:S1"]["meta"]["merged"], "S2")
+
+    def test_13_edges_mechanical_and_rep_targeted(self):
         from actions.analysis import kgraph
         cfg = _mk_cfg(self.tmp)
         d = kgraph.build(cfg)
-        self.assertEqual(d["mode"], "base")
-        kinds = {n["kind"] for n in d["nodes"]}
-        self.assertEqual(kinds, {"topic", "card", "kw"})
+        self.assertEqual(d["mode"], "clustered")
         ekinds = {e["kind"] for e in d["edges"]}
         self.assertTrue(ekinds <= {"member", "anchor", "topic_of",
-                                   "keyword"}, ekinds)
-        self.assertIn("topic_of", ekinds)   # 卡→主题（锚点∈成员）
-        self.assertIn("keyword", ekinds)    # 词→主题（定稿表）
+                                   "keyword", "kw_hit"}, ekinds)
+        for must in ("topic_of", "keyword", "member", "anchor"):
+            self.assertIn(must, ekinds)
+        # S1 首条 user → 入图；S1 是单会话簇代表；锚点/成员边指向代表
         ids = {n["id"] for n in d["nodes"]}
-        self.assertIn("t:t1", ids)
-        self.assertIn("c:c1.md", ids)
-        self.assertIn("k:部署", ids)
-        meta = d["meta"]
-        self.assertEqual(meta["sessions_total"], 2)
-        self.assertEqual(meta["sessions_in_topics"], 1)
-        self.assertEqual(meta["sessions_unlinked"], 1)  # S2 不画，只计数
-        self.assertEqual(meta["cards_unlinked"], 0)
+        self.assertIn("s:S1", ids)
+        self.assertIn(("t:t1", "s:S1"),
+                      [(e["src"], e["dst"]) for e in d["edges"]
+                       if e["kind"] == "member"])
+        self.assertEqual(d["meta"]["cards_unlinked"], 0)
+        # kw_hit：S1 标题含「部署」
+        hit = [(e["src"], e["dst"]) for e in d["edges"]
+               if e["kind"] == "kw_hit"]
+        self.assertIn(("k:部署", "s:S1"), hit)
 
-    def test_11_empty_states_honest(self):
+    def test_14_empty_and_all_filtered_honest(self):
         from actions.analysis import kgraph
         d = kgraph.build(_mk_cfg(self.tmp, with_topics=False,
-                                 with_cards=False))
+                                 with_cards=False, with_db=False))
         self.assertEqual(d["nodes"], [])
-        self.assertTrue(d["hints"])
         self.assertTrue(any("--topics-meta" in h for h in d["hints"]))
-        d2 = kgraph.build(_mk_cfg(self.tmp, with_cards=False))
-        self.assertTrue(any("卡片目录空" in h for h in d2["hints"]))
+        # 全部非 user 发起 → 诚实空态说判据
+        tmp2 = Path(tempfile.mkdtemp(prefix="v66kg2_"))
+        tdb = tmp2 / "t.db"
+        _mk_topics_db(tdb, [("t1", "甲", '[]', '[]',
+                             "2026-10-19T00:00:00")])
+        idb = tmp2 / "h.db"
+        _mk_index_db(idb, [("SB", "机器会话", "trae",
+                            "2026-10-19T10:00:00")],
+                     first_roles={"SB": "assistant"})
+        from actions.actionsserve import Config
+        glossary = tmp2 / "g.json"
+        glossary.write_text('{"terms": []}', encoding="utf-8")
+        cfg = Config(cards_root=tmp2 / "cards", db=idb, glossary=glossary,
+                     topics_meta=tdb)
+        d2 = kgraph.build(cfg)
+        self.assertEqual([n for n in d2["nodes"]
+                          if n["kind"] == "session"], [])
+        self.assertTrue(any("用户先发起" in h for h in d2["hints"]))
 
-    def test_12_expand_sessions(self):
+    def test_15_no_semantic_edges(self):
+        # 死约定：主题间无边、会话间无相似度边（聚类只是聚合展示）
         from actions.analysis import kgraph
-        cfg = _mk_cfg(self.tmp)
-        d = kgraph.build(cfg, "S1,S2,SX")
-        self.assertEqual(d["mode"], "expand")
-        sids = [s["sid"] for s in d["sessions"]]
-        self.assertEqual(sids, ["S1", "S2"])
-        self.assertEqual(d["missing"], ["SX"])
-        s1 = d["sessions"][0]
-        self.assertEqual(s1["title"], "部署会话")
-        self.assertEqual(s1["error_count"], 0)
-
-    def test_13_no_semantic_edges_between_topics(self):
-        # 死约定：主题间无边（P7-② 缓行，不是图坏了）
-        from actions.analysis import kgraph
+        from actions.actionsserve import Config
         tdb = self.tmp / "t.db"
         _mk_topics_db(tdb, [
             ("t1", "甲", '["k1"]', '[{"sid": "S1", "evidence": "e"}]',
              "2026-10-19T00:00:00"),
             ("t2", "乙", '["k1"]', '[{"sid": "S2", "evidence": "e"}]',
              "2026-10-19T00:00:00")])
-        from actions.actionsserve import Config
-        glossary = self.tmp / "glossary.json"
-        glossary.write_text(json.dumps({"terms": []}, ensure_ascii=False),
-                            encoding="utf-8")
+        glossary = self.tmp / "g.json"
+        glossary.write_text('{"terms": []}', encoding="utf-8")
         cfg = Config(cards_root=self.tmp / "cards", db=self.tmp / "h.db",
                      glossary=glossary, topics_meta=tdb)
         d = kgraph.build(cfg)
         for e in d["edges"]:
-            self.assertFalse(e["src"].startswith("t:")
-                             and e["dst"].startswith("t:"))
+            sk = e["src"].split(":")[0]
+            dk = e["dst"].split(":")[0]
+            self.assertFalse(sk == "t" and dk == "t", f"主题间边混入：{e}")
+            self.assertFalse(sk == "s" and dk == "s", f"会话间边混入：{e}")
+
+    def test_16_criteria_declared(self):
+        # 判据透明：meta.criteria 全声明（可解释，不黑箱）
+        from actions.analysis import kgraph
+        d = kgraph.build(_mk_cfg(self.tmp))
+        cr = d["meta"]["criteria"]
+        self.assertIn("role='user'", cr["user_initiated"])
+        self.assertIn("Jaccard", cr["cluster"])
+        self.assertIn("包含率", cr["cluster"])
+        self.assertIn("M2/M4", cr["cluster"])
+        self.assertIn("文档频率", cr["hubs"])
+        self.assertIn("无语义判断", cr["hubs"])
+        self.assertIn("updated_at", cr["representative"])
+        self.assertEqual(d["meta"]["auto_hubs"],
+                         sum(1 for n in d["nodes"]
+                             if n["kind"] == "kw" and n["meta"].get("auto")))
+
+    def test_17_auto_hubs_radiate_not_cluster(self):
+        """v0.85：自动枢纽=标题高频片段机械提取，做 kw_hit 辐射节点。
+        **反面断言**：枢纽不得参与聚类——同库同数据只切枢纽开关
+        （KG_HUB_MIN_DF），两次 build 的簇数必须逐项相等（真库实测
+        枢纽进聚类会把数百会话连锁拖成一簇）。"""
+        from actions.actionsserve import Config
+        from actions.analysis import kgraph
+        tmp = self.tmp
+        tdb = tmp / "t.db"
+        _mk_topics_db(tdb, [("t1", "甲", '[]', '[]',
+                             "2026-10-19T00:00:00")])
+        idb = tmp / "h.db"
+        _mk_index_db(idb, [
+            ("S1", "甲乙词释义解析", "trae", "2026-10-19T09:00:00"),
+            ("S2", "丙丁词释义解析", "trae", "2026-10-19T10:00:00"),
+            ("S3", "戊己词释义解析", "claude", "2026-10-19T11:00:00"),
+        ])
+        glossary = tmp / "g.json"
+        glossary.write_text('{"terms": []}', encoding="utf-8")
+        cfg = Config(cards_root=tmp / "cards", db=idb, glossary=glossary,
+                     topics_meta=tdb)
+        old = kgraph.KG_HUB_MIN_DF
+        try:
+            kgraph.KG_HUB_MIN_DF = 2          # 枢纽开
+            d_on = kgraph.build(cfg)
+            kgraph.KG_HUB_MIN_DF = 10 ** 9    # 枢纽关
+            d_off = kgraph.build(cfg)
+        finally:
+            kgraph.KG_HUB_MIN_DF = old
+        # 开关只改枢纽账，聚类账逐项不变（枢纽不进 union-find）
+        for key in ("clusters", "clusters_multi", "merged_into_rep"):
+            self.assertEqual(d_on["meta"][key], d_off["meta"][key],
+                             "枢纽开关改变了聚类账（%s）" % key)
+        self.assertGreater(d_on["meta"]["auto_hubs"], 0)
+        self.assertEqual(d_off["meta"]["auto_hubs"], 0)
+        autos = [n for n in d_on["nodes"]
+                 if n["kind"] == "kw" and n["meta"].get("auto")]
+        self.assertTrue(autos, "没提取出任何自动枢纽")
+        for n in autos:
+            self.assertIn("自动枢纽", n["badge"])
+        # 辐射边：枢纽 → 代表（kw_hit）
+        auto_labels = {n["label"] for n in autos}
+        rad = [e for e in d_on["edges"] if e["kind"] == "kw_hit"
+               and e["src"].removeprefix("k:") in auto_labels]
+        self.assertTrue(rad, "自动枢纽没有 kw_hit 辐射边")
+
+    def test_18_cluster_by_bigram_containment(self):
+        """v0.85：骨架包含归簇——短标题 token 集被长标题覆盖
+        （|交|/min≥0.6）即同簇，不要求整标题 Jaccard。"""
+        from actions.actionsserve import Config
+        from actions.analysis import kgraph
+        tmp = self.tmp
+        tdb = tmp / "t.db"
+        _mk_topics_db(tdb, [("t1", "甲", '[]', '[]',
+                             "2026-10-19T00:00:00")])
+        idb = tmp / "h.db"
+        _mk_index_db(idb, [
+            ("S1", "部署网关重启失败", "trae", "2026-10-19T09:00:00"),
+            ("S2", "部署网关重启失败告警通知", "trae",
+             "2026-10-19T10:00:00"),
+            ("S3", "买菜清单", "claude", "2026-10-19T11:00:00"),
+        ])
+        glossary = tmp / "g.json"
+        glossary.write_text('{"terms": []}', encoding="utf-8")
+        cfg = Config(cards_root=tmp / "cards", db=idb, glossary=glossary,
+                     topics_meta=tdb)
+        d = kgraph.build(cfg)
+        sess = {n["id"]: n for n in d["nodes"] if n["kind"] == "session"}
+        self.assertEqual(d["meta"]["clusters"], 2)
+        self.assertEqual(d["meta"]["merged_into_rep"], 1)
+        merged = sess["s:S1"]["meta"].get("merged")
+        self.assertEqual(merged, "S2")     # S2 updated_at 最新为代表
 
 
 if __name__ == "__main__":

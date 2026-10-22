@@ -171,9 +171,20 @@ if (bcSum === 0 || pats.length === 0) {
   /* P1-5 验收口径：模式明细条数求和 ≡ by_class 求和（同库同源） */
   check("对账②：patterns 求和 " + patSum + " = by_class 求和 " + bcSum,
     patSum === bcSum);
-  /* 对账③：与真实总错误数（AGENTS.md 快照 2026-10-14 = 362，抑制 161 条
-     会话后重定基线；旧快照 2026-10-12 = 381）比对 */
-  check("对账③：全库错误总数 = 362（快照口径，2026-10-14）", bcSum === 362);
+  /* 对账③：渲染总数必须等于**库指纹**里的错误数（同库、**两条独立算路**）。
+     历史写法把库快照写死在这里（2026-10-12=381 / 2026-10-14=362）——
+     每次刷库必假红一次：2026-10-22 刷库后真库变 532，这条就红了。
+     改为取 `db_fingerprint.errors`（`dbmeta` 从库直接计数，与
+     `by_class` 的聚合是**两条独立算路**），故这条**仍然会红**
+     （口径漂移 / 聚合漏类 / 指纹与报告不同源都能抓到），
+     但不再把"库快照"这种会变的东西钉进测试。 */
+  const fpTotal = (ER.db_fingerprint || {}).errors;
+  if (typeof fpTotal === "number") {
+    check("对账③：by_class 求和 " + bcSum + " = 库指纹 errors " + fpTotal,
+      bcSum === fpTotal);
+  } else {
+    note("对账③", "载荷无 db_fingerprint.errors（无法与库计数交叉核对）");
+  }
 }
 
 console.log("\nok " + ok + " / n/a " + na + " / FAIL " + fails);

@@ -129,6 +129,12 @@
    "est_sec": null
   },
   {
+   "action_id": "attrib",
+   "tier": "A",
+   "cmd": "attrib",
+   "est_sec": null
+  },
+  {
    "action_id": "cards_index_md",
    "tier": "A",
    "cmd": "cards index-md",
@@ -1118,7 +1124,7 @@
  ],
  "counts": {
   "cards": 13,
-  "read_actions": 36,
+  "read_actions": 37,
   "write_actions": 16,
   "write_reversible": 13,
   "write_destructive": 3

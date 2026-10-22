@@ -45,6 +45,10 @@ OUT = HERE / "actions_registry.json"
 READ_ACTIONS: dict[str, object] = {
     "report_tools": "report-tools",
     "report_errors": "report-errors",
+    # v0.79 P6 归因层：attrib 是 A 档只读（归因候选，页面走人读出口 --brief）。
+    # 注意 `attrib-review` **不在本表**——它是 B 档（写 attrib_meta.db 台账），
+    # 而 A 档命令必须有可执行动作（`test_v54_cli_actions` 会红，这条正是那道门逼出来的）。
+    "attrib": "attrib",
     "topic_list": "topic",
     "topic_pack": ("topic", "pack"),
     "regress": "regress",

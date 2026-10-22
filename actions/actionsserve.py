@@ -123,7 +123,8 @@ class Config:
                  corpus_watermark: bool = False,
                  registry_json: Path | None = None,
                  actions_meta: Path | None = None,
-                 reviews_meta: Path | None = None):
+                 reviews_meta: Path | None = None,
+                 attrib_meta: Path | None = None):
         self.db = Path(db)
         self.cards_root = Path(cards_root)
         self.glossary = Path(glossary)
@@ -141,6 +142,9 @@ class Config:
         self.actions_meta = Path(actions_meta or DEFAULT_ACTIONS_META)
         self.reviews_meta = (Path(reviews_meta) if reviews_meta
                              else None)
+        #: v0.79 P6 归因台账（attrib_meta.db）。缺省 None = **零感知**：
+        #: 不过滤任何归因候选，行为与"没有台账"完全一致（同 cards review 口径）。
+        self.attrib_meta = (Path(attrib_meta) if attrib_meta else None)
         #: 是否在 timeline 端点里附带库龄判定（`stale`）。缺省 **关**：
         #: 它要扫一遍语料盘（实测 0.08 s，但盘在网络上/语料巨大时会变慢），
         #: P2-3 的验收是"无 chain 主题也能看时间线"，不该被库龄判定拖住。
@@ -640,6 +644,22 @@ def _action_report_chains(cfg: Config, params: dict) -> dict:
     return _cli_report(argv)
 
 
+def _action_attrib(cfg: Config, params: dict) -> dict:
+    """A 档：归因候选（`attrib`，v0.79 P6）。
+
+    **只用 `--brief`（人读出口）**：页面给人看，就该拿人读形态——
+    机读出口（`--json`）是给程序消费的，两出口**不共用实现**是本工程的
+    冻结决策（SOP §3.3）。直给版**绝不带 --out**（stdout 捕获即结果）。
+    只读 harvester.db；台账过滤走 `attrib_meta.db`（缺省零感知）。
+    """
+    argv = ["attrib", "--db", str(cfg.db), "--brief", "-"]
+    if params.get("since") is not None:
+        argv += ["--since", str(params["since"])]
+    if cfg.attrib_meta:
+        argv += ["--meta", str(cfg.attrib_meta)]
+    return _cli_report(argv)
+
+
 def _action_report_daily(cfg: Config, params: dict) -> dict:
     """A 档：每日数据速览（`report-daily`，P5-⑤）。
 
@@ -1098,6 +1118,20 @@ ACTIONS: dict[str, dict] = {
         "reversible": "幂等（只读库）",
         "writes": "",
         "handler": _action_report_chains,
+    },
+    "attrib": {
+        "tier": "A",
+        "label": "归因候选",
+        "desc": "把错误计数变成**根因候选 + 应对候选**（attrib，v0.79 P6）。"
+                "归因是候选（机器判断，会错），裁决走 CLI `attrib-review` 回填"
+                "attribations 台账；人裁过的候选不再列出。规则表是数据文件"
+                "（harvester/data/attrib-rules.yaml）。",
+        "params": {"since": {"type": "days", "src": "chips", "default": None,
+                             "label": "时间窗"}},
+        "est_sec": 3,
+        "reversible": "幂等（只读库；不写任何库）",
+        "writes": "",
+        "handler": _action_attrib,
     },
     "report_skill": {
         "tier": "A",
@@ -2291,6 +2325,10 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--reviews-meta", default=None,
                     help="卡片复核台账（B 档动作 card_review 写它；"
                          "缺省=<db 同目录>/cards_meta.db）")
+    ap.add_argument("--attrib-meta", default=None,
+                    help="归因台账（v0.79 P6；CLI attrib-review 写它。"
+                         "缺省=<db 同目录>/attrib_meta.db；库/表不存在=零感知，"
+                         "人已裁决的归因候选不再列出）")
     ap.add_argument("--corpus-watermark", action="store_true",
                     help="在 timeline 端点附带库龄判定（要扫一遍语料盘；"
                          "缺省关，见 Config.want_watermark 注释）")
@@ -2317,7 +2355,10 @@ def config_from_args(args) -> Config:
                   actions_meta=Path(args.actions_meta),
                   reviews_meta=(Path(args.reviews_meta)
                                if getattr(args, "reviews_meta", None)
-                               else (db.parent / "cards_meta.db")))
+                               else (db.parent / "cards_meta.db")),
+                  attrib_meta=(Path(args.attrib_meta)
+                               if getattr(args, "attrib_meta", None)
+                               else (db.parent / "attrib_meta.db")))
 
 
 def serve(cfg: Config, host: str = "127.0.0.1",

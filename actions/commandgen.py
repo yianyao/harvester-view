@@ -106,6 +106,10 @@ COMMAND_CARD: dict[str, str] = {
     "draft": "export", "export-analysis": "export",
     "report-tools": "tools", "report-traces": "tools",
     "report-errors": "errors", "report-chains": "errors",
+    # P6 归因层（v0.79，用户 2026-10-22 批准后端改动）：attrib 只读 harvester.db
+    # → 归「错误分析」卡（它就是错误分析的延伸：把计数变成根因候选）；
+    # attrib-review 写 attrib_meta.db 台账 → 同卡，档位 B（与 cards review 同模式）
+    "attrib": "errors", "attrib-review": "errors",
     # P5-⑤ 每日速览（2026-10-16 批准）：四队列+三报告聚合，只读；
     # 归「错误分析」卡（它的三段报告全在这卡里，队列数字是附加项）
     "report-daily": "errors",
@@ -146,6 +150,9 @@ TIER_OVERRIDE: dict[str, str] = {
     "kb-init": "B", "cards new": "B",
     # v0.74 卡片复核落账：写 cards_meta.db → B（UPSERT 可改判，非破坏性）
     "cards review": "B",
+    # P6 归因台账（v0.79）：写 attrib_meta.db → B（UPSERT 可改判，非破坏性）。
+    # attrib 本身只读 → A（走末尾缺省，无需在这里写）。
+    "attrib-review": "B",
     # v0.78 index-md：只读清单（stdout/--out 素材）→ A；--out 写的是
     # 用户指定的新素材文件，不碰任何库/既有文件
     "cards index-md": "A",

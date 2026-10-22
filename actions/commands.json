@@ -125,8 +125,7 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": "数据源声明文件（probe 产出的 sources.json：各 adapter 的根路径；相对仓根）",
-        "example": "sources.json",
+     "help": null,
      "note": null
     }
    ],
@@ -172,8 +171,7 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": "数据源声明文件（probe 产出的 sources.json：各 adapter 的根路径；相对仓根）",
-        "example": "sources.json",
+     "help": null,
      "note": null
     },
     {
@@ -185,7 +183,7 @@
      "choices": null,
      "src": "auto_out",
      "negates": null,
-     "help": "聚合导出路径（缺省 corpus.md；命令台自动命名 reports/<动词>-<日期>.md）",
+     "help": null,
      "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
     },
     {
@@ -231,7 +229,7 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": "服务监听端口（缺省 8765）",
+     "help": null,
      "note": null
     },
     {
@@ -411,6 +409,198 @@
      "tier": "B"
     }
    ],
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "attrib",
+   "card_id": "errors",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径（只读）",
+     "note": null
+    },
+    {
+     "name": "--rules",
+     "dest": "rules",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "归因规则表（缺省=随包的 harvester/data/attrib-rules.yaml）",
+     "note": null
+    },
+    {
+     "name": "--json",
+     "dest": "json",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "机读出口：全量 + schema，可被程序消费（'-'=stdout）",
+     "note": null
+    },
+    {
+     "name": "--brief",
+     "dest": "brief",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "人读出口：一行一条、**不截断**（'-'=stdout）",
+     "note": null
+    },
+    {
+     "name": "--since",
+     "dest": "since",
+     "kind": "float",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "只统计最近 N 天",
+     "note": "只统计最近 N 天（按 steps.ts，近似口径）"
+    },
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "attrib_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "归因台账 meta 库（默认 attrib_meta.db；库/表不存在=零感知。人已裁决的候选不再列出）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
+   "cmd": "attrib-review",
+   "card_id": "errors",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--list",
+     "dest": "list",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "列出台账明细",
+     "note": null
+    },
+    {
+     "name": "--pattern",
+     "dest": "pattern",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "归一模式（attrib 输出里的「模式：」行）",
+     "note": null
+    },
+    {
+     "name": "--rule",
+     "dest": "rule",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "归因规则 id（如 AR-001）",
+     "note": null
+    },
+    {
+     "name": "--class",
+     "dest": "cls",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "错误分类（写进台账；缺省 unclassified）",
+     "note": null
+    },
+    {
+     "name": "--verdict",
+     "dest": "verdict",
+     "kind": "enum",
+     "default": "accepted",
+     "required": false,
+     "choices": [
+      "accepted",
+      "rejected",
+      "revise"
+     ],
+     "src": "none",
+     "negates": null,
+     "help": "accepted=接受该归因；rejected=驳回（归因错了）；revise=方向对但 why/fix 需改（note 写怎么改）",
+     "note": null
+    },
+    {
+     "name": "--note",
+     "dest": "note",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "裁决说明（写进台账）",
+     "note": null
+    },
+    {
+     "name": "--by",
+     "dest": "by",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "谁裁决的（写进台账；缺省不猜身份）",
+     "note": null
+    },
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "attrib_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "归因台账 meta 库（唯一写路径；不碰 harvester.db）",
+     "note": null
+    }
+   ],
+   "subactions": null,
    "help": null,
    "nested": false
   },
@@ -1144,7 +1334,6 @@
      "src": "none",
      "negates": null,
      "help": "probe 产出的路径配置",
-        "example": "sources.json",
      "note": null
     },
     {
@@ -1483,8 +1672,7 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": "数据源声明文件（probe 产出的 sources.json：各 adapter 的根路径；相对仓根）",
-        "example": "sources.json",
+     "help": null,
      "note": null
     },
     {
@@ -1881,8 +2069,7 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": "数据源声明文件（probe 产出的 sources.json：各 adapter 的根路径；相对仓根）",
-        "example": "sources.json",
+     "help": null,
      "note": null
     },
     {
@@ -2092,8 +2279,7 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": "数据源声明文件（probe 产出的 sources.json：各 adapter 的根路径；相对仓根）",
-        "example": "sources.json",
+     "help": null,
      "note": null
     },
     {
@@ -2105,7 +2291,7 @@
      "choices": null,
      "src": "auto_out",
      "negates": null,
-     "help": "打包产物路径（缺省 context_pack.md；命令台自动命名）",
+     "help": null,
      "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
     }
    ],
@@ -2127,7 +2313,7 @@
      "choices": null,
      "src": "auto_out",
      "negates": null,
-     "help": "探测结果输出路径（缺省 sources.json——它是其余命令 --sources 的输入）",
+     "help": null,
      "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
     },
     {
@@ -2173,8 +2359,7 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": "数据源声明文件（probe 产出的 sources.json：各 adapter 的根路径；相对仓根）",
-        "example": "sources.json",
+     "help": null,
      "note": null
     },
     {
@@ -2604,8 +2789,7 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": "数据源声明文件（probe 产出的 sources.json：各 adapter 的根路径；相对仓根）",
-        "example": "sources.json",
+     "help": null,
      "note": null
     },
     {
@@ -2710,7 +2894,6 @@
      "src": "none",
      "negates": null,
      "help": "probe 产出的路径配置",
-        "example": "sources.json",
      "note": null
     },
     {
@@ -2780,7 +2963,7 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": "最多返回多少条命中（缺省 20）",
+     "help": null,
      "note": null
     },
     {
@@ -4260,7 +4443,7 @@
      "choices": null,
      "src": "auto_out",
      "negates": null,
-     "help": "账号配置输出路径（缺省 webchat.accounts.json）",
+     "help": null,
      "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
     }
    ],

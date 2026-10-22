@@ -3045,6 +3045,18 @@ function renderDualtrack(d,out){
   h+="</div><div class='dt-track'><h4>下轨 · 产物流（"+
     esc(String(art.n_files||0))+" 文件 / "+esc(String(art.n_versions||0))+
     " 版本）</h4>";
+  /* P6-8 覆盖度诚实：产物只来自 dsh 源，"文件/版本"数**不是全库画像**。
+     覆盖度由后端现算（`artifacts.coverage`），页面只显示；载荷没带就明说缺失，
+     绝不默认成"已全覆盖"。 */
+  if(art.coverage&&art.coverage.line){
+    const cv=art.coverage;
+    h+="<p class='sub2 cov'>"+esc(cv.line)+
+      "（已登记会话 "+esc(String(cv.registered_sessions))+" / "+
+      esc(String(cv.total_sessions))+"，覆盖 "+esc(String(cv.pct))+"%）</p>";
+  }else{
+    h+="<p class='sub2 cov'><b>覆盖度未知</b>：载荷未带 coverage，"+
+      "本下轨的数目<b>不代表全库</b>（产物仅来自 dsh 源）。</p>";
+  }
   if(art.configured===false||!(art.files||[]).length){
     h+="<div class='empty'>"+
       esc(art.hint||"该主题成员暂无产物记录——单会话产物先由人跑 "+

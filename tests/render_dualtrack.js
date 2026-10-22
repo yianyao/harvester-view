@@ -126,7 +126,10 @@ const FIXTURE = {
       { seq: 1, ts: "2026-10-13T10:00:00", tool: "Write",
         old_len: 0, new_len: 300, old_preview: "", new_preview: "新版全文…" },
     ] },
-  ] },
+  ], coverage: { sources: ["dsh"], registered_sessions: 8,
+      registered_versions: 13, total_sessions: 1776, pct: 0.5,
+      line: "- 覆盖度：**仅 dsh 源**（`artifacts.py:8` 自陈），已登记 8 / "
+          + "总会话 1776（0.5%）——其余源已实测判负；**本面不代表全库**" } },
   nags: {
     account: { user_turns: 400, n_inject: 31, n_short: 22, n_paste: 15,
                n_lane: 332, n_hits: 9, n_template_groups: 1, n_groups: 4 },
@@ -290,6 +293,29 @@ async function main() {
     out3);
   ok(out3.innerHTML.includes("暂无产物记录"),
      "⑤ 有配置但成员无产物 → 诚实空态+登记命令提示");
+
+  /* ⑥ P6-8 覆盖度诚实：下轨的"文件/版本"数不是全库画像。
+     三条都会红：显了数字却没带覆盖度、覆盖度被页面改写、载荷缺失时冒充已知。
+     **必须只看渲染出的那个 `<p class='sub2 cov'>`**：页面末尾有「原始载荷 JSON」
+     折叠块，整段载荷（含 coverage.line 原文）都在里面——拿整个 innerHTML 去
+     `includes(...)` 会匹到 JSON 里的同一串，断言恒真（M12 变异实测逃逸）。 */
+  const covP = (out.innerHTML.match(/<p class='sub2 cov'>[\s\S]*?<\/p>/) ||
+    [""])[0];
+  ok(covP.includes("仅 dsh 源") &&
+     covP.includes("已登记 8 / 总会话 1776（0.5%）"),
+     "⑥ 下轨显示后端算出的覆盖度（仅 dsh 源 + 已登记/总会话）");
+  ok(covP.includes("本面不代表全库"),
+     "⑥ 覆盖度旁明说「本面不代表全库」");
+  /* 页面必须**原样**显示后端给的这条（不许自己拼数字） */
+  ok(covP.includes(FIXTURE.artifacts.coverage.line),
+     "⑥ 页面原文透传 coverage.line（不自行拼数字）");
+  const outNoCov = mkEl();
+  renderDualtrack(Object.assign({}, FIXTURE, { artifacts: {
+    configured: true, files: [], n_files: 0, n_versions: 0 } }), outNoCov);
+  const nocovP = (outNoCov.innerHTML.match(/<p class='sub2 cov'>[\s\S]*?<\/p>/) ||
+    [""])[0];
+  ok(nocovP.includes("覆盖度未知") && nocovP.includes("不代表全库"),
+     "⑥ 载荷缺 coverage → 明说「覆盖度未知」，绝不默认成已全覆盖");
 
   /* 转义抽查：title 带 HTML 不逃逸 */
   const out4 = mkEl();

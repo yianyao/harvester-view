@@ -141,10 +141,16 @@ def _nags_track(cfg, member_sids: list[str]) -> dict:
 
 
 def _artifacts_track(cfg, member_sids: list[str]) -> dict:
-    """下轨产物流：成员 sid 的 Write/Edit 版本序列，按 (sid, file_path) 分组。"""
+    """下轨产物流：成员 sid 的 Write/Edit 版本序列，按 (sid, file_path) 分组。
+
+    P6-8：无论有没有数据都带 `coverage`（现算：仅 dsh 源 / 已登记 N 总会话 M）。
+    缺了它，读者会把这一个下轨当成"全库产物画像"——那正是"部分覆盖冒充全库"。
+    """
+    from harvester.artifacts import coverage
+    cov = coverage(cfg.db, cfg.artifacts_meta)
     if not cfg.artifacts_meta or not Path(cfg.artifacts_meta).is_file():
         return {"configured": False, "files": [], "n_files": 0,
-                "n_versions": 0,
+                "n_versions": 0, "coverage": cov,
                 "hint": "未配置 artifacts_meta（起服加 --artifacts-meta）；"
                         "单会话产物先由人跑 "
                         "`python -m harvester artifacts extract --sid <sid>` "
@@ -178,6 +184,7 @@ def _artifacts_track(cfg, member_sids: list[str]) -> dict:
     return {"configured": True, "files": out,
             "n_files": len(out),
             "n_versions": sum(f["n_versions"] for f in out),
+            "coverage": cov,
             "honest": "版本为 Write/Edit 提取记录（artifacts.py 口径，"
                       "锚点 = (sid, seq)），非文件系统快照"}
 

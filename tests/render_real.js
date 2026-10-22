@@ -220,6 +220,22 @@ if (bcSum === 0 || pats.length === 0) {
       erOut.innerHTML.includes("<b>根因</b>") &&
       erOut.innerHTML.includes("<b>应对</b>") && expectAtt > 0);
   }
+
+  /* P6-7 可评审分级：页面必须**如实显示载荷给的等级**，且 R1 及以下
+     不许出现裸的「可评审」。两条都会红：等级被页面改高、或没显示等级。 */
+  const rv = ER.reviewable;
+  if (!rv || !rv.level) {
+    note("P6-7 可评审分级", "载荷无 reviewable（旧上游），页面不显示等级，本条不适用");
+    check("P6-7 无 reviewable 时页面不编造等级",
+      !/本面等级/.test(erOut.innerHTML));
+  } else {
+    const shown = erOut.innerHTML;
+    check("P6-7 页面显示载荷给的等级 R=" + rv.level,
+      shown.includes("本面等级 " + rv.level));
+    const claimsRev = /(?<!不)可评审/.test(shown);
+    check("P6-7 等级与「可评审」口径一致（can_review=" + !!rv.can_review + "）",
+      claimsRev === !!rv.can_review);
+  }
 }
 
 console.log("\nok " + ok + " / n/a " + na + " / FAIL " + fails);

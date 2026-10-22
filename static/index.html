@@ -2244,6 +2244,24 @@ function renderErrors(d,out){
       +"model「（未知）」=会话未携带模型信息（导出型源无 model 字段）。</p>";
   }
   html+="<h3 class='sec'>错误模式明细（归一聚类，锚点可点击）</h3>";
+  /* P6-7 可评审分级：等级**由后端按内容算**（reviewable.py），页面只显示、
+     绝不自己猜。三态：
+       - 有 reviewable 且 can_review → 标「R?（label）可评审」；
+       - 有 reviewable 但 R0/R1   → 标「R?（label）不可评审」+ 一句"为什么评不动"；
+       - 无 reviewable（旧上游）  → 不显示（向后兼容，别编一个等级出来）。 */
+  const rv=d.reviewable;
+  if(rv&&rv.level){
+    const ok=!!rv.can_review;
+    /* 注意 class 里**不能只写 `pill known`**：真实载荷门的「规则号全来自载荷」
+       对账扫的就是 `class='pill known'` 的那批文本，等级徽标混进去会被判成
+       "页面编造了规则号"。给自己加个 `rvlvl` 标记，既保留样式又不污染那道对账。 */
+    html+="<p class='sub2'><span class='pill rvlvl "+(ok?"known":"unknown")+"'>"+
+      esc("本面等级 "+rv.level+"（"+(rv.label||"")+"）")+"</span> "+
+      (ok
+        ? (rv.can_verdict?"可评审、可裁决":"可评审但不可裁决（缺台账回填通道）")
+        : "<b>不可评审</b>：R1 及以下不标「可评审」——这种数据给再强的模型也评不出根因（设计 §3.1）")+
+      (rv.note?"（"+esc(rv.note)+"）":"")+"</p>";
+  }
   /* P6-5 归因（候选）：三态可分，别把"没载入"说成"未归因"。
      - attrib_status === "ok"           → 出「根因/应对」列，逐行给候选或标未归因
      - attrib_status === "unavailable"  → 明说本报告不含归因，**不出该列**

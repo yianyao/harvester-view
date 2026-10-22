@@ -185,6 +185,41 @@ if (bcSum === 0 || pats.length === 0) {
   } else {
     note("对账③", "载荷无 db_fingerprint.errors（无法与库计数交叉核对）");
   }
+
+  /* ── P6-5 归因进报告页：渲染门 ────────────────────────────────────
+     P6-5 的验收是「每个模式行带 why/fix + 置信；无归因的行显式标未归因」。
+     这里三条**会红**的检查（不是只看字符串存不存在那种）：
+       ④ 渲染出的「未归因」格数 = 载荷里被渲染那批（表只渲染前 60 行）
+          中 attrib 为 null 的模式数 —— 逐条对账，少一格多一格都红；
+       ⑤ 渲染出的规则号**必须全部来自载荷** —— 防止页面自己编规则；
+       ⑥ 至少一条行同时有「根因」与「应对」 —— 这是 P6-5 的门禁原文。 */
+  if (ER.attrib_status !== "ok") {
+    note("P6-5 归因渲染", "载荷 attrib_status=" + ER.attrib_status +
+      "（归因层不可用，本条不适用；页面此时应显示「不含归因」）");
+    /* 不可用时页面必须明说，而不是静默不出列 */
+    check("P6-5 不可用时页面明说「不含归因」",
+      erOut.innerHTML.includes("本报告不含归因"));
+  } else {
+    /* 表只渲染前 60 行（按 count 降序，与页面同序） */
+    const shown = [...pats].sort((a, b) => b.count - a.count).slice(0, 60);
+    const expectUn = shown.filter(x => !x.attrib).length;
+    const expectAtt = shown.length - expectUn;
+    const gotUn = (erOut.innerHTML.match(/>未归因</g) || []).length;
+    const ruleIds = [...new Set(shown.filter(x => x.attrib)
+      .map(x => x.attrib.rule_id))];
+    const gotIds = [...new Set(
+      [...erOut.innerHTML.matchAll(/class='pill known'[^>]*>([^<]+)</g)]
+        .map(m => m[1]))];
+    const invented = gotIds.filter(id => ruleIds.indexOf(id) < 0);
+    check("对账④：渲染「未归因」格 " + gotUn + " = 载荷未归因模式 " + expectUn +
+      "（渲染 " + shown.length + " 行）", gotUn === expectUn);
+    check("对账⑤：页面出现的规则号全来自载荷（未编造）" +
+      (invented.length ? "：多出 " + invented.join(",") : ""),
+      invented.length === 0 && gotIds.length === ruleIds.length);
+    check("P6-5 门禁：≥1 行同时带「根因」与「应对」",
+      erOut.innerHTML.includes("<b>根因</b>") &&
+      erOut.innerHTML.includes("<b>应对</b>") && expectAtt > 0);
+  }
 }
 
 console.log("\nok " + ok + " / n/a " + na + " / FAIL " + fails);

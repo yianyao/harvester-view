@@ -2244,6 +2244,22 @@ function renderErrors(d,out){
       +"model「（未知）」=会话未携带模型信息（导出型源无 model 字段）。</p>";
   }
   html+="<h3 class='sec'>错误模式明细（归一聚类，锚点可点击）</h3>";
+  /* P6-5 归因（候选）：三态可分，别把"没载入"说成"未归因"。
+     - attrib_status === "ok"           → 出「根因/应对」列，逐行给候选或标未归因
+     - attrib_status === "unavailable"  → 明说本报告不含归因，**不出该列**
+     - 无 attrib_status（旧上游载荷）   → 逐字保持原样（向后兼容，不出该列） */
+  const attSt=d.attrib_status;
+  if(attSt==="unavailable"){
+    html+="<p class='sub2'><b>本报告不含归因</b>：归因层不可用（"+
+      esc(d.attrib_note||"规则表不可用或无 PyYAML")+
+      "）。下面的模式行只给事实层聚类，<b>不代表「未归因」</b>。</p>";
+  }else if(attSt==="ok"){
+    const as=d.attrib_summary||{};
+    html+="<p class='sub2'>归因（<b>候选</b>，机器判断会错；裁决请回填 attribations 台账）："+
+      "已归因 "+(as.patterns_attributed||0)+" / "+(as.patterns_total||0)+
+      " 个模式，未归因 "+(as.patterns_unattributed||0)+
+      " 个。类别仍按事实层口径统计（归因只补「为什么/怎么办」）。</p>";
+  }
   const f=repFilter();
   let pats=d.patterns||[];
   if(f.q)pats=pats.filter(x=>hitQ(x.pattern+" "+x.tools.join("/"),f.q));
@@ -2267,17 +2283,42 @@ function renderErrors(d,out){
         e[1]+"</span>").join("")+"</div>";
     if(cur)pats=pats.filter(x=>x["class"]===cur);
   }
+  const ATTOK=(d.attrib_status==="ok");
+  const CONF={"high":"高","medium":"中","low":"低"};
   html+=pats.length?("<table><thead><tr><th class='num'>次数</th>"+
     "<th>模式</th><th>类别</th><th>工具</th>"+
+    (ATTOK?"<th title='归因是**候选**（机器判断会错）；这里的类别仍是事实层口径，"+
+      "归因类别若不同会在格内另标。裁决请回填 attribations 台账。'>根因 / 应对</th>":"")+
     "<th style='max-width:190px'>样例锚点</th></tr></thead><tbody>"+
     pats.slice(0,60).map(x=>{
       const pl=patternPlain(x.pattern);   /* P1-1 模式人话（未收录不显示） */
+      let attCell="";
+      if(ATTOK){
+        const a=x.attrib;
+        if(a){
+          const cf=CONF[a.confidence]||a.confidence||"未标";
+          const clsNote=(a["class"]&&a["class"]!==x["class"])
+            ?"<div class='sub2'>归因类别 "+esc(a["class"])+
+             "（事实层仍记 "+esc(x["class"])+"）</div>":"";
+          attCell="<td style='max-width:320px'>"+
+            "<span class='pill known' title='归因**候选**（规则号）：机器判断，会错；"+
+            "觉得对就回填 attribations 台账'>"+esc(a.rule_id||"")+"</span> "+
+            "<span class='sub2'>置信 "+esc(cf)+"</span>"+
+            clsNote+
+            "<div><b>根因</b>："+esc(a.why||"")+"</div>"+
+            "<div><b>应对</b>："+esc(a.fix||"")+"</div></td>";
+        }else{
+          attCell="<td class='sub2'><b>未归因</b>"+
+            "<div>机器未匹配任何规则（不是「没问题」）</div></td>";
+        }
+      }
       return "<tr><td class='num'><a href='javascript:void(0)' class='anchor'"+
       " data-pat2=\""+esc(x.pattern)+"\" title='把本模式命中的**全部**会话"+
       "列出来（数字皆门第二跳；样例只有 3 条，代表不了全部）'>x"+
       x.count+"</a></td><td>"+esc(x.pattern)+
       (pl?"<div class='sub2'>人话："+esc(pl)+"</div>":"")+"</td><td>"+
       esc(x["class"])+"</td><td>"+esc(x.tools.join("/"))+"</td>"+
+      attCell+
       "<td style='max-width:190px;word-break:break-all'>"+
       x.samples.map(s=>anchor(s.sid,s.seq,s.error)).join("<br>")+
       "<div class='sub2'><a href='javascript:void(0)' class='anchor' "+

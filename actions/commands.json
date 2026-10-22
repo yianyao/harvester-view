@@ -2641,6 +2641,30 @@
      "negates": null,
      "help": "报告输出路径（缺省打印到 stdout）",
      "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--rules",
+     "dest": "rules",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "归因规则表（缺省=随包的 harvester/data/attrib-rules.yaml）",
+     "note": null
+    },
+    {
+     "name": "--no-attrib",
+     "dest": "no_attrib",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": "--no-attrib",
+     "help": "不加载归因层（只要事实层三分类；报告头会明说）",
+     "note": null
     }
    ],
    "subactions": null,

@@ -171,6 +171,12 @@
    "est_sec": null
   },
   {
+   "action_id": "evidence_pack",
+   "tier": "A",
+   "cmd": "evidence-pack",
+   "est_sec": null
+  },
+  {
    "action_id": "export_analysis",
    "tier": "A",
    "cmd": "export-analysis",
@@ -1124,7 +1130,7 @@
  ],
  "counts": {
   "cards": 13,
-  "read_actions": 37,
+  "read_actions": 38,
   "write_actions": 16,
   "write_reversible": 13,
   "write_destructive": 3

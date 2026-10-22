@@ -110,6 +110,11 @@ COMMAND_CARD: dict[str, str] = {
     # → 归「错误分析」卡（它就是错误分析的延伸：把计数变成根因候选）；
     # attrib-review 写 attrib_meta.db 台账 → 同卡，档位 B（与 cards review 同模式）
     "attrib": "errors", "attrib-review": "errors",
+    # P6-6 评审包（v0.79）：只读，四类 kind 都是"把数据面打成可评审包"，
+    # 其中 errors/attrib 两类就是错误分析的出口 → 归「错误分析」卡；
+    # skills/chains 两类同命令产出，按**命令**归卡（不按 kind 拆卡），
+    # 否则同一命令会出现在两张卡里、注册表按命令名去重会丢一张。
+    "evidence-pack": "errors",
     # P5-⑤ 每日速览（2026-10-16 批准）：四队列+三报告聚合，只读；
     # 归「错误分析」卡（它的三段报告全在这卡里，队列数字是附加项）
     "report-daily": "errors",

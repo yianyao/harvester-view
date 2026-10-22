@@ -49,6 +49,10 @@ READ_ACTIONS: dict[str, object] = {
     # 注意 `attrib-review` **不在本表**——它是 B 档（写 attrib_meta.db 台账），
     # 而 A 档命令必须有可执行动作（`test_v54_cli_actions` 会红，这条正是那道门逼出来的）。
     "attrib": "attrib",
+    # P6-6 评审包：A 档只读（四类 kind 都不写库），页面走人读出口（md 到 stdout）。
+    # 不进这张表就会红——`test_v54_cli_actions.WhitelistCoversAllATier`
+    # 要求每个 A 档命令都有可执行动作（"只读"与"页面能执行"是同一件事）。
+    "evidence_pack": "evidence-pack",
     "topic_list": "topic",
     "topic_pack": ("topic", "pack"),
     "regress": "regress",

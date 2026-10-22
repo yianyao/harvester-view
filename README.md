@@ -489,6 +489,14 @@ preview 留痕符合设计。套件 316 OK / 渲染门 16 检查全绿。
     `session-harvester/docs/TERMINOLOGY.md` §3-§4）/ 参数数据源）；
   - `GET /api/actions`：动作注册表（v0.65 时点 **A 档 32 + B 档 15**；
     本节写作时为 A4+B9，规模演进见上节）；
+  - **v0.79 P6-6 追加 A 档动作 `evidence_pack`**（label「评审包」）：进程内跑
+    `harvester evidence-pack`，把数据面打成**判据头 + 证据体 + 判定槽**三段
+    Markdown 返回页面（**不带 `--out`**，服务端不落盘、与 `attrib` 同纪律）；
+    `kind` 可选 `errors`/`skills`/`chains`/`attrib`，**等级 R0–R3 由内容算**
+    （`skills`/`chains` 目前是 R1：能计数、评不出根因）。为什么它必须是
+    A 档动作而不是"只给命令让人复制"：`test_v54_cli_actions` 的口径是
+    **只读命令 = 页面能执行**，只读却只能复制，等于把最安全的一类动作
+    排除在页面之外；
   - `POST /api/actions/run` → A 档 `202 {job_id}`（`GET /api/actions/job/<id>`
     轮询），B 档 `200 {status:"needs_confirm", confirm_token, preview}`；
     **进程内线程调 harvester 函数，非 shell**；长任务不阻塞页面；

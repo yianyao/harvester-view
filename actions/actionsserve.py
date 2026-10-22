@@ -660,6 +660,29 @@ def _action_attrib(cfg: Config, params: dict) -> dict:
     return _cli_report(argv)
 
 
+def _action_evidence_pack(cfg: Config, params: dict) -> dict:
+    """A 档：评审包（`evidence-pack`，P6-6）。
+
+    走**人读出口**（Markdown 打到 stdout，**绝不带 `--out`**）：
+    页面要的是结果本身，不在服务端落盘（与 `_action_attrib` 同纪律）。
+
+    包内三段原样返回（判据头/证据体/**判定槽**）——**页面不做二次加工**：
+    判定槽的价值就在于"能整段贴给任意 Agent 裁决再回填台账"，
+    前端一改格式就不再是同一个包了。
+    """
+    kind = str(params.get("kind") or "errors")
+    if kind not in ("errors", "skills", "chains", "attrib"):
+        raise ValueError(f"kind 不支持：{kind}（可选 errors|skills|chains|attrib）")
+    argv = ["evidence-pack", "--kind", kind, "--db", str(cfg.db)]
+    if params.get("since") is not None:
+        argv += ["--since", str(params["since"])]
+    if params.get("top") is not None:
+        argv += ["--top", str(int(params["top"]))]
+    if getattr(cfg, "attrib_meta", None):
+        argv += ["--meta", str(cfg.attrib_meta)]
+    return _cli_report(argv)
+
+
 def _action_report_daily(cfg: Config, params: dict) -> dict:
     """A 档：每日数据速览（`report-daily`，P5-⑤）。
 
@@ -1132,6 +1155,27 @@ ACTIONS: dict[str, dict] = {
         "reversible": "幂等（只读库；不写任何库）",
         "writes": "",
         "handler": _action_attrib,
+    },
+    "evidence_pack": {
+        "tier": "A",
+        "label": "评审包",
+        "desc": "把一个数据面打成**可评审**的包（evidence-pack，v0.79 P6-6）："
+                "① 判据头（口径/时间窗/库快照含 STALE/R 等级/覆盖度/边界）"
+                "② 证据体（计数 + 原文锚点 `sid#seq` + 归因候选 why/fix）"
+                "③ **判定槽**（pattern_key 已填、裁决四列留空）。"
+                "**没有判定槽的包不是评审包、是报告**；等级 R0–R3 由内容算"
+                "（skills/chains 目前是 R1：能计数、评不出根因）。",
+        "params": {"kind": {"type": "text", "src": "chips", "default": "errors",
+                            "choices": ["errors", "skills", "chains", "attrib"],
+                            "label": "包类型"},
+                   "since": {"type": "days", "src": "chips", "default": None,
+                             "label": "时间窗"},
+                   "top": {"type": "int", "src": "chips", "default": 20,
+                           "label": "每类条数"}},
+        "est_sec": 3,
+        "reversible": "幂等（只读库；包打到 stdout，不落盘）",
+        "writes": "",
+        "handler": _action_evidence_pack,
     },
     "report_skill": {
         "tier": "A",

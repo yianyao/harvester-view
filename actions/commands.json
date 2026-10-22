@@ -1296,6 +1296,105 @@
    "nested": false
   },
   {
+   "cmd": "evidence-pack",
+   "card_id": "errors",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--kind",
+     "dest": "kind",
+     "kind": "enum",
+     "default": "errors",
+     "required": false,
+     "choices": [
+      "errors",
+      "skills",
+      "chains",
+      "attrib"
+     ],
+     "src": "none",
+     "negates": null,
+     "help": "包类型（errors/attrib 含归因候选=R3；skills/chains 无根因=R1）",
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径（只读）",
+     "note": null
+    },
+    {
+     "name": "--since",
+     "dest": "since",
+     "kind": "float",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "只统计最近 N 天",
+     "note": "只统计最近 N 天（按 steps.ts，近似口径）"
+    },
+    {
+     "name": "--top",
+     "dest": "top",
+     "kind": "int",
+     "default": 20,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "每类最多 N 条（默认 20；判定槽行数 = 条目数）",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "人读出口（Markdown）输出路径；缺省打印",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--json",
+     "dest": "json",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "机读出口：与 md **不共用实现**，结构带 schema",
+     "note": null
+    },
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "归因台账 meta 库（只用于标出「已裁决」；不写）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
    "cmd": "export",
    "card_id": "export",
    "tier": "B",

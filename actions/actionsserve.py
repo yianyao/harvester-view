@@ -173,6 +173,7 @@ class Config:
                 "cards_root": self.cards_root,
                 "topics_meta": self.topics_meta,
                 "artifacts_meta": self.artifacts_meta,
+                "attrib_meta": self.attrib_meta,
                 "chain_root": self.chain_root,
                 "keywords_meta": self.keywords_meta,
                 "suggestions_meta": self.suggestions_meta,
@@ -657,7 +658,25 @@ def _action_attrib(cfg: Config, params: dict) -> dict:
         argv += ["--since", str(params["since"])]
     if cfg.attrib_meta:
         argv += ["--meta", str(cfg.attrib_meta)]
-    return _cli_report(argv)
+    rep = _cli_report(argv)
+    # P6-9 归因台：**同一次调用的机读面**。命令台看 `stdout`（人读 brief），
+    # 归因台看 `data`（`attrib --json` 的解析结果）——两个出口在 CLI 里本就
+    # 不共用实现，这里只是把两面一起带回去，**页面不再自己算覆盖度/等级**。
+    jargv = ["attrib", "--db", str(cfg.db), "--json", "-"]
+    if params.get("since") is not None:
+        jargv += ["--since", str(params["since"])]
+    if cfg.attrib_meta:
+        jargv += ["--meta", str(cfg.attrib_meta)]
+    jrep = _cli_report(jargv)
+    if int(jrep.get("exit_code") or 0) == 0:
+        import json as _json
+        try:
+            rep["data"] = _json.loads(jrep.get("stdout") or "{}")
+        except ValueError as e:            # 机读面坏了要说出来，别静默缺键
+            rep["data_error"] = f"机读出口不是合法 JSON：{e}"
+    else:
+        rep["data_error"] = (jrep.get("stderr") or "").strip()[:300] or "机读出口失败"
+    return rep
 
 
 def _action_evidence_pack(cfg: Config, params: dict) -> dict:

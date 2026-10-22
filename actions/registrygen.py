@@ -257,6 +257,8 @@ def build() -> dict:
             "topics_meta": "topics_meta.db（主题注册表）",
             "keywords_meta": "keywords_meta.db（n-gram 统计累积表）",
             "cards_meta": "cards_meta.db（卡片复核台账：人裁过的不许再烦人，v0.74）",
+            # P6-9 归因台：判定槽唯一的写出口（attribations 表；不碰 harvester.db）
+            "attrib_meta": "attrib_meta.db（归因裁决台账：人裁过的候选不再列出，v0.79 P6）",
             "repo_files": "主库仓内工作文件（建议池 agents_suggestions.md / 蒸馏包 docs/distill_prompts/*.md；覆盖前自动备份，不碰库与 AGENTS.md）",
         },
         "cards": cards,

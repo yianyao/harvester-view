@@ -405,6 +405,7 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
     <button data-tab="sessions">会话检索</button>
     <button data-tab="kgraph">图谱</button>
     <button data-tab="triage">蒸馏队列</button>
+<button data-tab="attrib">归因台</button>
     <button data-tab="reports">报告</button>
     <button data-tab="agg">中台</button>
     <button data-tab="topics">主题</button>
@@ -574,6 +575,26 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
   </div>
   <div id="tri-concl"></div>
   <div class="report-box" id="tri-out"><div class="empty">尚未生成</div></div>
+</section>
+
+<!-- ============ Tab: 归因台（P6-9） ============
+     候选与判定槽同屏：左边是机器出的**候选**（会错），右边是人写的**裁决**
+     （只进 attribations 台账）。判据头（等级 + 覆盖度）由后端算，页面只显示；
+     落账走 B 档两段提交（预演 → 确认），绝不在这里造第二条写路径。 -->
+<section class="tab" id="tab-attrib" style="display:none">
+  <div class="toolbar">
+    <label>窗口（天）<input type="number" id="atr-days" value="30" min="0"
+      style="width:72px">（0=全库）</label>
+    <button id="btn-atr-load" title="重新取归因候选（只读；不写任何库）">刷新候选</button>
+    <button id="btn-atr-pack" class="xbtn"
+      title="导出评审包（判据头 + 证据体 + 判定槽）：可整段贴给任意 Agent 裁决，再回填本页判定槽">导出评审包</button>
+    <span class="sub2" id="atr-meta"></span>
+  </div>
+  <div id="atr-intro"></div>
+  <div id="atr-head"></div>
+  <div id="atr-out"><div class="empty">尚未加载（点「刷新候选」）</div></div>
+  <div id="atr-decided"></div>
+  <div id="atr-packbox"></div>
 </section>
 
 <!-- ============ Tab 3: 报告 ============ -->
@@ -1047,6 +1068,7 @@ function switchTab(name){
     if(name==="sessions") loadAll().catch(()=>{});
     if(name==="kgraph") loadKgraph().catch(()=>{});
     if(name==="triage") loadTriage().catch(()=>{});
+    if(name==="attrib") loadAttrib().catch(()=>{});
     if(name==="reports"){ loadReport().catch(()=>{}); loadReportsIndex().catch(()=>{}); }
     if(name==="agg"){ loadAggFacets().catch(()=>{}); }
     if(name==="topics") loadTopics().catch(()=>{});
@@ -2015,6 +2037,167 @@ async function _renderTriage(out,t0){
   $("tri-meta").textContent+="｜生成于 "+
     new Date().toLocaleTimeString("zh-CN",{hour12:false})+
     "（"+((Date.now()-t0)/1000).toFixed(1)+"s）";
+}
+
+/* ---------- Tab: 归因台（P6-9）----------
+   三层分离（SOP A1）在页面上的落法：
+   · 事实/候选侧：`attrib` 的机读出口（`data`），逐模式给 why/fix/置信 + 锚点；
+   · 裁决侧：判定槽是**空表**，人填 verdict/note 才落账（B 档两段提交）；
+   · 判据头（等级 + 覆盖度）**由后端算**，页面只显示，绝不自己拼数字或改等级。 */
+const ATR_VERDICTS=[["accepted","接受（归因对）"],
+  ["rejected","驳回（归因错）"],["revise","要改（方向对，why/fix 需改）"]];
+const ATR_VERDICT_LABEL={accepted:"接受",rejected:"驳回",revise:"要改"};
+function atrParams(){
+  const days=Number($("atr-days").value);
+  const p={};
+  if(days>0)p.since=days;   /* 0=全库：不传 since（与报告页同口径） */
+  return p;
+}
+async function atrWaitJob(jid){
+  for(;;){
+    const job=await actApi("/api/actions/job/"+jid);
+    if(job.__err)return {__err:job.__err};
+    if(job.status==="queued"||job.status==="running"){
+      $("atr-meta").textContent="计算中…（只读）";
+      await new Promise(r=>setTimeout(r,800));
+      continue;
+    }
+    return job;
+  }
+}
+async function loadAttrib(){
+  $("atr-out").innerHTML="<div class='empty'>加载中…（只读，不写任何库）</div>";
+  $("atr-head").innerHTML=""; $("atr-decided").innerHTML="";
+  $("atr-packbox").innerHTML=""; $("atr-meta").textContent="";
+  const t0=Date.now();
+  const r=await actJson("/api/actions/run",{action_id:"attrib",
+    params:atrParams(),view_actions_api:1});
+  if(r.__err){$("atr-out").innerHTML=errorBox("取候选失败："+r.__err);return;}
+  const job=await atrWaitJob(r.job_id);
+  if(!job||job.__err){$("atr-out").innerHTML=
+    errorBox("作业失败："+((job&&job.__err)||"未知"));return;}
+  const res=(job&&job.result)||{};
+  const d=res.data||null;
+  if(!d){ /* 机读面缺失就说缺失，不拿人读 brief 硬凑成表格 */
+    $("atr-out").innerHTML=errorBox("后端没有返回机读载荷（data）："+
+      esc(res.data_error||"未知原因")+
+      "——命令台仍可用「attrib」人读出口看同一批候选。");
+    return;
+  }
+  renderAttrib(d,$("atr-out"));
+  $("atr-meta").textContent="取数于 "+esc(String(d.generated_at||""))+
+    "｜"+((Date.now()-t0)/1000).toFixed(1)+"s";
+}
+function atrSlotHtml(p,rule){
+  /* 判定槽：**默认空**（value=""）。预填任何裁决都等于替他做判断。 */
+  const opts="<option value=''>选择裁决…</option>"+
+    ATR_VERDICTS.map(v=>"<option value='"+v[0]+"'>"+esc(v[1])+"</option>")
+      .join("");
+  return "<div class='atr-slot' data-pat='"+esc(p.pattern)+
+    "' data-rule='"+esc(rule.rule_id||"")+"' data-cls='"+esc(p.class||"")+"'>"+
+    "<select class='atr-v'>"+opts+"</select>"+
+    "<input type='text' class='atr-note' placeholder='裁决说明（revise 时写清怎么改）'>"+
+    "<button class='atr-do' title='预演 → 确认（只写 attrib_meta.db 台账，不碰 harvester.db）'>落账</button>"+
+    "</div>";
+}
+function renderAttrib(d,out){
+  const rv=d.reviewable||{}, cov=d.coverage||{};
+  const pats=d.patterns||[], decided=d.reviewed||[];
+  let h="";
+  /* 判据头：等级与覆盖度都来自载荷；缺了就明说缺，不猜 */
+  h+="<div class='atr-head'>";
+  if(rv.level){
+    h+="<span class='pill rvlvl known'>"+esc(rv.level)+" "+esc(rv.label||"")+"</span>";
+  }else{
+    h+="<span class='pill rvlvl'>等级未知</span>";
+  }
+  h+="<span class='sub2'>"+esc(rv.reason||"载荷未带等级判据")+"</span></div>";
+  h+="<p class='sub2 atr-cov'>"+(cov.line_text?
+    esc(cov.line_text):"覆盖度未知：载荷未带 coverage，本表<b>不代表全库已归因</b>")+"</p>";
+  h+="<p class='sub2'>候选是<b>机器判断</b>（会错，标 candidate）；本页判定槽落的是<b>裁决</b>，"+
+    "只进 attribations 台账。未归因的模式只有计数、没有根因候选——不编。</p>";
+  if(!pats.length){
+    h+="<div class='empty'>没有候选模式（窗口内无错误，或规则全未命中）。</div>";
+  }else{
+    h+="<table class='atr-tbl'><thead><tr>"+
+      "<th>模式</th><th>类别</th><th>次数</th><th>根因候选</th>"+
+      "<th>应对候选</th><th>置信</th><th>判定槽</th></tr></thead><tbody>";
+    for(const p of pats){
+      const rule=p.rule||null;
+      h+="<tr class='atr-row' data-pat='"+esc(p.pattern)+"'>"+
+        "<td class='atr-pat'>"+esc(p.pattern)+"</td>"+
+        "<td>"+esc(CLASS_LABEL[p.class]||p.class||"")+"</td>"+
+        "<td>"+esc(String(p.count==null?"":p.count))+"</td>";
+      if(rule){
+        h+="<td>"+esc(rule.why||"")+"</td>"+
+           "<td>"+esc(rule.fix||"")+"</td>"+
+           "<td>"+esc(String(rule.confidence==null?"":rule.confidence))+
+           "（"+esc(rule.rule_id||"")+"）</td>"+
+           "<td>"+atrSlotHtml(p,rule)+"</td>";
+      }else{
+        h+="<td colspan='3' class='errline'>未归因：只有计数，没有根因候选"+
+           "（补规则后重跑；不许在这格编一个根因）</td>"+
+           "<td><span class='sub2'>无候选 → 无槽</span></td>";
+      }
+      h+="</tr>";
+    }
+    h+="</tbody></table>";
+  }
+  out.innerHTML=h;
+  /* 已裁决段：**不许静默消失**（处理过不能看起来像数据变少了） */
+  let d2="";
+  if(decided.length){
+    d2+="<h4 class='sub2'>已裁决（"+decided.length+" 条，已移出候选区；事实计数不变）</h4>"+
+      "<table class='atr-tbl'><thead><tr><th>模式</th><th>规则</th><th>裁决</th>"+
+      "<th>说明</th></tr></thead><tbody>";
+    for(const r of decided){
+      const v=(r.verdict&&(r.verdict.verdict||r.verdict))||"";
+      d2+="<tr><td class='atr-pat'>"+esc(r.pattern||"")+"</td>"+
+        "<td>"+esc((r.rule&&r.rule.rule_id)||"")+"</td>"+
+        "<td>"+esc(ATR_VERDICT_LABEL[v]||v||"")+"</td>"+
+        "<td>"+esc((r.verdict&&r.verdict.note)||"")+"</td></tr>";
+    }
+    d2+="</tbody></table>";
+  }else{
+    d2="<p class='sub2'>台账暂无裁决：本页还没有人裁过的归因。</p>";
+  }
+  $("atr-decided").innerHTML=d2;
+  for(const b of out.querySelectorAll(".atr-do"))b.onclick=()=>atrSubmit(b);
+}
+async function atrSubmit(btn){
+  const box=btn.closest?btn.closest(".atr-slot"):null;
+  if(!box){showBanner("err","找不到判定槽（页面结构变了）");return;}
+  const verdict=box.querySelector(".atr-v").value;
+  const note=box.querySelector(".atr-note").value;
+  if(!verdict){showBanner("warn","先选裁决再落账（默认空 = 不做判断）");return;}
+  if(!(state.act&&state.act.actions&&state.act.actions.length))
+    await loadCmdData().catch(()=>{});
+  const spec=actionSpec("attrib_verdict");
+  if(!spec){showBanner("warn","注册表里没有 attrib_verdict（先重生成 actions_registry.json）");return;}
+  await runWriteActionWith(spec,{pattern:box.dataset.pat,rule:box.dataset.rule,
+    cls:box.dataset.cls||"unclassified",verdict:verdict,note:note},
+    "atr-packbox",{reload:()=>loadAttrib()});
+}
+async function atrPack(){
+  if(!(state.act&&state.act.actions&&state.act.actions.length))
+    await loadCmdData().catch(()=>{});
+  const spec=actionSpec("evidence_pack");
+  if(!spec){showBanner("warn","注册表里没有 evidence_pack");return;}
+  const params={kind:"attrib"};
+  if(atrParams().since)params.since=atrParams().since;
+  $("atr-packbox").innerHTML="<div class='empty'>生成评审包…（只读）</div>";
+  const r=await actJson("/api/actions/run",{action_id:"evidence_pack",
+    params:params,view_actions_api:1});
+  if(r.__err){$("atr-packbox").innerHTML=errorBox("生成失败："+r.__err);return;}
+  const job=await atrWaitJob(r.job_id);
+  const res=(job&&job.result)||{};
+  const md=res.stdout||"";
+  if(!md){$("atr-packbox").innerHTML=errorBox("评审包为空："+
+    esc(res.stderr||"后端没有输出"));return;}
+  $("atr-packbox").innerHTML="<h4 class='sub2'>评审包（判据头 + 证据体 + 判定槽）："+
+    "整段可贴给任意 Agent 裁决，再回填上面的判定槽</h4>"+
+    "<textarea readonly rows='14' style='width:100%;font-size:11px'>"+
+    esc(md)+"</textarea>";
 }
 
 /* ---------- Tab 3: 报告 ---------- */
@@ -3050,7 +3233,9 @@ function renderDualtrack(d,out){
      绝不默认成"已全覆盖"。 */
   if(art.coverage&&art.coverage.line){
     const cv=art.coverage;
-    h+="<p class='sub2 cov'>"+esc(cv.line)+
+    /* 页面显示**纯文本**形态（`line_text`）：Markdown 的 `**` 在 HTML 里会原样
+       显示成星号。两个形态都由后端同源现算，页面不去星号、也不自己拼数字。 */
+    h+="<p class='sub2 cov'>"+esc(cv.line_text||cv.line)+
       "（已登记会话 "+esc(String(cv.registered_sessions))+" / "+
       esc(String(cv.total_sessions))+"，覆盖 "+esc(String(cv.pct))+"%）</p>";
   }else{
@@ -3992,20 +4177,27 @@ async function runWriteAction(spec,c){
     if(p&&p.server)continue;               /* 路径类参数页面不传 */
     if(state.cmdParams[k]!==undefined)params[k]=state.cmdParams[k];
   }
-  $("job-out").innerHTML="<div class='empty'>正在预演（只读，不会写库）…</div>";
+  await runWriteActionWith(spec,params,"job-out");
+}
+/* 两段提交的执行器（P6-9 从 runWriteAction 抽出：参数由调用方给、输出到指定容器，
+   归因台的判定槽因此能复用同一条写路径，不必造第二套）。*/
+async function runWriteActionWith(spec,params,outId,opts){
+  const out=$(outId||"job-out");
+  const kw=opts||{};
+  out.innerHTML="<div class='empty'>正在预演（只读，不会写库）…</div>";
   const r=await actJson("/api/actions/run",{action_id:spec.action_id,
     params:params,view_actions_api:1});
   if(r.__err){showBanner("err","预演失败："+r.__err);
-    $("job-out").innerHTML=errorBox("预演失败："+r.__err);return;}
+    out.innerHTML=errorBox("预演失败："+r.__err);return;}
   if(r.status!=="needs_confirm"){
-    $("job-out").innerHTML=jobResultHtml({result:r,label:spec.action_id});
+    out.innerHTML=jobResultHtml({result:r,label:spec.action_id});
     return;
   }
   state.pendingWrite={spec:spec,params:params,token:r.confirm_token,
-                      preview:r};
-  showConfirmDialog(r);
+                      preview:r,outId:outId,reload:kw.reload||null};
+  showConfirmDialog(r,outId);
 }
-function showConfirmDialog(r){
+function showConfirmDialog(r,outId){
   const risk=r.risk||"reversible";
   const bad=risk==="destructive";
   const lines=(r.human||[]).map(h=>"<div"+(bad?" class='errline'":"")+">"+
@@ -4022,33 +4214,36 @@ function showConfirmDialog(r){
     "<button data-cfm='no'>取消（不写）</button></div>"+
     "<div class='sub2'>参数或库状态在两段之间变了 → 服务端会拒绝并要求"
     +"重新预演（不会照写）。</div></div>";
-  $("job-out").innerHTML=html;
-  const box=$("job-out");
+  const box=$(outId||"job-out");
+  box.innerHTML=html;
   for(const b of box.querySelectorAll("[data-cfm]"))
     b.onclick=()=>b.dataset.cfm==="yes"?confirmWrite():cancelWrite();
 }
 function cancelWrite(){
+  const pw=state.pendingWrite||{};
+  const box=$(pw.outId||"job-out");
   state.pendingWrite=null;
-  $("job-out").innerHTML="<div class='sub2'>已取消 —— 没有写任何库。"+
+  box.innerHTML="<div class='sub2'>已取消 —— 没有写任何库。"+
     "（预演本身只读；台账里会留一行 preview，说明有人看过但没确认）</div>";
   showBanner("warn","已取消，未写库");
 }
 async function confirmWrite(){
   const pw=state.pendingWrite;
   if(!pw){showBanner("warn","没有待确认的写动作");return;}
-  $("job-out").innerHTML="<div class='empty'>执行中…</div>";
+  const box=$(pw.outId||"job-out");
+  box.innerHTML="<div class='empty'>执行中…</div>";
   const r=await actJson("/api/actions/run",{action_id:pw.spec.action_id,
     params:pw.params,confirm_token:pw.token,view_actions_api:1});
   state.pendingWrite=null;
   if(r.__err){
     const retry=r.__status===409;
     showBanner("err","执行被拒："+r.__err);
-    $("job-out").innerHTML=errorBox("执行被拒："+r.__err)+
+    box.innerHTML=errorBox("执行被拒："+r.__err)+
       (retry?"<div class='sub2'>需要重新预演（参数或库已变）——"+
         "点「预演」重新走一遍两段提交</div>":"");
     return;
   }
-  $("job-out").innerHTML="<div class='sub2'>已写：run_id="+esc(r.run_id||"")+
+  box.innerHTML="<div class='sub2'>已写：run_id="+esc(r.run_id||"")+
     "　用时 "+((r.elapsed_ms||0)/1000).toFixed(2)+"s</div>"+
     "<div class='c-judge'>"+esc(r.summary||"")+"</div>"+
     (r.warning?"<div class='errline'>"+esc(r.warning)+"</div>":"")+
@@ -4059,6 +4254,8 @@ async function confirmWrite(){
     "</pre></details>";
   showBanner("warn","已写库："+(r.summary||""));
   loadLedger(true).catch(()=>{});
+  /* 写的是"候选要不要再烦人"，落账后必须重取——否则页面还显示已裁决的候选 */
+  if(pw.reload)try{pw.reload();}catch(e){}
 }
 /* 台账抽屉：谁在什么时候写了哪个库（P3-2 的"全量留痕"在页面上也要看得见） */
 async function loadLedger(quiet){
@@ -4987,6 +5184,9 @@ $("btn-prev").onclick=()=>{state.offset=Math.max(0,state.offset-state.limit);
 $("btn-next").onclick=()=>{state.offset+=state.limit;
   loadSessions().catch(()=>{});};
 $("btn-triage").onclick=()=>loadTriage(true).catch(()=>{});
+$("btn-atr-load").onclick=()=>loadAttrib().catch(()=>{});
+$("btn-atr-pack").onclick=()=>atrPack().catch(()=>{});
+$("atr-days").onchange=()=>loadAttrib().catch(()=>{});
 $("btn-report").onclick=()=>loadReport(true).catch(()=>{});
 $("rep-kind").onchange=()=>loadReport().catch(()=>{});
 $("btn-agg-search").onclick=()=>loadAggSearch().catch(()=>{});

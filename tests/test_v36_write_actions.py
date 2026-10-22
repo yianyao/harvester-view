@@ -499,7 +499,8 @@ class WriteHttpTest(_Fixture):
         # → 14（v0.75 卡片复核落账 card_review：上游 v0.74 复核台账的 view 直给）
         # → 15（v0.76 chain_audit_accept：上游 v0.75 审计复核台账的 view 直给）
         # → 16（P5-⑧ 登记零散 noise_register：用户批准 2026-10-16，可逆）
-        self.assertEqual(len(b), 16)
+        # → 17（P6-9 attrib_verdict：归因台判定槽落账 attribations 台账，可逆）
+        self.assertEqual(len(b), 17)
         for a in b:
             self.assertIn(a["risk"], ("reversible", "destructive"))
 

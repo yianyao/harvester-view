@@ -40,10 +40,14 @@ if _ERR is None:  # pragma: no cover - 缺上游时由调用方报 503
     from harvester.chainaudit import (audit_chain as _ca_audit,
                                       record_audit_review as _ca_record,
                                       _node_key as _ca_node_key)
+    # P6-9 归因台：裁决只走上游台账函数（同一真源，不自拼 SQL）。
+    from harvester.attrib import (list_verdicts as _at_list_verdicts,
+                                 record_verdict as _at_record_verdict)
 else:  # pragma: no cover
     _sm = _tp = None
     _cr_current = _cr_record = _cr_key = None
     _ca_audit = _ca_record = _ca_node_key = None
+    _at_list_verdicts = _at_record_verdict = None
 
 
 class WriteError(Exception):
@@ -1139,6 +1143,82 @@ def _exec_chain_audit_accept(p: dict, cfg) -> dict:
                        "重跑 chain-audit 即不再报"}
 
 
+# ---------- 归因裁决台账（P6-9 归因台，上游 v0.79 的 attrib-review）----------
+#: 与 card_review / chain_audit_accept 同一套两段提交。**只写 attrib_meta.db
+#: 的 attribations 表**（`harvester.attrib.record_verdict`，UPSERT 改判=覆盖），
+#: 事实库 harvester.db 一字节不动——归因台的"判定槽"落账通道就这一条。
+
+_ATTRIB_VERDICTS = ("accepted", "rejected", "revise")
+
+
+def _attrib_meta(cfg) -> Path:
+    if not getattr(cfg, "attrib_meta", None):
+        raise WriteError("未配置 attrib_meta（起服时加 --attrib-meta；"
+                         "缺省=<db 同目录>/attrib_meta.db）")
+    return Path(cfg.attrib_meta)
+
+
+def _attrib_verdict_keys(p: dict, cfg) -> tuple:
+    """预演/执行共用的取键逻辑（同一真源，不算两套）。"""
+    pattern = str(p.get("pattern") or "").strip()
+    rule = str(p.get("rule") or "").strip()
+    if not pattern or not rule:
+        raise WriteError("pattern 与 rule 都必填（照候选表原样抄，别手改）")
+    verdict = str(p.get("verdict") or "accepted")
+    if verdict not in _ATTRIB_VERDICTS:
+        raise WriteError(f"verdict 不支持：{verdict}（可选 "
+                         + "|".join(_ATTRIB_VERDICTS) + "）")
+    return pattern, rule, verdict
+
+
+def _plan_attrib_verdict(p: dict, cfg) -> dict:
+    """预演：说清"落哪一行、改判还是新增"（只读，无副作用）。"""
+    meta = _attrib_meta(cfg)
+    pattern, rule, verdict = _attrib_verdict_keys(p, cfg)
+    before = None
+    if meta.is_file():
+        try:
+            before = next((r for r in _at_list_verdicts(meta)
+                           if r.get("pattern_key") == pattern
+                           and r.get("rule_id") == rule), None)
+        except Exception:  # noqa: BLE001 - 台账读不出不阻断预演，如实说明
+            before = None
+    human = [f"动作：归因裁决落账——规则 **{rule}** ← 模式 **{pattern}**",
+             f"裁决：**{verdict}**（accepted=接受；rejected=驳回；"
+             "revise=方向对但 why/fix 要改）",
+             f"目标：{meta}（attribations 表；**不碰 harvester.db**）",
+             ("将**改判**已有那一行（UPSERT 覆盖）" if before else
+              "将在台账**新增**一行"),
+             "落账后重跑 attrib：该候选移出候选区、落到「已裁决」段"
+             "（不会静默消失）"]
+    if p.get("note"):
+        human.append(f"说明：{p['note']}")
+    return {"target_path": str(meta),
+            "before": ({"verdict": before.get("verdict"),
+                        "note": before.get("note") or ""} if before else None),
+            "after": {"pattern_key": pattern, "rule_id": rule,
+                      "verdict": verdict},
+            "snapshot": None,
+            "limits": ["预演列的是台账当前状态；两段之间若台账被改，"
+                       "服务端按参数指纹拒绝并要求重新预演"],
+            "human": human,
+            "noop": False}
+
+
+def _exec_attrib_verdict(p: dict, cfg) -> dict:
+    meta = _attrib_meta(cfg)
+    pattern, rule, verdict = _attrib_verdict_keys(p, cfg)
+    n = _at_record_verdict(meta, pattern, rule,
+                           cls=str(p.get("cls") or "unclassified"),
+                           verdict=verdict,
+                           note=str(p.get("note") or ""),
+                           reviewed_by=str(p.get("by") or ""))
+    return {"recorded": n, "pattern": pattern, "rule": rule,
+            "verdict": verdict,
+            "summary": f"已落账 {n} 条归因裁决（{verdict}）：{rule} ← {pattern}；"
+                       "重跑 attrib 即不再把该候选列进候选区"}
+
+
 WRITE_ACTIONS: dict[str, dict] = {
     "session_suppress": {"plan": _plan_session_suppress,
                          "execute": _exec_session_suppress},
@@ -1152,6 +1232,8 @@ WRITE_ACTIONS: dict[str, dict] = {
                     "execute": _exec_card_review},
     "chain_audit_accept": {"plan": _plan_chain_audit_accept,
                            "execute": _exec_chain_audit_accept},
+    "attrib_verdict": {"plan": _plan_attrib_verdict,
+                       "execute": _exec_attrib_verdict},
     "topic_register": {"plan": _plan_topic_register,
                        "execute": lambda p, c: _exec_topic({**p, "__kind": "register"}, c)},
     "topic_add": {"plan": _plan_topic_add,

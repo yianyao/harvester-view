@@ -13,6 +13,7 @@
   "topics_meta": "topics_meta.db（主题注册表）",
   "keywords_meta": "keywords_meta.db（n-gram 统计累积表）",
   "cards_meta": "cards_meta.db（卡片复核台账：人裁过的不许再烦人，v0.74）",
+  "attrib_meta": "attrib_meta.db（归因裁决台账：人裁过的候选不再列出，v0.79 P6）",
   "repo_files": "主库仓内工作文件（建议池 agents_suggestions.md / 蒸馏包 docs/distill_prompts/*.md；覆盖前自动备份，不碰库与 AGENTS.md）"
  },
  "cards": [
@@ -359,6 +360,102 @@
   }
  ],
  "write_actions": [
+  {
+   "action_id": "attrib_verdict",
+   "tier": "B",
+   "cmd": "attrib-review",
+   "subaction": null,
+   "risk": "reversible",
+   "target": "attrib_meta",
+   "summary": "归因裁决落账（{verdict}）：规则 {rule} ← 模式 {pattern}",
+   "detail": "写 attrib_meta.db 的 attribations 台账（UPSERT：改判=覆盖同一行）。**不碰 harvester.db**——事实计数一字节不动；裁决只决定「这条候选还烦不烦人」。落账后重跑 attrib，该候选移出候选区、落到「已裁决」段（**不会静默消失**，处理过不能看起来像数据变少了）。verdict 三态：accepted=接受该归因；rejected=驳回（归因错了）；revise=方向对但 why/fix 需改（note 写怎么改）。",
+   "params": [
+    {
+     "name": "pattern",
+     "dest": "pattern",
+     "arg": "--pattern",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "归一模式（照候选表「模式」列原样，如 ABORTED）"
+    },
+    {
+     "name": "rule",
+     "dest": "rule",
+     "arg": "--rule",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "归因规则 id（如 AR-001；候选表里的「规则」列）"
+    },
+    {
+     "name": "cls",
+     "dest": "cls",
+     "arg": "--class",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "错误分类（写进台账，记裁决当时的类别；缺省 unclassified）"
+    },
+    {
+     "name": "verdict",
+     "dest": "verdict",
+     "arg": "--verdict",
+     "kind": "enum",
+     "src": "none",
+     "server": false,
+     "required": true,
+     "choices": [
+      "accepted",
+      "rejected",
+      "revise"
+     ],
+     "default": "accepted",
+     "note": null,
+     "label": "裁决：accepted=接受；rejected=驳回；revise=方向对但 why/fix 要改"
+    },
+    {
+     "name": "note",
+     "dest": "note",
+     "arg": "--note",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "裁决说明（写进台账，供日后复查；revise 时写清怎么改）"
+    },
+    {
+     "name": "by",
+     "dest": "by",
+     "arg": "--by",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "谁裁决的（写进台账；缺省留空不猜身份）"
+    }
+   ],
+   "writes": "attrib_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  },
   {
    "action_id": "card_review",
    "tier": "B",
@@ -1131,8 +1228,8 @@
  "counts": {
   "cards": 13,
   "read_actions": 38,
-  "write_actions": 16,
-  "write_reversible": 13,
+  "write_actions": 17,
+  "write_reversible": 14,
   "write_destructive": 3
  }
 }

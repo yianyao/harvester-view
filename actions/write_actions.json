@@ -469,6 +469,52 @@
      "label": "裁决说明（写进台账，供日后复查）"
     }
    }
+  },
+  {
+   "action_id": "attrib_verdict",
+   "cmd": "attrib-review",
+   "risk": "reversible",
+   "target": "attrib_meta",
+   "summary": "归因裁决落账（{verdict}）：规则 {rule} ← 模式 {pattern}",
+   "detail": "写 attrib_meta.db 的 attribations 台账（UPSERT：改判=覆盖同一行）。**不碰 harvester.db**——事实计数一字节不动；裁决只决定「这条候选还烦不烦人」。落账后重跑 attrib，该候选移出候选区、落到「已裁决」段（**不会静默消失**，处理过不能看起来像数据变少了）。verdict 三态：accepted=接受该归因；rejected=驳回（归因错了）；revise=方向对但 why/fix 需改（note 写怎么改）。",
+   "allow": [
+    "pattern",
+    "rule",
+    "cls",
+    "verdict",
+    "note",
+    "by",
+    "meta"
+   ],
+   "params": {
+    "pattern": {
+     "map": "pattern",
+     "required": true,
+     "label": "归一模式（照候选表「模式」列原样，如 ABORTED）"
+    },
+    "rule": {
+     "map": "rule",
+     "required": true,
+     "label": "归因规则 id（如 AR-001；候选表里的「规则」列）"
+    },
+    "cls": {
+     "map": "cls",
+     "label": "错误分类（写进台账，记裁决当时的类别；缺省 unclassified）"
+    },
+    "verdict": {
+     "map": "verdict",
+     "required": true,
+     "label": "裁决：accepted=接受；rejected=驳回；revise=方向对但 why/fix 要改"
+    },
+    "note": {
+     "map": "note",
+     "label": "裁决说明（写进台账，供日后复查；revise 时写清怎么改）"
+    },
+    "by": {
+     "map": "by",
+     "label": "谁裁决的（写进台账；缺省留空不猜身份）"
+    }
+   }
   }
  ]
 }

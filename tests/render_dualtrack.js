@@ -129,7 +129,9 @@ const FIXTURE = {
   ], coverage: { sources: ["dsh"], registered_sessions: 8,
       registered_versions: 13, total_sessions: 1776, pct: 0.5,
       line: "- 覆盖度：**仅 dsh 源**（`artifacts.py:8` 自陈），已登记 8 / "
-          + "总会话 1776（0.5%）——其余源已实测判负；**本面不代表全库**" } },
+          + "总会话 1776（0.5%）——其余源已实测判负；**本面不代表全库**",
+      line_text: "- 覆盖度：仅 dsh 源（artifacts.py:8 自陈），已登记 8 / "
+          + "总会话 1776（0.5%）——其余源已实测判负；本面不代表全库" } },
   nags: {
     account: { user_turns: 400, n_inject: 31, n_short: 22, n_paste: 15,
                n_lane: 332, n_hits: 9, n_template_groups: 1, n_groups: 4 },
@@ -306,9 +308,12 @@ async function main() {
      "⑥ 下轨显示后端算出的覆盖度（仅 dsh 源 + 已登记/总会话）");
   ok(covP.includes("本面不代表全库"),
      "⑥ 覆盖度旁明说「本面不代表全库」");
-  /* 页面必须**原样**显示后端给的这条（不许自己拼数字） */
-  ok(covP.includes(FIXTURE.artifacts.coverage.line),
-     "⑥ 页面原文透传 coverage.line（不自行拼数字）");
+  /* 页面必须**原样**显示后端给的这条（不许自己拼数字）；显示的是纯文本形态
+     （`line_text`），且**不许把 Markdown 星号漏到页面上**。 */
+  ok(covP.includes(FIXTURE.artifacts.coverage.line_text),
+     "⑥ 页面原文透传 coverage.line_text（不自行拼数字）");
+  ok(!covP.includes("**") && !covP.includes("`"),
+     "⑥ 覆盖度行不把 Markdown 标记漏成页面文本");
   const outNoCov = mkEl();
   renderDualtrack(Object.assign({}, FIXTURE, { artifacts: {
     configured: true, files: [], n_files: 0, n_versions: 0 } }), outNoCov);

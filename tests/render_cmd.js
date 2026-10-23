@@ -343,6 +343,19 @@ check("结果渲染模式行", jHtml.includes("FS_STALE_VERSION"));
 check("模式次数是可点的门", jHtml.includes("data-pat="));
 check("原始 JSON 可展开（机器口径不丢）", jHtml.includes("原始 JSON"));
 
+/* ⑥b Top-N 截断必须报数（用户口径：不到阈值不显示，但**被滤掉的要说得清**）*/
+const many = { status: "done", label: "report-errors", elapsed_ms: 1,
+  result: { meta: { error_count: 381 }, by_class: { env: 381 },
+    patterns: Array.from({ length: 12 }, (_, i) => (
+      { pattern: "PAT" + i, count: 12 - i })) } };
+const mHtml = jobResultHtml(many);
+check("Top 8 之外有「另有 N 个未列」", /另有 4 个未列/.test(mHtml));
+check("Top 8 之外给全量出口（导出 JSON）", /完整清单用「导出 JSON」/.test(mHtml));
+const few = { status: "done", label: "x", elapsed_ms: 1,
+  result: { meta: {}, by_class: { env: 1 },
+    patterns: [{ pattern: "ONLY", count: 1 }] } };
+check("模式不足 8 个时不显示余量句", !/另有 0 个未列/.test(jobResultHtml(few)));
+
 /* ⑦ P2-5 数字皆门：三跳接线 + 逐级数字对账 */const ERR = { meta: { error_count: 3, total_steps: 20, sessions: 2 },
   by_class: { tool_interface: 3 }, by_bucket: {}, by_source: {},
   patterns: [{ pattern: "FS_STALE_VERSION", "class": "tool_interface",

@@ -70,8 +70,10 @@ ok(avSlice(old).indexOf("累计") < 0 && avSlice(old).indexOf("比率") < 0,
 
 /* ---------- 环标题的"有 N 段有积压"只数待处理段 ---------- */
 const homeRingsBox = { innerHTML: "" };
+const qBox = { innerHTML: "" };
 const $ = id => (
-  id === "home-rings" ? homeRingsBox : { innerHTML: "", textContent: "" });
+  id === "home-rings" ? homeRingsBox
+    : (id === "home-qdetail" ? qBox : { innerHTML: "", textContent: "" }));
 const bindWorkGo = () => {};
 eval(extract("armHtml"));
 eval(extract("renderRings"));
@@ -87,10 +89,44 @@ renderRings({
 });
 const ringHtml = homeRingsBox.innerHTML;
 const ringHead = (ringHtml.match(/<div class='rt'>[\s\S]*?<\/div>/) || [""])[0];
-ok(ringHead.indexOf("有 2 段有积压") >= 0,
-   "环标题只数待处理/零星段（532 的累计段不算积压）：期望「有 2 段有积压」");
-ok(ringHead.indexOf("有 3 段") < 0, "累计段没有被算进积压");
-ok(ringHtml.indexOf("class='arm info'") >= 0, "环里累计段仍是 info");
+/* 2026-10-23 用户口径「不到的就不显示」：积压只数**待处理**（warn）。
+   零星(watch) 与累计(stock) 折进 details，不再算积压。 */
+ok(ringHead.indexOf("有 1 段有积压") >= 0,
+   "环标题只数待处理段（warn）：期望「有 1 段有积压」");
+ok(ringHead.indexOf("有 3 段") < 0, "零星/累计段没有被算进积压");
+ok(ringHtml.indexOf("class='arm info'") >= 0, "环里累计段仍是 info（只是折进 details）");
+
+/* 折叠是"默认不占视野"，不是"删掉"：待处理在外、其余在 details 里，条数写清 */
+const headPart = ringHtml.split("<details class='arms-more'>")[0];
+const foldPart = ringHtml.split("<details class='arms-more'>")[1] || "";
+ok(headPart.indexOf("class='arm warn'") >= 0, "待处理段直接显示在环上");
+ok(headPart.indexOf("class='arm watch'") < 0 && headPart.indexOf("class='arm info'") < 0,
+   "零星/累计段不在环面上（未达阈值不显示）");
+ok(/另有 2 段未达阈值/.test(foldPart), "折叠摘要写明还有 2 段（不静默消失）");
+ok(foldPart.indexOf("class='arm watch'") >= 0 && foldPart.indexOf("class='arm info'") >= 0,
+   "点开后能看到同一批卡片（数据没丢）");
+
+/* ---------- 队列明细（处理单/工作台的拆解）同一口径 ---------- */
+eval(extract("renderQueueDetail"));
+renderQueueDetail({
+  queues: [{ queue_id: "repair", label: "待修" }],
+  queue_details: {
+    repair: [
+      arm({ value: 5, kind: "action", level: "warn" }),
+      arm({ value: 2, kind: "action", level: "watch" }),
+      arm({ value: 38, kind: "stock", level: "info" }),
+    ],
+  },
+});
+const qHtml = qBox.innerHTML;
+const qHead = qHtml.split("<details class='arms-more'>")[0];
+const qFold = qHtml.split("<details class='arms-more'>")[1] || "";
+ok(qHead.indexOf("class='arm warn'") >= 0 && qHead.indexOf("待处理 1 项") >= 0,
+   "队列拆解只把待处理摆面上，并写明条数");
+ok(qHead.indexOf("class='arm watch'") < 0 && qHead.indexOf("class='arm info'") < 0,
+   "队列拆解里零星/累计不在面上");
+ok(/另有 2 项未达阈值/.test(qFold), "队列拆解折叠摘要写明还有 2 项");
+ok(qFold.indexOf("class='arm info'") >= 0, "队列拆解点开仍能看到累计项（没删）");
 
 console.log(fail ? ("FAILED: " + fail) : "ALL ARM-KIND RENDER CHECKS PASSED");
 process.exit(fail ? 1 : 0);

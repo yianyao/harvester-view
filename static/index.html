@@ -3460,8 +3460,10 @@ async function _renderAggFacets(out){
         (f.sources||[]).map(s=>esc(s.name)+" "+s.count).join("、")+
         "</span><br><span class='stat'>模型："+
         (f.models||[]).slice(0,6).map(s=>esc(s.name)+" "+s.count).join("、")+
+        ((f.models||[]).length>6?("… 共 "+(f.models||[]).length+" 项"):"")+
         "</span><br><span class='stat'>Skill："+
         (f.skills||[]).slice(0,8).map(s=>esc(s.name)+" "+s.count).join("、")+
+        ((f.skills||[]).length>8?("… 共 "+(f.skills||[]).length+" 项"):"")+
         "</span>";
     }
     html+="</div>";
@@ -3473,6 +3475,7 @@ async function _renderAggFacets(out){
     s.count+"</td></tr>").join("")+"</tbody></table>"+
     "<p class='sub2'>模型合计："+
     (mg.models||[]).slice(0,8).map(s=>esc(s.name)+" "+s.count).join("、")+
+    ((mg.models||[]).length>8?("… 共 "+(mg.models||[]).length+" 项"):"")+
     "｜时间范围 "+esc(mg.time_min||"?")+" ~ "+esc(mg.time_max||"?")+"</p>";
   out.innerHTML=html;
 }
@@ -4437,9 +4440,14 @@ function jobResultHtml(job){
       "<tbody>"+Object.entries(cls).sort((a,b)=>b[1]-a[1]).map(e=>
       "<tr><td>"+esc(clsLabel(e[0]))+"</td><td class='num'>"+e[1]+
       "</td></tr>").join("")+"</tbody></table>";
-    const pats=(r.patterns||[]).slice(0,8);
+    const allPats=r.patterns||[];
+    const pats=allPats.slice(0,8);
     if(pats.length)
-      h+="<div class='sub2'>模式 Top "+pats.length+"（点次数看命中会话）</div>"+
+      h+="<div class='sub2'>模式 Top "+pats.length+
+        (allPats.length>pats.length
+          ?("（共 "+allPats.length+" 个，另有 "+(allPats.length-pats.length)+
+            " 个未列；完整清单用「导出 JSON」）")
+          :"")+"（点次数看命中会话）</div>"+
         pats.map(p=>"<div>"+esc(p.pattern)+" "+
         "<a href='javascript:void(0)' data-pat=\""+esc(p.pattern)+
         "\" class='anchor'>x"+p.count+"</a></div>").join("");
@@ -4819,11 +4827,20 @@ function renderQueueDetail(d){
   const det=d.queue_details||{};
   let h="<details open><summary>队列明细（每行数字都能点开**它自己**的明细）</summary>";
   for(const q of d.queues||[]){
-    const arms=det[q.queue_id]||[];
-    if(!arms.length)continue;
+    const all=det[q.queue_id]||[];
+    if(!all.length)continue;
+    /* 与环上同一口径（用户 2026-10-23「不到的就不显示」）：待处理摆面上，
+       累计/零星/无积压折进 details——条数写清，点开还是同一批卡片。 */
+    const hot=all.filter(a=>a.level==="warn");
+    const cold=all.filter(a=>a.level!=="warn");
     h+="<div class='sub2' style='margin-top:6px'><b>"+esc(q.label)+"</b> 的拆解："+
+      (hot.length?("待处理 "+hot.length+" 项"):"无待处理项")+
       "（同一批明细可有多条指标：条目数与次数和分开算，各自标注）</div>";
-    h+="<div class='arms'>"+arms.map(a=>armHtml(a)).join("")+"</div>";
+    h+="<div class='arms'>"+hot.map(a=>armHtml(a)).join("")+"</div>";
+    if(cold.length)
+      h+="<details class='arms-more'><summary class='sub2'>另有 "+cold.length+
+        " 项未达阈值（累计/零星/无积压）——点开看数</summary><div class='arms'>"+
+        cold.map(a=>armHtml(a)).join("")+"</div></details>";
   }
   h+="</details>";
   const box=$("home-qdetail");
@@ -4867,18 +4884,23 @@ function renderRings(d){
   const rs=d.rings||[];
   if(!rs.length){box.innerHTML="<div class='empty'>无环数据</div>";return;}
   box.innerHTML=rs.map(r=>{
-    const blocked=(r.arms||[]).filter(a=>a.value>0 && a.kind!=="stock").length;
-    /* 「另有 N 段」= 没进积压但确实有数的段（累计量 / 零星 1–2 条）。
-       不写这一行的话，人会以为"环上就两段有料"，其实是被分类挡掉了。 */
-    const quiet=(r.arms||[]).filter(a=>a.value>0 &&
-      (a.kind==="stock"||a.level==="watch")).length;
+    const arms=r.arms||[];
+    /* 用户 2026-10-23：「不到的就不显示」——首页只摆**待处理**（warn）段；
+       零星(watch)/累计(stock/info)/无(ok) 一律折进 details，但**数得清**：
+       摘要写明条数，点开还是同一批卡片（不是删掉，是默认不占视野）。 */
+    const hot=arms.filter(a=>a.level==="warn");
+    const cold=arms.filter(a=>a.level!=="warn");
+    const blocked=hot.length;
     return "<div class='ring'><div class='rt'>"+esc(r.title)+
       "　<span class='sub2'>"+(blocked?
-        ("有 "+blocked+" 段有积压"):"无积压")+"</span>"+
-      (quiet?("<span class='sub2'>｜另有 "+quiet+
-        " 段为累计/零星（不计入积压）</span>"):"")+"</div>"+
+        ("有 "+blocked+" 段有积压"):"无积压")+"</span></div>"+
       "<div class='rd'>"+esc(r.definition||"")+"</div>"+
-      "<div class='arms'>"+(r.arms||[]).map(a=>armHtml(a)).join("")+"</div></div>";
+      "<div class='arms'>"+hot.map(a=>armHtml(a)).join("")+"</div>"+
+      (cold.length
+        ?("<details class='arms-more'><summary class='sub2'>另有 "+cold.length+
+          " 段未达阈值（累计/零星/无积压）——点开看数，不计入积压</summary>"+
+          "<div class='arms'>"+cold.map(a=>armHtml(a)).join("")+"</div></details>")
+        :"")+"</div>";
   }).join("");
   /* 闭环健康的每一段与四队列走**同一条动线**（用户 2026-10-13：当前不能跳转、
      也无建议）——每段都带 target 与 suggestion，于是都点得动。 */

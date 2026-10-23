@@ -154,5 +154,37 @@ const origRender = renderErrors;
 fakeChip.onclick();
 ok(state.repMin === 1, "点「全部」后阈值变成 1（state.repMin）");
 
+/* ---------- 方案 B：被滤掉的尾部里，"窗口内首见"必须单独报数 ---------- */
+const FRESH = {
+  meta: { total_steps: 100, error_count: 10, sessions: 2,
+          since: "2026-09-23 00:00:00" },
+  by_class: {}, attrib_status: "n/a",
+  patterns: [
+    { pattern: "OLD-BIG", class: "env", count: 9, tools: ["t"],
+      samples: [], first_seen: "2026-01-01 00:00:00" },
+    { pattern: "NEW-1", class: "env", count: 1, tools: ["t"],
+      samples: [], first_seen: "2026-10-20 10:00:00" },
+    { pattern: "NEW-2", class: "env", count: 2, tools: ["t"],
+      samples: [], first_seen: "2026-10-21 10:00:00" },
+    { pattern: "OLDER-SMALL", class: "env", count: 1, tools: ["t"],
+      samples: [], first_seen: "2026-02-01 00:00:00" },
+  ],
+};
+state.repMin = undefined;
+state.repLast = FRESH;
+const fOut = mkOut();
+renderErrors(FRESH, fOut);
+ok(remOf(fOut.innerHTML).indexOf("另有 3 条次数") >= 0,
+   "三条被滤掉的（两条新 + 一条旧小样本）");
+ok(remOf(fOut.innerHTML).indexOf("2 条是本窗口首见的新坑") >= 0,
+   "首见条数按 first_seen ≥ 窗口起点算（2 条，不是 3 条）");
+/* 无窗口（since=null，全库口径）时不许瞎报"首见" */
+const NO_WIN = { meta: { since: null }, by_class: {}, patterns: FRESH.patterns };
+state.repLast = NO_WIN;
+const nwOut = mkOut();
+renderErrors(NO_WIN, nwOut);
+ok(remOf(nwOut.innerHTML).indexOf("首见") < 0,
+   "全库口径（since=null）不报首见——那是无意义的口径");
+
 console.log(fail ? ("FAILED: " + fail) : "ALL THRESHOLD RENDER CHECKS PASSED");
 process.exit(fail ? 1 : 0);

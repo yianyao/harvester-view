@@ -568,7 +568,24 @@ actApi = u => { supApiCalls.push(u); return Promise.resolve(SUP); };
   check("取消勾选后表格与分页恢复",
     $("sess-table").style.display === "" && $("pager").style.display === "");
 
-  console.log(failed ? ("\n" + failed + " CHECK(S) FAILED") :
+  /* ---------- v0.80 命令台三项（用户 2026-10-23 批准）----------
+   这里做**接线面**断言（源码文本）：DOM 行为由手测 + boot_sequence 覆盖。 */
+check("G1 只有 A 档自动执行（B/C 绝不）",
+  /if\(spec\.tier==="A"&&typeof runCmdAction==="function"\)/.test(html));
+check("G1 自动执行说明可见（banner 写清跑了什么）",
+  html.includes("已自动执行（A 档只读）"));
+check("G1 B 档文案仍是「预演→确认→才写」",
+  html.includes("点「预演」看清将写什么，确认后才写"));
+check("G3 会话选择器有「按标题搜全库」",
+  html.includes("btn-cmd-sidsearch") && html.includes("/api/sessions?q="));
+check("G3 搜索走 encodeURIComponent（不拼裸串）",
+  html.includes('/api/sessions?q="+encodeURIComponent(q)'));
+check("L3 结果区有「打包给 LLM」按钮", html.includes("data-llmpack"));
+check("L3 打包走 llm_pack 只读动作",
+  html.includes('action_id:"llm_pack"'));
+check("L3 明说页面不调模型", html.includes("不调模型"));
+
+console.log(failed ? ("\n" + failed + " CHECK(S) FAILED") :
     "\nALL COMMAND-PALETTE CHECKS PASSED");
   process.exit(failed ? 1 : 0);
 })();

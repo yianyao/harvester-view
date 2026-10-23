@@ -160,6 +160,39 @@ class TestLegendMatchesPolicy(unittest.TestCase):
                          "页面阈值 REP_MIN_DEFAULT 与 severity.ACTION_MIN 不一致")
 
 
+class TestThresholdLedger(unittest.TestCase):
+    """方案 B（用户 2026-10-23 批准）：**每个阈值都要说清用途**，
+    否则"同一个词四种口径"的漂移还会再来（A 区用 2、报告页用 3 时无人解释）。"""
+
+    def test_ledger_covers_all_four_meanings(self):
+        got = {t["id"] for t in sev.THRESHOLDS}
+        self.assertEqual(got, {"recur", "sample", "fresh", "zero"})
+
+    def test_ledger_values_are_the_live_constants(self):
+        """登记表里的数必须就是代码用的数（写两份 = 又一套口径）。"""
+        by = {t["id"]: int(t["value"]) for t in sev.THRESHOLDS}
+        self.assertEqual(by["recur"], sev.ACTION_MIN)
+        self.assertEqual(by["sample"], sev.RATE_MIN_SAMPLE)
+        self.assertEqual(by["fresh"], sev.NEW_PATTERN_MIN)
+        self.assertEqual(by["zero"], sev.WATCH_MAX)
+
+    def test_each_entry_says_purpose_and_scope(self):
+        for t in sev.THRESHOLDS:
+            self.assertTrue(t["purpose"].strip(), "阈值 %s 缺用途" % t["id"])
+            self.assertTrue(t["applies"].strip(), "阈值 %s 缺适用范围" % t["id"])
+        notes = sev.threshold_notes()
+        self.assertEqual(len(notes), len(sev.THRESHOLDS))
+        self.assertTrue(all("：" in n for n in notes))
+
+    def test_page_reports_first_seen_among_hidden(self):
+        """被滤掉的尾部里若有"窗口内首见"的坑，必须单独报数——
+        这是方案 B 里唯一真正新增的可见性（新意 ≠ 次数）。"""
+        self.assertIn("freshAmong", HTML)
+        self.assertIn("本窗口首见的新坑", HTML)
+        self.assertIn("freshAmong(pGate.under", HTML,
+                      "报告页余量句必须真的把首见条数算进去（不是写死）")
+
+
 class _RealCfg:
     """真库 cfg（与 test_v40 同款路径；缺库时整类 skip）。"""
 

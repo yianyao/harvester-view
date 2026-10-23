@@ -1987,13 +1987,26 @@ async function _renderTriage(out,t0){
     d.error_count_window+"｜卡片比对 "+
     (d.cards_scanned==null?"未配置":d.cards_scanned+" 文件");
   const known=p=>p?"<span class='pill known'>疑似已有卡</span>":"";
+  /* v0.80：类别与"根因/应对"同源（都来自归因层，一个 rule_id 一条候选）。
+     折叠在模式下面而不是加第 8 列——表格已经 7 列，再加就挤成天书。 */
+  const whyFix=x=>{
+    if(!x.why&&!x.fix)return "";
+    return "<details class='panel-intro'><summary>根因 / 应对"+
+      (x.rule_id?"（"+esc(x.rule_id)+"）":"")+"</summary>"+
+      (x.why?"<div><b>根因</b>："+esc(x.why)+"</div>":"")+
+      (x.fix?"<div><b>应对</b>："+esc(x.fix)+"</div>":"")+
+      "</details>";
+  };
+  const classCell=x=>(x["class"]||"unclassified")+
+    ((x["class"]||"")==="unclassified"?"<div class='sub2'>未归因：报错本身没给根因</div>":"");
   let html="";
   html+="<h3 class='sec'>A. 新错误 pattern（优先做 pitfall 卡）</h3>";
   html+=d.new_patterns.length?("<table><thead><tr><th>模式</th><th>类别</th>"+
     "<th>工具</th><th class='num'>窗口内次数</th><th>首现</th>"+
     "<th>锚点样例</th><th>动作</th></tr></thead><tbody>"+
     d.new_patterns.map(x=>"<tr><td>"+esc(x.pattern)+" "+known(x.known_card)+
-    "</td><td>"+esc(x["class"])+"</td><td>"+esc(x.tools.join("/"))+
+    whyFix(x)+
+    "</td><td>"+classCell(x)+"</td><td>"+esc(x.tools.join("/"))+
     "</td><td class='num'>"+x.count+"</td><td class='t-date'>"+
     esc(x.first_seen)+"</td><td>"+
     x.samples.map(s=>anchor(s.sid,s.seq,s.error)).join("<br>")+
@@ -2008,7 +2021,8 @@ async function _renderTriage(out,t0){
   html+=d.old_patterns.length?("<table><thead><tr><th>模式</th><th>类别</th>"+
     "<th class='num'>窗口内次数</th><th>首现</th></tr></thead><tbody>"+
     d.old_patterns.map(x=>"<tr><td>"+esc(x.pattern)+" "+known(x.known_card)+
-    "</td><td>"+esc(x["class"])+"</td><td class='num'>"+x.count+
+    whyFix(x)+
+    "</td><td>"+classCell(x)+"</td><td class='num'>"+x.count+
     "</td><td class='t-date'>"+esc(x.first_seen)+"</td></tr>").join("")+
     "</tbody></table>"):"<div class='empty'>无</div>";
   html+="<h3 class='sec'>C. Skill 行为链候选（workflow 卡素材）</h3>";
@@ -2295,11 +2309,25 @@ function repGate(rows, min) {
            underCount: under.reduce((a, r) => a + r.count, 0),
            total: rows.reduce((a, r) => a + r.count, 0) };
 }
-function repRemain(g, min, shownN) {
+/* 「首见」= 被阈值滤掉的条目里，first_seen 落在当前窗口内的那几条。
+   新意与次数是两件事（用户 2026-10-23 批准的方案 B）：1 次的新坑也要报数，
+   否则"藏起来的那堆里有没有从没见过的问题"就无处可查。 */
+function freshAmong(under, since) {
+  if (!since) return [];
+  /* 行有两种形态：{count, …} 与 {count, t: 原行}（报告页是后者）——
+     两种都要认，否则首见永远算成 0（踩过：只看 r.first_seen 时安静返回空）。 */
+  const seenOf = r => r.first_seen || (r.t && r.t.first_seen) || "";
+  return under.filter(r => { const v = seenOf(r); return v && v >= since; });
+}
+function repRemain(g, min, shownN, fresh) {
   let s = "共 " + g.over.length + " 条 / " + g.total + " 次错误";
   if (g.underN)
     s += "；<b>另有 " + g.underN + " 条次数 &lt;" + min + "（合计 " + g.underCount
       + " 次错误）按阈值未显示</b>";
+  const f = fresh || [];
+  if (f.length)
+    s += "；其中 <b>" + f.length + " 条是本窗口首见的新坑</b>——次数少不代表不重要"
+      + "（新意阈值 = 首见即算，见蒸馏队列 A 区）";
   if (shownN != null && shownN < g.over.length)
     s += "；表内只显示前 " + shownN + " 条（完整清单用「导出 JSON」）";
   return s;
@@ -2622,7 +2650,8 @@ function renderErrors(d,out){
     :"<div class='empty'>steps 表无错误记录</div>";
   if(pGate.over.length||pGate.underN)
     html+="<div class='sub2 rep-rem'>"+repRemain(pGate, pMin,
-      Math.min(pGate.over.length, 60))+"</div>";
+      Math.min(pGate.over.length, 60),
+      freshAmong(pGate.under, (d.meta||{}).since))+"</div>";
   out.innerHTML=html;
   for(const el of out.querySelectorAll("[data-errchip]"))
     el.onclick=()=>{if(typeof state==="undefined")return;
@@ -4482,6 +4511,15 @@ function jobResultHtml(job){
         "topics_meta.db（audit_review 表）。</div>";
     }
   }
+  /* v0.80 L3（用户 2026-10-23 批准）：把当前结果打包成"给 LLM 看的一段"。
+     纪律：本视图**不调 LLM、不打质量分**——只把该看的字段与锚点装成一包
+     （后端 llm-pack 只读动作负责收集与校验），人自己决定交给谁。 */
+  h+="<h4 class='sec'>交接给 LLM</h4><div class='sub2'>把这次结果里「可机读的部分」</div>"+
+    "<div style='margin:6px 0'><button class='xbtn' data-llmpack='1'>"+
+    "打包给 LLM（只读，不调模型）</button>"+
+    " <span class='sub2'>产出 JSON 包：每项 = 主体 + 事实 + 可填的 verdict 槽位；"+
+    "页面只收集与校验，判断仍由人/模型做。</span></div>"+
+    "<div id='llmpack-out'></div>";
   h+="<details><summary>原始 JSON</summary><pre style='max-height:260px;"+
     "overflow:auto;font-size:11px'>"+esc(JSON.stringify(r,null,1).slice(0,20000))+
     "</pre></details>";
@@ -4509,6 +4547,26 @@ function jobResultHtml(job){
        warn 传完整警告文本（后端按子串匹配，完整串=精确那一行）。
        注意绑定点：这些按钮在 renderCards 输出（#rep-out），
        由 bindCardDirect 在 renderCards 末尾绑定——不在这里（#job-out）。 */
+    /* v0.80：打包给 LLM —— 走 llm_pack 只读动作（服务端收集 + --validate 自检），
+       结果就地渲染成可复制的 JSON + 下载按钮。 */
+    for(const b of el.querySelectorAll("[data-llmpack]"))
+      b.onclick=async()=>{
+        const box=$("llmpack-out");
+        if(box)box.innerHTML="<div class='empty'>正在打包（只读）…</div>";
+        const r2=await actJson("/api/actions/run",{
+          action_id:"llm_pack",params:{faces:"errors,tools",limit:"50"},
+          view_actions_api:1});
+        if(r2.__err){if(box)box.innerHTML=errorBox("打包失败："+r2.__err);return;}
+        const pack=r2.result&&r2.result.pack||r2.result||{};
+        const txt=JSON.stringify(pack,null,1);
+        if(box)box.innerHTML="<div class='sub2'>包内 "+
+          ((pack.items||[]).length)+" 项｜schema "+esc(pack.schema||"?")+
+          "｜已过 validate（服务端自检）</div>"+
+          "<textarea style='width:100%;min-height:200px;font-size:11px'>"+
+          esc(txt.slice(0,20000))+"</textarea>"+
+          "<div class='sub2'>复制这段给 LLM，让它按 verdict/note 填回；"+
+          "填好的结果用 <code>attrib-review</code> 落账（人裁决，机器不写）。</div>";
+      };
   },0);
   return h;
 }
@@ -4604,6 +4662,9 @@ function renderCmdBrowsable(){
     "<div class='toolbar'>"+
     (need.topic?"<button id='btn-cmd-topics'>载入主题清单</button>":"")+
     (need.sid?"<button id='btn-cmd-sids'>载入最近异常会话</button>":"")+
+    (need.sid?"<input id='cmd-sid-q' placeholder='按标题搜全库（如：闭环 / 归因）'"+
+      " style='min-width:220px'>"+
+      "<button id='btn-cmd-sidsearch'>按标题搜全库</button>":"")+
     "</div>"+
     "<div id='cmd-pick' class='sub2'>还没取：点上面按钮开始——"+
     "取回来的只是清单，不选不动任何数据。</div>";
@@ -4644,6 +4705,30 @@ function renderCmdBrowsable(){
           state.cmdParams["sids"]=el.dataset.picksid;
           showBanner("warn","已选会话（参数已填入，核对命令行后再执行）");};
     }catch(e){$("cmd-pick").textContent="取会话失败："+e.message;}
+  };
+  /* v0.80 G3（用户 2026-10-23 批准）：只载"最近异常会话 20 条"太窄——
+    想选一个正常会话、或按标题搜三个月前的会话，原来没有入口。
+    /api/sessions 底层是 FTS，q 参数已在，这里只是把通道接到选择器上。 */
+  const btnSearch=$("btn-cmd-sidsearch");
+  if(btnSearch)btnSearch.onclick=async()=>{
+    const q=($("cmd-sid-q")&&$("cmd-sid-q").value||"").trim();
+    if(!q){showBanner("warn","先输入关键词（标题里的词即可）再搜。");return;}
+    $("cmd-pick").textContent="搜「"+q+"」…";
+    try{
+      const d=await api("/api/sessions?q="+encodeURIComponent(q)+"&limit=20");
+      const items=d.items||[];
+      $("cmd-pick").innerHTML=(items.length
+        ?"「"+esc(q)+"」命中 "+items.length+" 个（共 "+(d.total==null?"?":d.total)+
+          " 个，只列前 "+items.length+"）——点一条填参："
+        :"「"+esc(q)+"」没有命中：换个词，或先看「最近异常会话」。")+
+        items.map(s=>"<span class='chip' data-picksid=\""+
+          esc(s.sid)+"\">"+esc(String(s.title||s.sid).slice(0,22))+
+          "</span>").join(" ");
+      for(const el of $("cmd-pick").querySelectorAll("[data-picksid]"))
+        el.onclick=()=>{state.cmdParams["sid"]=el.dataset.picksid;
+          state.cmdParams["sids"]=el.dataset.picksid;
+          showBanner("warn","已选会话（参数已填入，核对命令行后再执行）");};
+    }catch(e){$("cmd-pick").textContent="搜会话失败："+e.message;}
   };
 }
 
@@ -5127,11 +5212,30 @@ async function openInCmd(actionId,params){
   state.chain=[];
   renderCmdCards();renderCmdActions();renderCmdParams();
   const cc=cmdCommands().find(x=>x.cmd===spec.cmd);
+  /* v0.80 G1（用户 2026-10-23 批准）：从别处点「在命令台打开」的意图就是
+     "看结果"，A 档（只读）装完就地跑，省掉"再点一次执行"。
+     **B/C 档绝不自跑**：B 是写库（必须预演→确认→才写），C 只给命令文本。
+     自动执行必须**可见**——banner 说清跑了什么，结果抽屉滚进视野，
+     否则用户不知道它跑过（这正是原来停一步的理由）。 */
+  if(spec.tier==="A"&&typeof runCmdAction==="function"){
+    showBanner("warn","已自动执行（A 档只读）："+
+      String(spec.summary||spec.desc||(cc&&cc.help)||spec.cmd||actionId)+
+      "　—— 结果在下方「结果」抽屉；B/C 档动作不会自动执行。");
+    try{
+      await runCmdAction();
+      const out=$("job-out");
+      if(out&&out.scrollIntoView)out.scrollIntoView({block:"nearest"});
+    }catch(e){
+      showBanner("err","自动执行失败："+(e&&e.message||e)+
+        "——可再点一次「执行」重试，命令行始终可复制。");
+    }
+    return true;
+  }
   showBanner("warn","已把动作装到命令台："+
     String(spec.summary||spec.desc||(cc&&cc.help)||spec.cmd||actionId)+
     (spec.tier==="B"
       ?"　—— 点「预演」看清将写什么，确认后才写。"
-      :"　—— A 档只读，点「执行」就地跑。"));
+      :"　—— 这条命令没有可就地执行的实现，命令行可复制后粘贴执行。"));
   return true;
 }
 

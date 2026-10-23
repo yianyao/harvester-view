@@ -31,6 +31,35 @@ WATCH_MAX = ACTION_MIN - 1
 RATE_MIN_SAMPLE = 20
 #: 比率报警线（10%）
 RATE_MIN = 0.10
+#: 新意：**首次出现**的坑从 1 次起就算信号（与次数无关）。
+#: 页面用它的地方叫「首见」：窗口内首见、且次数低于复发阈值的那几条，
+#: 被滤掉时必须单独报数（用户 2026-10-23 批准的方案 B）。1 = 首见即算。
+NEW_PATTERN_MIN = 1
+
+#: 阈值登记表（方案 B 的核心）：**每个数字都要说清用途**。
+#: 页面/报告只读这张表里的数，不许各自拍数字——四种含义混用正是
+#: "同一个词四种口径"漂移的根源（用户 2026-10-23 的判词）。
+THRESHOLDS = (
+    {"id": "recur", "name": "复发次数", "value": ACTION_MIN,
+     "applies": "错误模式 / 根因明细（报告页、工具页）",
+     "purpose": "同一个坑出现 ≥3 次才够写一条班规；1–2 次只观察。"},
+    {"id": "sample", "name": "样本下限", "value": RATE_MIN_SAMPLE,
+     "applies": "工具排行、skill 画像、比率类判断",
+     "purpose": "样本 <20 不下结论（1 次调用 1 次失败不是 100% 的失败率）。"},
+    {"id": "fresh", "name": "新意（首见）", "value": NEW_PATTERN_MIN,
+     "applies": "蒸馏队列 A 区、以及被阈值滤掉时的余量说明",
+     "purpose": "窗口内首次出现的坑，1 次就值得做卡——它的价值是「没见过」，"
+                "不是「次数多」。"},
+    {"id": "zero", "name": "零星上限", "value": WATCH_MAX,
+     "applies": "工作台待处理量分级",
+     "purpose": "1–2 条算零星（watch，虚线框），不报警。"},
+)
+
+
+def threshold_notes() -> list[str]:
+    """给人读的阈值清单：一行一个数 + 用途（页面「怎么读」与报告尾部共用）。"""
+    return ["%s = %d：%s" % (t["name"], int(t["value"]), t["purpose"])
+            for t in THRESHOLDS]
 
 KIND_ACTION = "action"
 KIND_STOCK = "stock"

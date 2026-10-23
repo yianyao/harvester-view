@@ -12,6 +12,45 @@
 > harvester-view 是架在接口之上的"看板"。视图坏了不影响数据，
 > 数据库不升级视图也能照常用（只要接口版本兼容）。
 
+## v0.80（2026-10-23）：阈值方案 B · 类别单一来源 · 命令台三项
+
+用户当轮判词：「相当多小于 3 的是否也可以隐藏起来」「有数据了，却不知道这数据有啥用、
+可以做什么、咋做」「表头里怎么读…似乎不够完善」。三件事都**先量后改**，且
+**被滤掉的必须报数**（宁可留白，不许假装没有）。
+
+1. **阈值方案 B（三段式）**：主表达（≥`REP_MIN_DEFAULT`）／「未达阈值 N」折叠／
+   「样本不足 N」分段。阈值不再各页各写一份，统一进 `actions/severity.py` 的
+   `THRESHOLDS` 登记表（复发 `ACTION_MIN=3`、样本 `RATE_MIN_SAMPLE=20`、
+   新意 `NEW_PATTERN_MIN=1`、零星 `WATCH_MAX=2`），每条都带 `purpose` + `applies`；
+   视图侧 `REP_MIN_DEFAULT` 仍与 `ACTION_MIN` 做跨语言对账。
+2. **余量句补「首见」**：窗口态（载荷 `meta.since` 非空）时，被阈值滤掉的条目里若有
+   `first_seen >= since`，余量句多一句「其中 N 条是本窗口首见的新坑——次数少不代表
+   不重要」。全库口径（`since=null`）**不报**这句（那是无意义口径）。后端配套：
+   `errstats.pattern_stats` 增 `first_seen`（min ts），`/api/reports/errors` 行里透出
+   ——此前没透出，那句永远是 0 条（静默失效）。
+3. **类别单一来源**：错误类别改由归因层出（`classify_error` 先走
+   `attrib-rules.yaml`，缺 PyYAML 时降级到老三条正则）；蒸馏队列 A/B 区的类别列旁
+   多一个折叠「根因 / 应对（规则 id）」，与类别**同源**（`triage._mark` 带
+   `why/fix/rule_id`）。真库实测：老分类器 52% 落 `unclassified` → 0.75%，只剩
+   「报错本身没给根因」的两条（`tool_executor_failed` / `ABORTED`）保持未归因。
+4. **蒸馏队列「怎么读」补三格**：`glossary.json` 的 `panels.triage.intro` 现在按区写清
+   产出物／谁用／验收（A=pitfall 卡；B=旧卡修订或「无需更新」裁决；C=workflow 卡；
+   D=泛读笔记或主题成员），并解释 `unclassified`、`min_count=2`、样例上限 3 三个
+   **页面自用口径**。
+5. **命令台三项**（承接 `命令台升级设计-2026-10-22.md` 的 G1/G3 + 打包按钮）：
+   - **G3** 会话选择器不再只有「最近异常会话 20 条」：新增「按标题搜全库」
+     （`/api/sessions?q=…&limit=20`，参数走 `encodeURIComponent`）；
+   - **打包给 LLM**：结果抽屉里一键调只读动作 `llm_pack`，产出可复制 JSON
+     （页面只收集与校验，**不调模型、不打分**）；
+   - **G1** A 档自动执行：从别处点「在命令台打开」后，A 档（只读）自动跑并显式
+     banner + 把结果抽屉滚进视野；B 档仍「预演→确认→才写」，C 档只给命令文本
+     ——**自动执行必须可见**，否则用户不知道它跑过（这正是原来停一步的理由）。
+
+门：`render_threshold.js` +5、`render_cmd.js` +8、`test_v73_target_kinds.py` +4
+（阈值登记表与首见口径）；变异 `docs/reports/mutation-p77-view.py` **5/5 全杀**
+（M8 第一版被别处的同名调用掩护而存活 → 断言改成钉住 `/api/sessions?q=`）。
+视图全量 **Ran 397 tests / OK**。
+
 ## P6-9（2026-10-22）：归因台 tab —— 候选与判定槽同屏
 
 SOP A1 的三层分离在页面上第一次**物理分开**：左边全是机器出的**候选**（标

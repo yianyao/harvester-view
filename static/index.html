@@ -146,14 +146,33 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 .tl-node .anchor{font-family:Consolas,monospace;font-size:12px;
   color:var(--accent);margin-right:8px}
 /* ---- P2-4：命令台（动词面板 v0） ---- */
-/* v0.90b 用户批注「这一列在右侧太局促」：结果抽屉+台账挪底部整行，
- * 内部再分两栏（抽屉窄/台账宽——台账表三列需要横向空间）。 */
-#tab-cmd main{display:grid;grid-template-columns:250px minmax(320px,1fr);
-  gap:12px;padding:10px 14px;align-items:start}
-#cmd-right{grid-column:1/-1;display:grid;
-  grid-template-columns:minmax(260px,2fr) minmax(360px,3fr);gap:12px;
-  align-items:start;border-top:1px solid var(--line);padding-top:10px}
-#cmd-cards{display:flex;flex-direction:column;gap:4px}
+/* P9（2026-10-23 用户批注）：**结果才是主角**。
+ * 旧版三栏 = 左栏动词卡 + 中栏命令 + 右栏（结果 380px 高 + 台账），结果只能滚小窗。
+ * 现在：顶部一行动词卡开关（全表默认收起）→ 主区 左结果 / 右参数 → 台账折底部。
+ * 结果区不再限高（`max-height:none`），命令台的正文就是它。 */
+#tab-cmd{padding:4px 14px 14px}
+#cmd-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  border-bottom:1px solid var(--line);padding:4px 0 8px}
+#cmd-top #cmd-head{flex:1 1 320px;min-width:200px}
+#cmd-rail{display:none}
+#cmd-rail.open{display:block;max-height:46vh;overflow:auto;margin:8px 0;
+  border:1px solid var(--line);border-radius:6px;padding:8px}
+#cmd-layout{display:grid;grid-template-columns:minmax(440px,2fr) minmax(330px,1fr);
+  gap:12px;align-items:start;padding-top:8px}
+#cmd-result{min-width:0}
+#cmd-side{min-width:0}
+.cmd-result-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin-bottom:6px}
+#job-out{max-height:none;overflow:visible}
+#cmd-ledger-box{margin-top:10px;border-top:1px solid var(--line);padding-top:6px}
+#cmd-ledger-box>summary,#cmd-howto>summary{cursor:pointer;color:var(--ink2);
+  font-size:12px;padding:3px 0}
+/* 窄屏（<1100px）：结果与参数改上下堆叠，结果仍在前 */
+@media (max-width:1100px){
+  #cmd-layout{grid-template-columns:1fr}
+}
+#cmd-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));
+  gap:6px}
 .cmd-card{border:1px solid var(--line);border-radius:6px;padding:6px 9px;
   cursor:pointer;background:var(--panel);text-align:left}
 .cmd-card:hover{border-color:var(--accent)}
@@ -179,7 +198,8 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 .cmd-cli{font-family:ui-monospace,Consolas,monospace;font-size:11px;
   background:var(--bg);border:1px solid var(--line);border-radius:4px;
   padding:5px 7px;word-break:break-all;white-space:pre-wrap}
-#job-out{max-height:380px;overflow:auto}
+/* P9：结果区不再限高（旧值 380px/auto 已被上面的 #job-out 规则覆盖多次，
+   这里删掉，免得后来者以为它还管用） */
 /* ---- P3-3 今日工作台 ----
    配色纪律（2026-10-13 用户实测报「今日工作台浅底浅色，看得眼花」后定死）：
    **组件底色一律用主题变量（var(--panel)/var(--bg)/var(--warn-bg)/var(--err-bg)），
@@ -693,37 +713,54 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
   只显示命令行供复制，页面永不执行（红线 3）。 -->
 <section class="tab" id="tab-cmd" style="display:none">
   <div id="verbar" class="warn" style="display:none"></div>
-  <main>
-  <div id="cmd-left">
-    <div class="toolbar">
-      <button id="btn-cmd-refresh">刷新注册表</button>
-      <span class="sub2" id="cmd-meta"></span>
-    </div>
-    <div id="cmd-cards"><div class="empty">加载中…</div></div>
+  <!-- P9（用户 2026-10-23 第 1/3/4 条）：顶部只留一行事实；动词卡全表默认收起；
+       结果区占主位，参数在右，台账折到底部。 -->
+  <div id="cmd-top">
+    <button id="btn-cmd-rail" class="xbtn">▸ 动词卡全表</button>
+    <span id="cmd-head" class="sub2">← 选一张动词卡</span>
+    <button id="btn-cmd-refresh" class="xbtn">刷新注册表</button>
+    <span class="sub2" id="cmd-meta"></span>
   </div>
-  <div id="cmd-mid">
-    <div id="cmd-intro"></div>
-    <div id="cmd-head" class="sub2">← 选一张动词卡</div>
-    <div id="cmd-actions"></div>
-    <div id="cmd-params"></div>
-    <div id="cmd-runbar" class="toolbar" style="display:none">
-      <button id="btn-cmd-run">执行</button>
-      <span id="cmd-est" class="sub2"></span>
+  <div id="cmd-rail"><div id="cmd-cards"><div class="empty">加载中…</div></div></div>
+  <div id="cmd-layout">
+    <div id="cmd-result">
+      <div class="cmd-result-bar">
+        <span id="cmd-result-head" class="sub2">尚未执行任何动作</span>
+      </div>
+      <div id="cmd-analysis"></div>
+      <div id="job-out"><div class="empty">选一条命令、执行，这里出结果（A 档现跑）</div></div>
     </div>
-    <div id="cmd-banner" class="sub2"></div>
-    <div id="cmd-browsable"></div>
+    <div id="cmd-side">
+      <div id="cmd-intro"></div>
+      <div id="cmd-actions"></div>
+      <div id="cmd-params"></div>
+      <div id="cmd-runbar" class="toolbar" style="display:none">
+        <button id="btn-cmd-run">执行</button>
+        <span id="cmd-est" class="sub2"></span>
+      </div>
+      <div id="cmd-banner" class="sub2"></div>
+      <div id="cmd-browsable"></div>
+    </div>
   </div>
-  <div id="cmd-right">
-    <div class="cmd-pane">
-      <h3 class="sec">结果抽屉</h3>
-      <div id="job-out"><div class="empty">尚未执行任何动作</div></div>
+  <details id="cmd-ledger-box">
+    <summary>动作台账（写库留痕）</summary>
+    <div id="ledger-out"><div class="empty">加载中…</div></div>
+  </details>
+  <details id="cmd-howto" class="panel-intro">
+    <summary>怎么读这个命令台</summary>
+    <div class="sub2">
+      <b>命令 vs 写动作</b>：命令 = 照命令行干活的工具（A 档可在本页直接跑）；
+      写动作 = 会改库的操作——先「预演」给你看将要写什么，你确认才真的写，
+      预演本身一个字都不写。<br>
+      <b>档位</b>：A 只读直接执行｜B 写 meta/采集库（两段提交）｜C 只生成命令，永不执行。<br>
+      <b>复制后怎么跑</b>：开一个终端（PowerShell），先 <code>cd</code> 到本仓根
+      （命令里的 <code>--db</code> 等相对路径都按这个目录解析），再粘贴回车。<br>
+      <b>路径类参数</b>（<code>--root</code> 等）由服务端起服时确定、命令台不暴露——
+      免得把库指错。<br>
+      <b>结果怎么读</b>：左侧主区 = 这次执行的事实（状态/退出码/条数）+ 机械分析；
+      「打包给 LLM」把结果装成结构化 JSON 交模型分析（本页不调模型）。
     </div>
-    <div class="cmd-pane">
-      <h3 class="sec">动作台账（写库留痕）</h3>
-      <div id="ledger-out"><div class="empty">加载中…</div></div>
-    </div>
-  </div>
-  </main>
+  </details>
 </section>
 
 <script src="vendor/echarts.min.js"></script>
@@ -2142,27 +2179,65 @@ function renderAttrib(d,out){
   if(!pats.length){
     h+="<div class='empty'>没有候选模式（窗口内无错误，或规则全未命中）。</div>";
   }else{
+    /* P9（用户 2026-10-23 第 5 条「根因相同但模式/类别不同，为什么分开」）：
+       一行仍是**一个模式**（次数/锚点挂在模式上，合并会丢证据），但：
+       ① 排序改为**按规则聚在一起**（同一根因的多行相邻，不再散落）；
+       ② 同规则 ≥2 个模式时先出一行组头（根因 + 规则 + 合计次数）；
+       ③ 类别列改显示**规则类**；模式类与它不一致时并列并标红
+          ——旧版只显示模式类，导致"同根因不同类别"看起来自相矛盾。 */
+    const byRule=new Map();
+    for(const p of pats){
+      const rid=(p.rule&&p.rule.rule_id)||"";
+      if(!byRule.has(rid))byRule.set(rid,[]);
+      byRule.get(rid).push(p);
+    }
+    const order=[...byRule.keys()].sort((a,b)=>{
+      if(a===""&&b!=="")return 1;
+      if(b===""&&a!=="")return -1;
+      const na=byRule.get(a).reduce((s,p)=>s+(p.count||0),0);
+      const nb=byRule.get(b).reduce((s,p)=>s+(p.count||0),0);
+      return nb-na;
+    });
     h+="<table class='atr-tbl'><thead><tr>"+
       "<th>模式</th><th>类别</th><th>次数</th><th>根因候选</th>"+
       "<th>应对候选</th><th>置信</th><th>判定槽</th></tr></thead><tbody>";
-    for(const p of pats){
-      const rule=p.rule||null;
-      h+="<tr class='atr-row' data-pat='"+esc(p.pattern)+"'>"+
-        "<td class='atr-pat'>"+esc(p.pattern)+"</td>"+
-        "<td>"+esc(CLASS_LABEL[p.class]||p.class||"")+"</td>"+
-        "<td>"+esc(String(p.count==null?"":p.count))+"</td>";
-      if(rule){
-        h+="<td>"+esc(rule.why||"")+"</td>"+
-           "<td>"+esc(rule.fix||"")+"</td>"+
-           "<td>"+esc(String(rule.confidence==null?"":rule.confidence))+
-           "（"+esc(rule.rule_id||"")+"）</td>"+
-           "<td>"+atrSlotHtml(p,rule)+"</td>";
-      }else{
-        h+="<td colspan='3' class='errline'>未归因：只有计数，没有根因候选"+
-           "（补规则后重跑；不许在这格编一个根因）</td>"+
-           "<td><span class='sub2'>无候选 → 无槽</span></td>";
+    for(const rid of order){
+      const group=byRule.get(rid);
+      const rule=group[0].rule||null;
+      if(rule&&group.length>1){
+        const tot=group.reduce((s,p)=>s+(p.count||0),0);
+        h+="<tr class='atr-group'><td colspan='7'>同根因："+
+          "<b>"+esc(rule.why||"")+"</b>　"+esc(rid)+
+          "　"+group.length+" 个模式 / 合计 "+tot+" 次"+
+          "（模式不同、口径不同，故分行；判定槽逐个填）</td></tr>";
       }
-      h+="</tr>";
+      for(const p of group){
+        const r2=p.rule||null;
+        const pcls=p.class||"";
+        const rcls=(r2&&r2.class)||"";
+        const clsCell=r2&&rcls
+          ?(rcls===pcls?esc(CLASS_LABEL[rcls]||rcls)
+            :("<span class='errline'>"+(CLASS_LABEL[rcls]||rcls)+
+              "</span> <span class='sub2'>（模式判 "+
+              esc(CLASS_LABEL[pcls]||pcls)+"）</span>"))
+          :esc(CLASS_LABEL[pcls]||pcls);
+        h+="<tr class='atr-row' data-pat='"+esc(p.pattern)+"'>"+
+          "<td class='atr-pat'>"+esc(p.pattern)+"</td>"+
+          "<td>"+clsCell+"</td>"+
+          "<td>"+esc(String(p.count==null?"":p.count))+"</td>";
+        if(r2){
+          h+="<td>"+esc(r2.why||"")+"</td>"+
+             "<td>"+esc(r2.fix||"")+"</td>"+
+             "<td>"+esc(String(r2.confidence==null?"":r2.confidence))+
+             "（"+esc(r2.rule_id||"")+"）</td>"+
+             "<td>"+atrSlotHtml(p,r2)+"</td>";
+        }else{
+          h+="<td colspan='3' class='errline'>未归因：只有计数，没有根因候选"+
+             "（补规则后重跑；不许在这格编一个根因）</td>"+
+             "<td><span class='sub2'>无候选 → 无槽</span></td>";
+        }
+        h+="</tr>";
+      }
     }
     h+="</tbody></table>";
   }
@@ -3806,33 +3881,28 @@ function renderCmdActions(){
   if(!state.cmdCard){box.innerHTML="";$("cmd-head").textContent="← 选一张动词卡";return;}
   const cmds=cmdCommands().filter(x=>x.card_id===state.cmdCard);
   const wr=writeActionsForCard(state.cmdCard);
+  /* P9（用户 2026-10-23 第 1 条）：这一段原来有 3 句"命令=…写动作=…A 档…"，
+     到处重复。现在只留**事实**一行（卡名/条数/写动作数），
+     解释统一收进面板底部「怎么读这个命令台」。 */
   $("cmd-head").innerHTML="动词卡「"+esc((state.act.commands.cards||[])
-    .find(c=>c.card_id===state.cmdCard)?.label||state.cmdCard)+"」："+
-    "这张卡上有 "+cmds.length+" 条命令"+
-    (wr.length?(" 和 "+wr.length+" 个写动作"):"")+
-    "——点下面任意一条，右边出参数和执行方式。命令=照命令行干活的工具"+
-    "（A 档可在本页直接跑）；写动作=会改库的操作（先预演、你确认才写）。";
+    .find(c=>c.card_id===state.cmdCard)?.label||state.cmdCard)+"」　"+
+    "<span class='sub2'>"+cmds.length+" 条命令"+
+    (wr.length?(" · "+wr.length+" 个写动作"):"")+"</span>";
   let h="<div class='chiprow'>"+cmds.map(c=>{
-    /* 悬停=这条命令干嘛用（v0.90 用户批注：档位到处都写了——chip 上有
-     * tierbadge、卡说明有档位语义，悬停再复读一遍是正确的废话）。
-     * 三级回落取真用途：命令 help（上游 argparse）→ A 档动作说明
-     * （ACTIONS.desc）→ 卡 desc。 */
-    const spec=actionSpec(c.cmd);
-    const tip=stripMd(c.help||(spec&&spec.desc)||
-      ((state.act.commands.cards||[])
-        .find(x=>x.card_id===c.card_id)||{}).desc||"");
+    /* 悬停 = 这条命令**自己的**用途（commands.json 的 purpose，
+       由 actions/command_purpose 交给 commandgen 落盘；缺了 --check 就红）。
+       不再回落成卡说明——那正是"7 条提示一模一样"的根因。 */
+    const tip=stripMd(c.purpose||c.help||"");
     return "<span class='chip"+(state.actionId===c.cmd?" on":"")+
       "' data-cmd=\""+esc(c.cmd)+"\" title=\""+esc(tip)+"\">"+
       esc(c.cmd)+" <span class='tierbadge "+esc(c.tier)+"'>"+
       c.tier+"</span></span>";}).join("")+"</div>";
   if(wr.length){
-    h+="<div class='sub2'>写动作（点了会改库：先「预演」给你看将要写什么，"+
-       "你确认才真的写；预演本身一个字都不写）：</div>"+
+    h+="<div class='sub2' style='margin-top:8px'>写动作（预演 → 你确认 → 才写）</div>"+
       "<div class='chiprow'>"+wr.map(w=>
       "<span class='chip"+(state.actionId===w.spec.action_id?" on":"")+
       "' data-cmd=\""+esc(w.spec.action_id)+
-      "\" title=\""+esc(stripMd(w.spec.summary||"")+
-        "（预演 → 你确认 → 才写；预演不写任何东西）")+"\">"+esc(w.label)+
+      "\" title=\""+esc(stripMd(w.spec.summary||w.spec.desc||""))+"\">"+esc(w.label)+
       " <span class='tierbadge "+(w.spec.risk==="destructive"?"C":"B")+"'>"+
       esc(w.spec.risk==="destructive"?"破坏性":"写")+"</span></span>").join("")+
       "</div>";
@@ -3951,7 +4021,10 @@ function renderCmdParams(){
     renderCmdBrowsable();
     return;
   }
-  const vis=(cur.args||[]).filter(a=>a.src!=="server"&&a.kind!=="switch");
+  /* src=hidden（`--json PATH` 这类机读参数）既不渲染、也不进"路径类参数"
+     清单：它由 handler / 程序按需带，不是人要填的格子。 */
+  const vis=(cur.args||[]).filter(a=>a.src!=="server"&&a.src!=="hidden"&&
+    a.kind!=="switch");
   /* 子动作选择器（2026-10-13）：聚合命令（topic 等）子动作档位各不相同，
      下拉写进 state.cmdParams.cmd——updateCmdPreview / runCmdAction 都按它
      判档（A 档子动作直连动作面；B 档子动作走两段提交）。不选=维持旧行为。
@@ -4008,8 +4081,8 @@ function renderCmdParams(){
   }
   const skipped=(cur.args||[]).filter(a=>a.src==="server");
   if(skipped.length)
-    h+="<div class='sub2'>"+skipped.length+" 个路径类参数由服务端起服时"+
-       "确定（命令台不暴露路径，免得把库指错）："+
+    h+="<div class='sub2' title=\""+esc("由服务端起服时确定；命令台不暴露，"+
+      "免得把库指错（细节见底部「怎么读」）")+"\">路径类参数由服务端注入："+
        esc(skipped.map(a=>a.name).join(" / "))+"</div>";
   box.innerHTML=h;
   /* 下拉与 state 对账（v0.74）：预填值不在选项里时（如历史遗留 chain），
@@ -4112,12 +4185,13 @@ function updateCmdPreview(){
         (argsHelp(c)?" "+argsHelp(c):""))+"\">"+
     esc(cmdLine(c,state.cmdParams))+"</div>"+
     "<button class='xbtn' id='btn-cmd-copy' title='复制命令行（粘贴到终端运行）'>复制</button>"+
-    /* v0.90b 用户批注「这是啥意思？」：「仓根的终端」是黑话——说清
-     * 操作步骤：开终端 → cd 到上游仓 → 粘贴回车；顺带说为什么（相对
-     * 路径基准），不让人猜。 */
-    "<span class='sub2'>复制后这样跑：开一个终端（PowerShell），先 "+
-    "cd 到 "+esc(displayPath(state.repoRoot)||"上游 session-harvester 目录")+
-    "，再粘贴回车（--db 等相对路径都按这个目录解析）</span>";
+    /* P9（用户 2026-10-23 第 1 条）：这段操作步骤原来每次都在主体里出现，
+     * 现在收进底部「怎么读」；这里只在**复制**旁边留一句最短的落点说明，
+     * 悬停给全文（不占版面）。 */
+    "<span class='sub2' title=\""+esc("开一个终端（PowerShell），先 cd 到 "+
+      (displayPath(state.repoRoot)||"上游 session-harvester 目录")+
+      "，再粘贴回车——命令行里的 --db 等相对路径都按这个目录解析"+
+      "（完整说明见底部「怎么读这个命令台」）")+"\">粘贴到仓根终端运行</span>";
   bar.style.display="";
   if(act&&act.tier==="B"&&!writeDisabled()){
     $("btn-cmd-run").disabled=false;
@@ -4439,11 +4513,69 @@ async function pollCmdJob(jid){
     showBanner("err","动作失败："+(job.error||""));
     return;
   }
+  $("cmd-result-head").innerHTML="完成："+((job.elapsed_ms||0)/1000).toFixed(2)+
+    "s｜"+esc(job.label||"")+"｜退出码 "+
+    esc(String((job.result||{}).exit_code===undefined?"—":(job.result||{}).exit_code));
   el.innerHTML="<div class='sub2'>完成：用时 "+((job.elapsed_ms||0)/1000)
     .toFixed(2)+"s｜"+esc(job.label||"")+"</div>"+jobResultHtml(job);
-  showBanner("warn","动作完成："+(job.label||"")+"（结果在右侧抽屉）");
+  $("cmd-analysis").innerHTML=jobAnalysisHtml(job);
+  showBanner("warn","动作完成："+(job.label||"")+"（结果在左侧主区）");
   if(glossary.loaded)applyTermTooltips(el);
 }
+/* 「打包给 LLM」打哪个面：跟当前看的数据面走，别永远 errors,tools
+   （用户 2026-10-23 反馈：结果里明明有 skills/chains，包却只装 errors）。 */
+function llmPackFaces(){
+  if(state.repKind){
+    const m={tools:"tools",errors:"errors",skills:"skills",chains:"chains"};
+    if(m[state.repKind])return m[state.repKind];
+  }
+  return "errors,tools";
+}
+
+/* 结果分析（P9，用户 2026-10-23 第 4 条：结果要能给建议）。
+   纪律：这里只做**机械可判**的事（退出码/条数/未归因数/引文未命中），
+   判断性结论（为什么、怎么改）交给 LLM —— 由「打包给 LLM」出口负责。
+   数字全部取自载荷本身，不在这里重算口径。 */
+function jobAnalysisHtml(job){
+  const r=(job&&job.result)||{};
+  const rows=[];
+  const push=(k,v,cls)=>rows.push("<div"+(cls?" class='"+cls+"'":"")+">· "+
+    esc(k)+"："+v+"</div>");
+  if(r.exit_code!==undefined){
+    push("退出码", esc(String(r.exit_code))+
+      (String(r.exit_code)==="0"?"（正常）":"（非 0：报告里有需修项）"),
+      String(r.exit_code)==="0"?"":"errline");
+  }
+  const pack=r.pack;
+  if(pack&&pack.items){
+    const items=pack.items;
+    const noAttr=items.filter(it=>!it.attrib).length;
+    push("包", esc((pack.schema||"?")+"｜"+items.length+" 条｜面 "+
+      ((pack.faces||[]).join("/")||"?")));
+    push("归因候选", noAttr===0?"全部条目都有候选（仍会错，须复核）":
+      (noAttr+" 条**没有**归因候选 → 要么补规则，要么交 LLM 判"),
+      noAttr===0?"":"errline");
+    const chains=items.filter(it=>it.face==="chains");
+    if(chains.length){
+      const bad=chains.filter(it=>!it.facts.audit_ok).length;
+      push("chain 审计", bad===0?"全部通过":bad+" 条不合格（看 facts.quotes/anchors）",
+        bad===0?"":"errline");
+    }
+    push("下一步", "复制下面的 JSON 交 LLM 按 slot 填 verdict/note；"+
+      "填回后用 attrib-review 落账（人裁决）");
+  }else if(r.stdout!==undefined){
+    const txt=String(r.stdout||"");
+    const lines=txt.split("\n").filter(x=>x.trim()).length;
+    push("输出", lines+" 行 / "+txt.length+" 字");
+    if(/未命中/.test(txt))push("提示","输出里有「未命中」——按行核对，别只看总数");
+  }
+  if(r.pack_error)push("打包","服务端拿到的是文本不是结构："+esc(r.pack_error),
+    "errline");
+  if(!rows.length)return "";
+  return "<details open class='cmd-analysis-box'><summary>分析（机械可判的部分）"+
+    "</summary>"+rows.join("")+"</details>";
+}
+
 /* 结果渲染：**数字皆门**——能点开的数字都给出口，不打印一整坨 JSON。
    （原始 JSON 永远可在下面展开，机器口径不丢。） */
 function jobResultHtml(job){
@@ -4553,19 +4685,46 @@ function jobResultHtml(job){
       b.onclick=async()=>{
         const box=$("llmpack-out");
         if(box)box.innerHTML="<div class='empty'>正在打包（只读）…</div>";
+        /* P9 修 Bug（用户 2026-10-23：点「打包给 LLM」输出空）：
+           /api/actions/run 是**入队**语义（202 + job_id），旧代码直接读
+           r2.result 拿到 undefined → 渲染成 `{}`（命令其实有结果）。
+           现在：入队 → 轮询 job → 用服务端已解析好的 result.pack。 */
+        const faces=llmPackFaces();
         const r2=await actJson("/api/actions/run",{
-          action_id:"llm_pack",params:{faces:"errors,tools",limit:"50"},
+          action_id:"llm_pack",params:{faces:faces,limit:"50"},
           view_actions_api:1});
         if(r2.__err){if(box)box.innerHTML=errorBox("打包失败："+r2.__err);return;}
-        const pack=r2.result&&r2.result.pack||r2.result||{};
+        if(!r2.job_id){
+          if(box)box.innerHTML=errorBox("打包没有返回 job_id（服务端版本不匹配？）");
+          return;
+        }
+        const job=await atrWaitJob(r2.job_id);
+        if(job.__err){if(box)box.innerHTML=errorBox("打包失败："+job.__err);return;}
+        if(job.status==="failed"){
+          if(box)box.innerHTML=errorBox("打包失败："+(job.error||""));
+          return;
+        }
+        const res=job.result||{};
+        const pack=res.pack;
+        if(!pack){
+          /* 响亮：拿到的是文本/报错就照实给原文，绝不显示空框装成功 */
+          if(box)box.innerHTML=errorBox("服务端没给出结构化包"+
+            (res.pack_error?"（"+res.pack_error+"）":"")+"；原始输出如下")+
+            "<pre style='max-height:220px;overflow:auto;font-size:11px'>"+
+            esc(String(res.stdout||res.stderr||"（空）").slice(0,4000))+"</pre>";
+          return;
+        }
         const txt=JSON.stringify(pack,null,1);
         if(box)box.innerHTML="<div class='sub2'>包内 "+
           ((pack.items||[]).length)+" 项｜schema "+esc(pack.schema||"?")+
+          "｜面 "+esc((pack.faces||[]).join("/")||"?")+
           "｜已过 validate（服务端自检）</div>"+
-          "<textarea style='width:100%;min-height:200px;font-size:11px'>"+
+          "<textarea style='width:100%;min-height:220px;font-size:11px'>"+
           esc(txt.slice(0,20000))+"</textarea>"+
           "<div class='sub2'>复制这段给 LLM，让它按 verdict/note 填回；"+
           "填好的结果用 <code>attrib-review</code> 落账（人裁决，机器不写）。</div>";
+        const an=$("cmd-analysis");
+        if(an&&an.innerHTML==="")an.innerHTML=jobAnalysisHtml({result:res});
       };
   },0);
   return h;
@@ -5486,6 +5645,18 @@ $("btn-tri-json").onclick=()=>{
 };
 
 $("btn-cmd-refresh").onclick=()=>loadCmdData(true).catch(()=>{});
+/* P9（用户 2026-10-23 第 3 条）：动词卡全表不是主角——默认收起，
+   点一下才展开；展开状态记在本地（下次进来还是你上次的样子）。 */
+function cmdRailSet(open){
+  const rail=$("cmd-rail");
+  if(!rail)return;
+  rail.classList.toggle("open",!!open);
+  const b=$("btn-cmd-rail");
+  if(b)b.textContent=(open?"▾ 动词卡全表":"▸ 动词卡全表");
+  try{localStorage.setItem("hv_cmd_rail",open?"1":"0");}catch(e){}
+}
+$("btn-cmd-rail").onclick=()=>cmdRailSet(!$("cmd-rail").classList.contains("open"));
+try{if(localStorage.getItem("hv_cmd_rail")==="1")cmdRailSet(true);}catch(e){}
 $("btn-cmd-run").onclick=()=>runCmdAction()
   .catch(e=>showBanner("err","执行失败："+e.message));
 

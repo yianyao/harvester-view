@@ -100,13 +100,18 @@ class TestCommandHoverTitle(unittest.TestCase):
 
     def test_cmd_chip_tooltip_says_what_for_not_tier(self):
         # v0.90 用户批注：命令 chip 悬停不许复读档位（「A 档：本页可
-        # 直接执行」——tierbadge 和卡说明已有，悬停只说用途）；三级
-        # 回落 help → 动作说明 → 卡 desc
+        # 直接执行」——tierbadge 和卡说明已有，悬停只说用途）。
+        # P9（2026-10-23 用户报「7 条命令悬停一模一样」）：回落链**不许**
+        # 再落到卡 desc（那就是"都一样"的根因），必须取该命令自己的
+        # `purpose`（commandgen.PURPOSE 落进 commands.json，见 --check 的
+        # 缺失/重复判据）。
         self.assertNotIn("A 档：本页可直接执行", self.html)
         self.assertNotIn("B 档：会写库，先预演、你确认才写", self.html)
         self.assertNotIn("C 档：只生成命令，不代执行", self.html)
-        self.assertIn("const spec=actionSpec(c.cmd);", self.html)
-        self.assertIn("c.help||(spec&&spec.desc)||", self.html)
+        self.assertIn('const tip=stripMd(c.purpose||c.help||"");', self.html)
+        self.assertNotIn("spec=actionSpec(c.cmd);", self.html,
+                         "悬停不许再回落动作说明/卡说明（会退化成同一句）")
+        self.assertNotIn("card_id===c.card_id)||{}).desc", self.html)
 
     def test_cmd_param_placeholder_not_type_nonsense(self):
         # v0.90 用户批注：placeholder「自由文本」是正确的废话——只在有
@@ -136,17 +141,25 @@ class TestCommandHoverTitle(unittest.TestCase):
         # main 下多出的空 <div id="cmd-intro"> 当了第 4 个格子，把布局
         # 挤成两行——第二行中/右列整行空白（红框）；且 id 重复导致
         # $("cmd-intro") 赋值永远命中第一个空 div。钉：cmd-intro 全页
-        # 唯一且必须落在 cmd-mid 内。
+        # 唯一且必须落在**参数栏**（cmd-side）内。
+        # P9（2026-10-23 用户批注）：布局重排 = 结果占主位（cmd-result，
+        # 2fr）、参数在右（cmd-side，1fr）、台账折到底部 details。
         self.assertEqual(self.html.count('id="cmd-intro"'), 1,
                          "cmd-intro 必须唯一（重复=grid 幽灵格+赋值失靶）")
-        mid = re.search(r'<div id="cmd-mid">.*?<div id="cmd-right">',
-                        self.html, re.S)
-        self.assertTrue(mid, "找不到 cmd-mid 区块")
-        self.assertIn('id="cmd-intro"', mid.group(0))
-        # v0.90b 用户批注「这一列在右侧太局促」：结果抽屉+台账挪底部整行
-        # （grid-column:1/-1），内部两栏；main 三列模板不再含右列
-        self.assertIn("#cmd-right{grid-column:1/-1", self.html)
-        self.assertNotIn("250px minmax(320px,1fr) 330px", self.html)
+        i_res = self.html.index('<div id="cmd-result">')
+        i_side = self.html.index('<div id="cmd-side">')
+        i_intro = self.html.index('id="cmd-intro"')
+        i_ledger = self.html.index('id="cmd-ledger-box"')
+        self.assertLess(i_res, i_side, "结果必须在参数栏之前（左结果/右参数）")
+        self.assertLess(i_side, i_intro, "cmd-intro 不属于参数栏 = 幽灵格")
+        self.assertLess(i_intro, i_ledger, "台账在底部，不许插进参数栏")
+        self.assertIn("#cmd-layout{display:grid;"
+                      "grid-template-columns:minmax(440px,2fr)", self.html)
+        # 三栏旧模板（左/中/右）与 380px 结果窗都不许回来
+        self.assertNotIn("#cmd-right{", self.html)
+        self.assertNotIn("#cmd-mid", self.html)
+        self.assertNotIn("max-height:380px", self.html)
+        self.assertIn("#job-out{max-height:none;overflow:visible}", self.html)
 
     def test_cmd_params_prefilled_not_blank(self):
         # v0.90c 用户批注「能否直接填满所有参数，直接执行就可以了！要不

@@ -169,9 +169,20 @@ for (const [n, sig] of [
   /* v0.72：renderCmdParams 出口会调 renderCmdBrowsable（上下文感知选值面板），
      被提取函数的新依赖必须同步进提取清单（会话 10 铁教训），一并真执行。 */
   ["cmdNeededPick", ""], ["renderCmdBrowsable", ""],
+  /* P9-⑤：归因台的分组/类别是**渲染行为**，必须真执行才算门
+     （只断言源码里有 atr-group，变异把条件改成 if(false) 照样绿）。 */
+  ["atrSlotHtml", "p,rule"], ["renderAttrib", "d,out"],
 ]) {
   eval(extract(n, sig));
 }
+
+/* renderAttrib 依赖的模块级常量（index.html 里是 const，eval 不外泄→补桩） */
+var ATR_VERDICTS = [["accepted", "接受"], ["rejected", "驳回"],
+  ["revise", "要改"]];
+var ATR_VERDICT_LABEL = { accepted: "接受", rejected: "驳回", revise: "要改" };
+var CLASS_LABEL = { env: "环境类", tool_interface: "用法类",
+  context: "上下文类", unclassified: "未归类" };
+function atrSubmit() {}
 
 let failed = 0;
 function check(label, cond) {
@@ -584,6 +595,72 @@ check("L3 结果区有「打包给 LLM」按钮", html.includes("data-llmpack"))
 check("L3 打包走 llm_pack 只读动作",
   html.includes('action_id:"llm_pack"'));
 check("L3 明说页面不调模型", html.includes("不调模型"));
+
+/* ---------- P9（用户 2026-10-23 五条批注）----------
+   断言全部打在**行为/结构**上；同源数据取自 commands.json（不是抄文案）。 */
+const _cmds = JSON.parse(
+  require("fs").readFileSync(require("path").join(__dirname, "..",
+    "actions", "commands.json"), "utf8")).commands;
+const _purposes = _cmds.map(c => (c.purpose || "").trim());
+check("P9-② 每条命令都有用途（commandgen PURPOSE 落进 commands.json）",
+  _purposes.every(p => p.length > 0) && _purposes.length === _cmds.length);
+check("P9-② 用途两两不同（悬停不再一模一样）",
+  new Set(_purposes).size === _purposes.length);
+check("P9-② 悬停取 purpose，不回落成卡说明",
+  /const tip=stripMd\(c\.purpose\|\|c\.help\|\|""\)/.test(html) &&
+  !/card_id===c\.card_id\)\|\|\{\}\)\.desc/.test(html));
+check("P9-④ 「打包给 LLM」必须轮询 job（旧版直读 r2.result → 空框）",
+  html.includes("atrWaitJob(r2.job_id)") &&
+  !/const pack=r2\.result&&r2\.result\.pack\|\|r2\.result\|\|\{\}/.test(html));
+check("P9-④ 服务端结构直给：读 result.pack，缺了要响亮报错",
+  html.includes("const pack=res.pack") && html.includes("服务端没给出结构化包"));
+check("P9-④ 结果区有机械分析（退出码/条数/未归因）",
+  html.includes("function jobAnalysisHtml") &&
+  html.includes("条**没有**归因候选"));
+check("P9-④ 结果区不再限高 380px（不再挤小窗）",
+  !/max-height:\s*380px/.test(html) &&
+  /#job-out\{max-height:none/.test(html));
+check("P9-④ 结果在网格主位（左结果/右参数）",
+  /#cmd-layout\{display:grid;grid-template-columns:minmax\(440px,2fr\)/.test(html) &&
+  html.indexOf('id="cmd-result"') < html.indexOf('id="cmd-side"'));
+check("P9-③ 动词卡全表默认收起 + 记住展开状态",
+  /#cmd-rail\{display:none\}/.test(html) &&
+  html.includes('localStorage.getItem("hv_cmd_rail")'));
+check("P9-③ 动作台账折到底部（details）",
+  /<details id="cmd-ledger-box">/.test(html));
+check("P9-① 长解释收进「怎么读」（主体只留事实一行）",
+  html.includes("怎么读这个命令台") &&
+  !html.includes("这张卡上有 ") &&
+  !html.includes("复制后这样跑：开一个终端"));
+check("P9-⑤ 归因台类别显示规则类，并标出与模式类不一致",
+  html.includes("CLASS_LABEL[rcls]||rcls") &&
+  html.includes("模式判 "));
+check("P9-⑤ 同根因多模式出组头（不再散落成孤立行）",
+  html.includes("atr-group") && html.includes("个模式 / 合计"));
+
+/* P9-⑤ **行为门**：真渲染两行同规则、不同模式类的候选。
+   期望：组头出现（同根因合并）+ 类别不一致时并列标出。
+   （M4/M5 变异就是把这两处条件改成 false——静态断言抓不到，这里才红。） */
+const _atrOut = mkEl();
+renderAttrib({
+  reviewable: { level: "R3", label: "可裁决", reason: "夹具" },
+  coverage: { line_text: "覆盖 2/2" },
+  reviewed: [],
+  patterns: [
+    { pattern: "EPERM: mkdir x", class: "env", count: 5,
+      rule: { rule_id: "AR-009", class: "env", why: "同一根因-权限",
+              fix: "修权限", confidence: "high" } },
+    { pattern: "tool not found: y", class: "tool_interface", count: 3,
+      rule: { rule_id: "AR-009", class: "env", why: "同一根因-权限",
+              fix: "修权限", confidence: "high" } },
+  ],
+}, _atrOut);
+check("P9-⑤ 行为：同根因两模式渲染出组头",
+  _atrOut.innerHTML.includes("atr-group") &&
+  _atrOut.innerHTML.includes("2 个模式 / 合计 8 次"));
+check("P9-⑤ 行为：类别不一致时并列标出（规则类 env / 模式判 用法类）",
+  _atrOut.innerHTML.includes("环境类") &&
+  _atrOut.innerHTML.includes("模式判 用法类"));
 
 console.log(failed ? ("\n" + failed + " CHECK(S) FAILED") :
     "\nALL COMMAND-PALETTE CHECKS PASSED");

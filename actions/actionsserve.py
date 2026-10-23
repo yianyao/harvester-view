@@ -706,12 +706,36 @@ def _action_llm_pack(cfg: Config, params: dict) -> dict:
 
     走**机读出口**（JSON 打到 stdout，绝不带 `--json PATH`）：包本身就是给
     LLM 的输入，页面要原样拿走，服务端不落盘（同 `_action_evidence_pack` 纪律）。
+    P9（2026-10-23 用户报「打包给 LLM 输出空」）：**服务端把 stdout 的 JSON
+    直接解析成 `pack` 字段返回**——页面只该拿结构，不许自己 parse CLI 文本
+    （否则每加一个字段都要在前端复制一份解析逻辑，且出错只能得到空对象）。
+    `chains` 面要 chain 目录：用起服时的 `--chain-root`（路径类参数不上页面）。
     """
     faces = str(params.get("faces") or "errors")
     argv = ["llm-pack", "--faces", faces, "--db", str(cfg.db)]
     if params.get("limit") is not None:
         argv += ["--limit", str(int(params["limit"]))]
-    return _cli_report(argv)
+    if "chains" in [f.strip() for f in faces.split(",")]:
+        if not cfg.chain_root:
+            raise RuntimeError("服务未配 --chain-root，chains 面无法打包")
+        argv += ["--chain-root", str(cfg.chain_root)]
+    return _cli_report_json(argv)
+
+
+def _cli_report_json(argv: list[str]) -> dict:
+    """跑 CLI 并把 stdout 的 JSON 解析成 `pack`（解析失败 → 原样返回）。
+
+    **失败要响亮**：exit_code≠0 或 stdout 不是 JSON 时，把原始 stdout/stderr
+    一起带回去，页面显示"拿到的是文本不是结构"——绝不返回空 dict 装成功。
+    """
+    r = _cli_report(argv)
+    out = (r.get("stdout") or "").strip()
+    if r.get("exit_code") == 0 and out:
+        try:
+            r["pack"] = json.loads(out)
+        except ValueError:
+            r["pack_error"] = "stdout 不是 JSON（页面按文本显示原文）"
+    return r
 
 
 def _action_report_daily(cfg: Config, params: dict) -> dict:
@@ -1215,8 +1239,9 @@ ACTIONS: dict[str, dict] = {
                 "（第④b步）：每条 = 事实（锚点/工具名）+ 现有归因候选 + "
                 "**判定槽**。只读 harvester.db；回填仍走 attrib-review 台账。",
         "params": {"faces": {"type": "text", "src": "chips", "default": "errors",
-                             "choices": ["errors", "tools", "errors,tools"],
-                             "label": "面"},
+                             "choices": ["errors", "tools", "skills", "chains",
+                                         "errors,tools"],
+                             "label": "面（chains 需起服带 --chain-root）"},
                    "limit": {"type": "int", "src": "chips", "default": 40,
                              "label": "每面条数"}},
         "est_sec": 3,

@@ -146,6 +146,71 @@ COMMAND_CARD: dict[str, str] = {
     "weblogin init-config": "service", "weblogin prepare": "service",
 }
 
+#: 命令级用途（v0.90 P9，用户 2026-10-23 第 2 条：悬停提示 7 条一模一样）。
+#: **每条一句、按真实行为写**——它是命令台悬停与参数区标题的唯一来源；
+#: `--check` 会要求「每条命令都有、且互不重复」，宁可红也不回落成卡说明。
+#: 判据：这句话能不能让人决定"点不点它"？（不能 → 重写）
+PURPOSE: dict[str, str] = {
+    "update": "增量收新会话进 harvester.db（日常用这一条）",
+    "sync": "全量对账重收一遍（重活，慢）",
+    "probe": "探测各采集源是否可用（不写库）",
+    "suppress list": "列已抑制的会话",
+    "suppress add": "把会话加进抑制名单（不删采集源）",
+    "suppress remove": "把会话移出抑制名单",
+    "suppress prune-exports": "清掉被抑制会话在 exports 的旧副本",
+    "suppress candidates": "从库里挑疑似没营养的会话，供你决定抑制",
+    "adapters": "列出已适配的采集源及其路径",
+    "scan": "扫 exports 目录，生成会话纲要清单",
+    "search": "全文检索会话消息（FTS，中文按 bigram）",
+    "read": "按序号读一个会话的原文回合",
+    "index": "把 exports 重建进索引库（重活）",
+    "export": "把会话导出成 Markdown 交接材料",
+    "aggregate": "跨实例聚合多份库",
+    "pack": "把主题相关会话打包成蒸馏输入",
+    "draft": "按主题起草 chain 草稿",
+    "export-analysis": "导出分析数据（errors/tools/skills/triage）",
+    "report-tools": "工具调用次数与失败率（G1）",
+    "report-traces": "按 trace 口径再看一遍工具统计",
+    "report-errors": "错误三分类与失败翼（G2）",
+    "report-chains": "工具链失败模式：长回合/连击/循环/空转",
+    "report-daily": "四队列 + 三段报告的每日速览",
+    "report-skill": "单个 skill 的行为画像（G4）",
+    "report-skill-join": "chain 锚点与 skill 调用点交叉",
+    "attrib": "错误模式 → 根因候选（候选，不是裁决）",
+    "attrib-review": "把人的 why/fix 裁决记进 attribations 台账",
+    "evidence-pack": "把数据面打成可评审包（人读 + 机读）",
+    "llm-pack": "打包给 LLM：事实 + 归因候选 + 判定槽",
+    "triage": "蒸馏队列分诊（含深挖，约 9 分钟）",
+    "topic-candidates": "列主题候选簇",
+    "topic-consolidate": "把候选簇合并/登记成主题",
+    "topic": "主题注册表：list/add/merge/md/…",
+    "chain-validate": "校验 chain 结构：frontmatter/阶段/锚点",
+    "chain-audit": "审计 chain 的引文与锚点（可落裁决）",
+    "suggest-agents": "生成 AGENTS.md 候选条目",
+    "suggest-status": "把建议状态落库（B 档）",
+    "ledger-sync": "人账与库内建议对账",
+    "harvest-eval": "A/B 建议采纳效果评估",
+    "artifacts": "从 Write/Edit 参数回源提取产物版本",
+    "cards validate": "校验卡片本体与触发词（只读）",
+    "cards new": "按 sid 起草一张新卡片（写文件）",
+    "cards review": "记卡片警告的人工裁决（写台账）",
+    "cards index-md": "列卡片在 Markdown 里的引用情况（只读）",
+    "kb-init": "初始化知识库骨架",
+    "kb-stats": "知识库盘点：数量/分类/最近更新",
+    "kb-publish": "把正本发布到镜像位（B 档）",
+    "keywords": "n-gram 关键词统计并落账",
+    "keywords-gc": "回收 keywords_meta.db 的失效行",
+    "deadcode-scan": "AST 扫未用 import/函数/常量",
+    "regress": "跑回归基线并与上次对比",
+    "mcp-serve": "起 MCP 服务（常驻，占端口）",
+    "api-serve": "起只读 API 服务（常驻，占 8765）",
+    "weblogin check": "检查登录态是否可用",
+    "weblogin init-config": "写登录配置",
+    "weblogin prepare": "打开浏览器准备登录",
+    "noise list": "列已登记的「不归任何主题」会话",
+    "noise add": "把会话登记为噪声（不再进候选簇）",
+}
+
 #: 命令 → 三档覆写（缺省=取所在卡的档）。依据提案 §5.4/§5.6：
 #: A 只读直执；B 写 meta/采集库（两段提交）；C 只生成命令永不执行。
 TIER_OVERRIDE: dict[str, str] = {
@@ -331,6 +396,12 @@ SERVER_DESTS: frozenset[str] = frozenset({
     "triage_out", "inputs", "artifact_meta",
 })
 
+#: **机读专用**参数（P9/G2）：`--json PATH` 是给程序/页面消费的出口，不是
+#: 人要填的字段。页面既不渲染输入框，也不算"路径类参数由服务端注入"——
+#: 打包/导出这类动作由 handler 自己决定要不要带，人不该看见这一格。
+#: （2026-10-23 用户批注「该是什么写什么」：别把机器参数塞进人读表单。）
+HIDDEN_DESTS: frozenset[str] = frozenset({"json"})
+
 #: 少数参数的默认值语义要人话解释（页面徽章用）
 NOTE: dict[str, str] = {
     "days": "缺省=全库；0 不是全库而是「0 天窗口」（上游实测差异，勿踩）",
@@ -454,7 +525,8 @@ def extract() -> dict:
                 dest = act.dest
                 src = SRC.get(dest)
                 if src is None:
-                    src = "server" if dest in SERVER_DESTS else "none"
+                    src = ("hidden" if dest in HIDDEN_DESTS else
+                       "server" if dest in SERVER_DESTS else "none")
                 args.append({
                     "name": dest,
                     "dest": dest,
@@ -472,7 +544,8 @@ def extract() -> dict:
             neg = [o for o in opts if o.startswith("--no-")]
             src = SRC.get(dest)
             if src is None:
-                src = "server" if dest in SERVER_DESTS else "none"
+                src = ("hidden" if dest in HIDDEN_DESTS else
+                       "server" if dest in SERVER_DESTS else "none")
             args.append({
                 "name": opts[0],
                 "dest": dest,
@@ -496,6 +569,8 @@ def extract() -> dict:
             "subactions": subactions,
             "help": (sp.description or "").strip().split("\n")[0][:_HELP_MAX]
                     or None,
+            # 用途：人写的一句（PURPOSE）；缺失即 `--check` 红，不许回落成卡说明
+            "purpose": PURPOSE.get(name),
             "nested": bool(sub),
         })
     cmds.sort(key=lambda c: c["cmd"])
@@ -546,6 +621,20 @@ def check(path: Path = OUT) -> list[str]:
             if ga[an]["src"] != wa[an]["src"]:
                 diffs.append("%s %s src: %r → %r"
                              % (name, an, ga[an]["src"], wa[an]["src"]))
+    # 用途（P9）：每条命令必须有**不重复**的一句；缺/重复都红——
+    # 否则页面悬停又会回落成同一句卡说明（2026-10-23 用户实测 7 条一样）。
+    missing = sorted(n for n, c in wc.items() if not (c.get("purpose") or "").strip())
+    if missing:
+        diffs.append("缺用途（PURPOSE）: %s" % "、".join(missing))
+    seen: dict[str, list[str]] = {}
+    for n, c in sorted(wc.items()):
+        p = (c.get("purpose") or "").strip()
+        if p:
+            seen.setdefault(p, []).append(n)
+    for p, names in sorted(seen.items()):
+        if len(names) > 1:
+            diffs.append("用途重复（%s 共用同一句）: %s"
+                         % ("、".join(names), p))
     return diffs
 
 

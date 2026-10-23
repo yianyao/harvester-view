@@ -4574,6 +4574,27 @@ function jobAnalysisHtml(job){
   }
   if(r.pack_error)push("打包","服务端拿到的是文本不是结构："+esc(r.pack_error),
     "errline");
+  /* P9-③：服务端同时给文本与人读时，机读结构走 r.json（G2 八条命令）。
+     这里只报「拿到的是哪一份 schema + 顶层有多少块/多少条」，不重复渲染表格
+     （明细在上面的文本里）；结构缺失但命令有输出 → 明说"只有文本，
+     没拿到结构化"，不假装成功。 */
+  const js=r.json;
+  if(js&&js.schema){
+    push("机读口径", esc(js.schema)+"｜顶层 "+
+      Object.keys(js.data||{}).length+" 块");
+    const arrs=Object.entries(js.data||{})
+      .filter(([,v])=>Array.isArray(v))
+      .slice(0,4)
+      .map(([k,v])=>k+"="+v.length);
+    if(arrs.length)push("按块计数", esc(arrs.join("，")));
+    if(js.db_fingerprint&&js.db_fingerprint.sessions!==undefined){
+      push("库快照", "会话 "+esc(String(js.db_fingerprint.sessions))+
+        "｜步骤 "+esc(String(js.db_fingerprint.steps))+
+        "｜错误 "+esc(String(js.db_fingerprint.errors)));
+    }
+  }
+  if(r.json_error)push("机读结构","落盘不是合法 JSON："+esc(r.json_error),
+    "errline");
   if(!rows.length)return "";
   return "<details open class='cmd-analysis-box'><summary>分析（机械可判的部分）"+
     "</summary>"+rows.join("")+"</details>";

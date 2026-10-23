@@ -69,7 +69,23 @@ P7 只补了那一个面板，其余 11 个仍是**一句导语**（85–230 字
   success/completed/no_result/error，于是 `n_ok` 恒 0 **且不报错**。
   现在统一取 `toolstats.OK_STATUS`；真库 34/37 有锚点、33/37 有链条。
 
-视图全量 **Ran 399 tests / OK**。
+视图全量 **Ran 406 tests / OK**。
+
+### P9-③（同日续）：结果区认「机读结构」，两出口同时给
+
+后端 G2 扩到八条之后，页面这边要能**认出**服务端带回来的结构，而不是只显示文本。
+但**人读报告不能丢**——所以服务端不用 `--json -`（那会把 stdout 全让给 JSON），
+而是 `--json <临时文件>`：文本照旧在 stdout，文件读回进 `result["json"]`，跑完即删。
+
+- 服务端：`_cli_report_both(argv)`（`actions/actionsserve.py`），四条报告动作
+  （`report_daily` / `cards_validate` / `chain_audit` / `report_skill_join`）都改走它；
+  结构坏了或命令根本没写文件 → `json_error` **响亮**，不装成功。
+- 页面：`jobAnalysisHtml` 认 `result.json`——报 `schema`、顶层块数、前几个数组的
+  条数、库快照三数（会话/步骤/错误）；只有文本时**不显示「机读口径」**这一行。
+- 门：`tests/test_v79_structured_output.py`（7 例）钉 **plumbing**——假 CLI 真写文件，
+  断言 argv 里追加了 `--json <路径>`、读回成功、临时文件已删、坏了有 `json_error`、
+  四个 handler 都不再只调 `_cli_report`；`render_cmd.js` 加 5 条**行为门**
+  （真跑 `jobAnalysisHtml`：认 schema/块数/库快照、坏结构响亮、纯文本不冒充结构）。
 
 ### P9-②（同日续）：同一句说明不许在多个出口各写一遍
 

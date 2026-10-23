@@ -154,7 +154,7 @@ for (const [n, sig] of [
   ["renderCmdActions", ""], ["selectCmdCommand", "name"],
   ["renderCmdParams", ""], ["cmdLine", "c,params"], ["updateCmdPreview", ""],
   ["cmdActionMap", ""], ["actionForCommand", "cmd"], ["A_ACTIONS", ""],
-  ["jobResultHtml", "job"],
+  ["jobResultHtml", "job"], ["jobAnalysisHtml", "job"],
   ["bindPatternDrill", "root"], ["renderPatternSessions", "d,out,backTo"],
   ["startThreeHop", "sid,seq,errText"], ["renderErrors", "d,out"],
   /* P3：B 档接线与版本握手 */
@@ -661,6 +661,39 @@ check("P9-⑤ 行为：同根因两模式渲染出组头",
 check("P9-⑤ 行为：类别不一致时并列标出（规则类 env / 模式判 用法类）",
   _atrOut.innerHTML.includes("环境类") &&
   _atrOut.innerHTML.includes("模式判 用法类"));
+
+/* P9-③ **行为门**：服务端同时给文本与结构（G2 八条命令）时，分析块要认出
+   `result.json`（schema / 顶层块数 / 各数组条数 / 库快照），并在结构坏掉时
+   响亮报错；只有文本时**不许**冒充有结构（这是旧 bug 的翻版：空结构装成功）。 */
+const _jsOk = mkEl();
+_jsOk.innerHTML = jobAnalysisHtml({ result: {
+  exit_code: 0, stdout: "cards validate 文本",
+  json: { schema: "cards-validate/1",
+          generated_at: "2026-10-23T00:00:00+0800",
+          db_fingerprint: { sessions: 1776, steps: 9001, errors: 532 },
+          data: { root: "cards", summary: { cards: 2 }, cards: [{}, {}] } },
+} });
+check("P9-③ 行为：认 result.json（schema + 顶层块数）",
+  _jsOk.innerHTML.includes("cards-validate/1") &&
+  _jsOk.innerHTML.includes("顶层 3 块"));
+check("P9-③ 行为：按块报条数（cards=2，其余不是数组不列）",
+  _jsOk.innerHTML.includes("cards=2"));
+check("P9-③ 行为：库快照三数原是现算的（1776/9001/532）",
+  _jsOk.innerHTML.includes("1776") && _jsOk.innerHTML.includes("9001") &&
+  _jsOk.innerHTML.includes("532"));
+
+const _jsBad = mkEl();
+_jsBad.innerHTML = jobAnalysisHtml({ result: {
+  exit_code: 0, stdout: "文本", json_error: "落盘不是合法 JSON：Expecting value" } });
+check("P9-③ 行为：结构坏了要响亮（不装成功）",
+  _jsBad.innerHTML.includes("落盘不是合法 JSON"));
+
+const _jsTextOnly = mkEl();
+_jsTextOnly.innerHTML = jobAnalysisHtml({ result: {
+  exit_code: 0, stdout: "只有文本的报告" } });
+check("P9-③ 行为：只有文本时不冒充有结构",
+  !_jsTextOnly.innerHTML.includes("机读口径") &&
+  _jsTextOnly.innerHTML.includes("输出"));
 
 console.log(failed ? ("\n" + failed + " CHECK(S) FAILED") :
     "\nALL COMMAND-PALETTE CHECKS PASSED");

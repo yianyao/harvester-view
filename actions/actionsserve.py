@@ -32,9 +32,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sqlite3
 import sys
+import tempfile
 import threading
 import traceback
 import uuid
@@ -513,7 +515,7 @@ def _action_cards_validate(cfg: Config, params: dict) -> dict:
             "--db", str(cfg.db)]
     if cfg.topics_meta and cfg.topics_meta.is_file():
         argv += ["--topics-meta", str(cfg.topics_meta)]
-    return _cli_report(argv)
+    return _cli_report_both(argv)      # cards-validate/1
 
 
 def _action_cards_index_md(cfg: Config, params: dict) -> dict:
@@ -550,7 +552,7 @@ def _action_chain_audit(cfg: Config, params: dict) -> dict:
             argv.append(flag)
     if params.get("list_limit") is not None:
         argv += ["--list-limit", str(int(params["list_limit"]))]
-    r = _cli_report(argv)
+    r = _cli_report_both(argv)          # chain-audit/1（文本仍在 stdout）
     if not params.get("no_anchors"):
         try:
             from harvester.chainaudit import audit_chain as _ac
@@ -738,6 +740,34 @@ def _cli_report_json(argv: list[str]) -> dict:
     return r
 
 
+def _cli_report_both(argv: list[str]) -> dict:
+    """跑 CLI：人读文本走 stdout，机读结构走临时文件 → `result["json"]`。
+
+    P9-③：`--json -` 会把 stdout 让给 JSON（人读报告消失），那是回归；
+    所以这里用 `--json <临时文件>`，两样都要。文件在系统临时目录、跑完即删
+    （不落仓库、不落导出目录——导出是另一条显式动作）。
+    解析失败**不装成功**：置 `json_error` 并把原文留在 stdout，页面明说。
+    """
+    fd, path = tempfile.mkstemp(prefix="hv-json-", suffix=".json")
+    os.close(fd)
+    try:
+        r = _cli_report([*argv, "--json", path])
+        p = Path(path)
+        if p.is_file() and p.stat().st_size:
+            try:
+                r["json"] = json.loads(p.read_text(encoding="utf-8"))
+            except ValueError as exc:
+                r["json_error"] = f"落盘不是合法 JSON：{exc}"
+        else:
+            r["json_error"] = "命令没有写出机读结构（--json 未生效？）"
+        return r
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
 def _action_report_daily(cfg: Config, params: dict) -> dict:
     """A 档：每日数据速览（`report-daily`，P5-⑤）。
 
@@ -748,7 +778,8 @@ def _action_report_daily(cfg: Config, params: dict) -> dict:
         argv += ["--meta", str(cfg.suggestions_meta)]
     if params.get("since") is not None:
         argv += ["--since", str(params["since"])]
-    return _cli_report(argv)
+    # P9-③：文本 + 结构（report-daily/1）两样都要
+    return _cli_report_both(argv)
 
 
 def _action_report_skill(cfg: Config, params: dict) -> dict:
@@ -769,7 +800,7 @@ def _action_report_skill_join(cfg: Config, params: dict) -> dict:
         argv += ["--skill", str(params["skill"])]
     if params.get("margin_days") is not None:
         argv += ["--margin-days", str(params["margin_days"])]
-    return _cli_report(argv)
+    return _cli_report_both(argv)      # report-skill-join/1
 
 
 def _action_report_traces(cfg: Config, params: dict) -> dict:

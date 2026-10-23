@@ -41,12 +41,6 @@ LIGHT_HEX = re.compile(
     r"#(?:fff|ffffff|fafbfc|f6f8fa|f7faff|fffbe8|fff5f6|fffdf5|fff7d6|"
     r"fde8e8|eef4ff|f2f4f7|f8f9fa)\b", re.I)
 
-#: 主题变量（会随 prefers-color-scheme 翻转的）
-THEME_VARS = ("--bg", "--panel", "--ink", "--ink2", "--line", "--accent",
-              "--mark", "--warn-bg", "--warn-ink", "--err-bg", "--err-ink",
-              "--ok-bg", "--ok-ink")
-
-
 def _strip_comments(css: str) -> str:
     return re.sub(r"/\*[\s\S]*?\*/", "", css)
 

@@ -21,10 +21,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
-from . import ensure_harvester_importable, upstream_root
+from . import ensure_harvester_importable  # `upstream_root` 不用（已清）
 
 OUT = Path(__file__).resolve().parent / "commands.json"
 

@@ -16,7 +16,6 @@
 """
 from __future__ import annotations
 
-import shutil
 import sys
 import tempfile
 import unittest

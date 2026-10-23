@@ -257,8 +257,6 @@ class ActionsServeTest(_ServerMixin, unittest.TestCase):
         # 两次现算的响应各带 generated_at/corpus_mtime（秒级时间戳）——
         # 跨秒竞态会让 dict 全等假红（v0.76 收口：对账时归一时间戳，
         # 数字同源同数的断言目标不变）。
-        import copy
-
         def _strip_ts(o):
             if isinstance(o, dict):
                 return {k: _strip_ts(v) for k, v in o.items()

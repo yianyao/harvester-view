@@ -42,7 +42,6 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from types import SimpleNamespace
 from urllib.parse import parse_qs, unquote, urlparse
 
 from . import ensure_harvester_importable, upstream_root

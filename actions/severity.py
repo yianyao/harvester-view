@@ -66,13 +66,6 @@ KIND_STOCK = "stock"
 KIND_RATE = "rate"
 KINDS = (KIND_ACTION, KIND_STOCK, KIND_RATE)
 
-#: 给页面用的中文标签（不是行业术语，**本项目自定义**，首次出现须自带解释）
-KIND_LABEL = {
-    KIND_ACTION: "待处理",
-    KIND_STOCK: "累计",
-    KIND_RATE: "比率",
-}
-
 LEVEL_OK = "ok"
 LEVEL_WATCH = "watch"
 LEVEL_WARN = "warn"

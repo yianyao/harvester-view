@@ -66,6 +66,25 @@ class TestP54NoviceThreeQuestions(unittest.TestCase):
         self.assertIn('id="freshbar"', self.src)
         self.assertIn("真源", self.src, "口径/真源标注丢失")
 
+    def test_every_panel_answers_three_questions(self):
+        """每个面板的「怎么读」都要回答同一组三问（用户 2026-10-23 判词：
+        「有数据了，却不知道这数据有啥用、可以做什么、咋做」）。
+
+        判据是三格**标记**而不是字数：`产出物=` / `谁用=` / `验收=`。
+        新面板漏一格的后果是"用户又得自己猜"，而文案缺失在页面上不会报错——
+        这正是本条门存在的理由（报告页 errors/tools 还额外要求「表头怎么读」）。
+        """
+        for p in self.glo["panels"]:
+            intro = p.get("intro") or ""
+            for mark in ("产出物=", "谁用=", "验收="):
+                self.assertIn(mark, intro,
+                              "面板 %s 的导语缺「%s」（三问必须每面板都答）"
+                              % (p.get("panel"), mark))
+        for k in ("errors", "tools"):
+            intro = next(p["intro"] for p in self.glo["panels"] if p["panel"] == k)
+            self.assertIn("表头怎么读", intro,
+                          "报告面板 %s 缺「表头怎么读」（用户点名表头不够完善）" % k)
+
     def test_next_step_hints_intact(self):
         """小白第③问留痕：空态引导与档位出口在位（防回归）。"""
         self.assertIn("去命令台", self.src)

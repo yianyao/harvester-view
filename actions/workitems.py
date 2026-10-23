@@ -43,6 +43,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import ensure_harvester_importable
+from . import severity as sev
 
 _ERR = ensure_harvester_importable()
 if _ERR is None:  # pragma: no cover - 缺上游时由端点报 503
@@ -1084,6 +1085,40 @@ def _targets_all(g) -> list[dict]:
     ]
 
 
+#: 三类计数分类表（用户 2026-10-23 批准的第②步；判据在 `severity.py`）。
+#:
+#: 为什么**集中在一处**而不是散进上面 18 个 target 字典里：分类是**口径判断**，
+#: 看的是 target 的定义原文（"全库错误总数""已拍板""已登记 skill"都是累计量）；
+#: 集中一张表才好一眼复核"哪些卡会响"，也才好在门里断言"18 个 id 全都分类过"。
+#: 新加 target 必须在这里登记——`_targets_all` 用 `KINDS[tid]` 直取，漏登记
+#: 会 KeyError（fail loud），不会被默默当成"待处理"而重新变成警报。
+KINDS: dict[str, str] = {
+    # ---- 四队列：都是"有人要动手的活" ----
+    "queue:decide": sev.KIND_ACTION,          # 待你裁决
+    "queue:repair": sev.KIND_ACTION,          # 待修补
+    "queue:distill": sev.KIND_ACTION,         # 待蒸馏
+    "queue:verify": sev.KIND_ACTION,          # 待验证（等样本/放宽门槛，仍是人的活）
+    # ---- 队列明细 ----
+    "queue:decide.done": sev.KIND_STOCK,      # 已裁决 = 已完成
+    "queue:distill.old": sev.KIND_ACTION,     # 旧坑重现
+    "queue:distill.cards": sev.KIND_ACTION,   # 待做卡片
+    "queue:verify.evaluable": sev.KIND_ACTION,  # 可评估（能做效果对比）
+    "queue:verify.unchanged": sev.KIND_ACTION,  # 无变化（建议退休）
+    # ---- 错误环 ----
+    "ring:errors.0": sev.KIND_STOCK,          # 全库错误步骤总数（累计）
+    "ring:errors.1": sev.KIND_STOCK,          # 已采纳 = 已行动（累计）
+    "ring:errors.2": sev.KIND_STOCK,          # 不下结论（子集，只能等样本）
+    "ring:errors.givenup": sev.KIND_ACTION,   # 未解决 = 真待办
+    # ---- skill 环 ----
+    "ring:skill.0": sev.KIND_STOCK,           # 行为画像里登记的 skill 数（累计）
+    "ring:skill.1": sev.KIND_ACTION,          # 待鉴定
+    # ---- 主题环 ----
+    "ring:topics.0": sev.KIND_STOCK,          # 已注册主题数（累计）
+    "ring:topics.1": sev.KIND_STOCK,          # 已发布 chain（累计）
+    "ring:topics.2": sev.KIND_ACTION,         # 卡片警告/错误 = 待确认
+}
+
+
 def targets(g) -> list[dict]:
     """全部 target：`counts` 由明细**派生**（故不可能与明细不一致）。"""
     out = _targets_all(g)
@@ -1098,7 +1133,10 @@ def targets(g) -> list[dict]:
                                         for i in items)
         t["counts"] = counts
         t["count"] = int(counts.get(t["primary"], 0))
-        t["level"] = "ok" if t["count"] == 0 else "warn"
+        # kind/level 走唯一判据（severity.py）：累计量不再"非零即黄"
+        t["kind"] = KINDS[t["target_id"]]
+        t["level"] = sev.level_of(t["kind"], t["count"])
+        t["level_why"] = sev.explain(t["kind"], t["count"])
     return out
 
 
@@ -1217,6 +1255,9 @@ def _public_target(t: dict, *, with_items: bool) -> dict:
     rec = [_reconcile(t["items"], m, shown) for m in t["metrics"]]
     d = {"target_id": t["target_id"], "group": t["group"],
          "label": t["label"], "unit": t["unit"], "count": t["count"],
+         # kind/level_why 是第②步的对外字段：页面靠 kind 决定徽章
+         # （累计/比率），靠 level_why 解释"为什么是这个颜色"。
+         "kind": t["kind"], "level_why": t["level_why"],
          "level": t["level"], "source": t["source"],
          "definition": t["definition"], "where": t["where"],
          "owner": t.get("owner", ""), "suggestion": t.get("suggestion", ""),

@@ -213,6 +213,10 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 .arm{border:1px solid var(--line);border-radius:6px;padding:4px 8px;min-width:130px;
   background:var(--bg)}
 .arm.warn{border-color:var(--warn-ink);background:var(--warn-bg)}
+.arm.watch{border-color:var(--warn-ink);border-style:dashed;background:transparent}
+.arm.info{border-color:var(--line);background:transparent}
+.arm .kn{font-size:9.5px;color:var(--ink2);border:1px solid var(--line);
+  border-radius:3px;padding:0 3px;margin-left:4px;vertical-align:2px;white-space:nowrap;font-weight:400}
 .arm.bad{border-color:var(--err-ink);background:var(--err-bg)}
 .arm .av{font-size:19px;font-weight:700;line-height:1.1}
 .arm .au{font-size:11px;color:var(--ink2);font-weight:400}
@@ -426,6 +430,11 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
   <main>
     <div id="home-intro"></div>
     <div id="home-banner" class="sub2"></div>
+    <p class="legend" id="home-legend">颜色读法：<b>黄框</b>=待处理（<b>≥3</b> 条才算要处理，
+      点数字进处理单）；<b>虚线黄框</b>=零星（1–2 条，归观察，不报警）；
+      <b>灰框</b>=累计/已完成（只说明"现在有多少"，<b>不是待办的活</b>，所以不作警报；
+      卡片右上角的「累计」徽章就是这个意思）。环标题的「有 N 段有积压」只数待处理段。
+      判据只有一处（`actions/severity.py`）：累计量永不发黄、比率必须样本 ≥20 且 ≥10%。</p>
     <div id="home-daily"></div>
     <h3 class="sec">四队列（点数字去处理）</h3>
     <p class="legend">四队列和下面的闭环健康是<b>一本账的两种看法</b>：闭环健康是三条流水线的库存体检（问题攒了多少、卡在哪一段）；四队列是从这些库存里捞出的、按<b>下一步动作</b>分的四队活（裁决/修补/蒸馏/验证）。队列里的每一条活，都来自环上某一段的明细——点数字进处理单就能看到。</p>
@@ -4751,11 +4760,24 @@ function renderQueueDetail(d){
 }
 function armHtml(a){
   const lv=a.level||"";
+  /* 分类徽章（用户 2026-10-23 批准的第②步）：判据在后端 `severity.py`，
+     页面只显示它给的 kind/level_why，不自己判。累计量必须能自证"我不是警报"，
+     否则人还是会把它当待办（原先 14 张黄卡里 8 张是累计量）。 */
+  const kind=a.kind||"";
+  const knote=(kind==="stock")
+    ? "<span class='kn' title='"+esc(a.level_why||
+        "累计量：只说明现在有多少，不是待办的活，所以不作警报。")+
+      "'>累计</span>"
+    : ((kind==="rate")
+      ? "<span class='kn' title='"+esc(a.level_why||
+          "比率：样本够大且超阈值才报警。")+"'>比率</span>"
+      : "");
   const ms=(a.metrics&&a.metrics.length>1)?
     ("<div class='wi-facts'>"+a.metrics.map(m=>"<span>"+esc(m.label)+"："+
       m.value+" "+esc(m.unit||"")+"</span>").join("")+"</div>"):"";
   return "<div class='arm "+esc(lv)+"'>"+
-    "<div class='av'>"+a.value+"<span class='au'> "+esc(a.unit||"")+"</span></div>"+
+    "<div class='av'>"+a.value+"<span class='au'> "+esc(a.unit||"")+"</span>"+
+    knote+"</div>"+
     "<div class='ad'>"+esc(a.definition||"")+"</div>"+
     ms+
     "<div class='as' title='真源=这个数由哪个函数现算出来（备查）。平时不用管；两处数字打架时以真源那处为准。'>真源 "+esc(a.source||"")+"</div>"+
@@ -4773,7 +4795,7 @@ function renderRings(d){
   const rs=d.rings||[];
   if(!rs.length){box.innerHTML="<div class='empty'>无环数据</div>";return;}
   box.innerHTML=rs.map(r=>{
-    const blocked=(r.arms||[]).filter(a=>a.value>0).length;
+    const blocked=(r.arms||[]).filter(a=>a.value>0 && a.kind!=="stock").length;
     return "<div class='ring'><div class='rt'>"+esc(r.title)+
       "　<span class='sub2'>"+(blocked?
         ("有 "+blocked+" 段有积压"):"无积压")+"</span></div>"+

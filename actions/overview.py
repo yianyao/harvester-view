@@ -26,6 +26,7 @@
 from __future__ import annotations
 
 from . import ensure_harvester_importable
+from . import severity as _sev
 from . import workitems as _wi
 
 _ERR = ensure_harvester_importable()
@@ -82,18 +83,27 @@ def build_overview(cfg) -> dict:
             "source": t["source"], "definition": t["definition"],
             "where": t["where"], "target": tid, "metric": t["primary"],
             "suggestion": t["suggestion"], "owner": t["owner"],
+            "kind": t["kind"], "level_why": t["level_why"],
             "level": t["level"], "reconcile_ok": t["reconcile_ok"]})
 
+    kind_by_id = {t["target_id"]: t["kind"] for t in idx}
     queue_details = _wi.build_queue_details(g, idx)
     for rows in queue_details.values():
         for a in rows:
-            # 与旧 `_arm` 同款：0 就是 ok，其余 warn（页面据此上色）
-            a["level"] = "ok" if not a["value"] else "warn"
+            # 分类判据来自 target（`severity.py` 是唯一判据，这里不再自己写
+            # "非零即黄"——那正是第②步要消掉的第二套口径）。聚合数（target
+            # 为 None）无私自拍板的余地，按"累计量"中性处理。
+            tid = a.get("target")
+            a["kind"] = kind_by_id.get(tid, _sev.KIND_STOCK) if tid \
+                else _sev.KIND_STOCK
+            a["level"] = _sev.level_of(a["kind"], int(a.get("value") or 0))
+            a["level_why"] = _sev.explain(a["kind"], int(a.get("value") or 0))
 
     def _arm(tid: str) -> dict:
         t = _lookup(tid)
         return {"value": t["count"], "unit": t["unit"], "source": t["source"],
                 "definition": t["definition"], "where": t["where"],
+                "kind": t["kind"], "level_why": t["level_why"],
                 "level": t["level"], "target": tid, "metric": t["primary"],
                 "suggestion": t["suggestion"], "owner": t["owner"],
                 "metrics": t["metrics"], "reconcile_ok": t["reconcile_ok"]}

@@ -2275,6 +2275,52 @@ function repFilter(){
           only:$("rep-erronly").checked};
 }
 function hitQ(text,q){return !q||String(text||"").toLowerCase().includes(q);}
+/* 报告页「次数阈值」（第③步，用户 2026-10-23 批准）：
+   原先两张表各自静默截断（异常根因 slice(0,80)、错误模式 slice(0,60)）——
+   被丢掉的尾部**不报数**，违反本仓"被丢掉的部分必须可见"的纪律；
+   同时 1–2 次的零星模式占 43%（只含 5% 的错误），却把头部真问题挤下去。
+
+   默认阈值 = 3（= 后端 `severity.ACTION_MIN`，由 `tests/test_v73_target_kinds.py`
+   断言两者相等；这里不许各写一份）。「全部」= 阈值 1，随时可切回全量。 */
+const REP_MIN_DEFAULT = 3;
+function repMinOf() {
+  return (typeof state !== "undefined" && state.repMin) ? state.repMin
+    : REP_MIN_DEFAULT;
+}
+/* 阈值过滤 + **诚实的余量说明**：低于阈值的条目数、它们合计多少，都要报。 */
+function repGate(rows, min) {
+  const over = rows.filter(r => r.count >= min);
+  const under = rows.filter(r => r.count < min);
+  return { over: over, under: under, underN: under.length,
+           underCount: under.reduce((a, r) => a + r.count, 0),
+           total: rows.reduce((a, r) => a + r.count, 0) };
+}
+function repRemain(g, min, shownN) {
+  let s = "共 " + g.over.length + " 条 / " + g.total + " 次错误";
+  if (g.underN)
+    s += "；<b>另有 " + g.underN + " 条次数 &lt;" + min + "（合计 " + g.underCount
+      + " 次错误）按阈值未显示</b>";
+  if (shownN != null && shownN < g.over.length)
+    s += "；表内只显示前 " + shownN + " 条（完整清单用「导出 JSON」）";
+  return s;
+}
+function repMinChips() {
+  const cur = repMinOf();
+  return "<div class='chiprow'>"
+    + "<span class='chip" + (cur <= 1 ? " on" : "")
+    + "' data-repmin='1'>全部（阈值 ≥1）</span>"
+    + "<span class='chip" + (cur > 1 ? " on" : "") + "' data-repmin='"
+    + REP_MIN_DEFAULT + "'>只看 ≥" + REP_MIN_DEFAULT + " 次（默认）</span></div>";
+}
+/* 阈值 chip 的接线（两条路径——"过滤态提前 return" 与全量态——都要接上，
+   否则点了没反应；这是本仓踩过的"按钮不接线"老坑）。 */
+function wireRepThresh(out) {
+  for (const el of out.querySelectorAll("[data-repmin]"))
+    el.onclick = () => { if (typeof state === "undefined") return;
+      state.repMin = parseInt(el.dataset.repmin, 10) || 1;
+      if (state.repLast) renderErrors(state.repLast, out); };
+}
+
 function renderTools(d,out){
   const f=repFilter();
   /* 异常明细数据面：优先 roots（后端 aggregate_error_roots 已归一聚合，
@@ -2301,21 +2347,38 @@ function renderTools(d,out){
   }
   const errs=[...byDetail.values()].map(g=>({...g,tools:[...g.tools]}))
     .sort((a,b)=>b.count-a.count);
+
   const errTable=()=>{
+    const min=repMinOf();
+    const gate=repGate(errs, min);
     let h="<h3 class='sec'>异常根因明细"+(f.q?"（关键字“"+esc(f.q)+"”命中）":"")+
-      "（按次数倒序；同根因已归并——模式已去路径/引号/数字差异）</h3>";
-    h+=errs.length?("<table><thead><tr><th class='num'>次数</th>"+
-      "<th>根因模式</th><th>类别</th><th>工具</th><th>样例</th></tr></thead><tbody>"+
-      errs.slice(0,80).map(e=>"<tr><td class='num'>"+e.count+"</td><td class='sub2'>"+
-      esc(e.detail)+"</td><td>"+esc(e.cls)+"</td><td>"+
-      esc(e.tools.join("/"))+"</td><td class='sub2'>"+
-      esc(e.sample.slice(0,160))+"</td></tr>").join("")+"</tbody></table>")
-      :"<div class='empty'>无命中</div>";
+      "（按次数倒序；同根因已归并——模式已去路径/引号/数字差异）</h3>"+
+      repMinChips();
+    const N=80;
+    let body;
+    if(gate.over.length){
+      body="<table><thead><tr><th class='num'>次数</th>"+
+        "<th>根因模式</th><th>类别</th><th>工具</th><th>样例</th></tr></thead><tbody>"+
+        gate.over.slice(0,N).map(e=>"<tr><td class='num'>"+e.count+"</td><td class='sub2'>"+
+        esc(e.detail)+"</td><td>"+esc(e.cls)+"</td><td>"+
+        esc(e.tools.join("/"))+"</td><td class='sub2'>"+
+        esc(e.sample.slice(0,160))+"</td></tr>").join("")+"</tbody></table>";
+    }else{
+      /* 两种空态分开说：一条都没命中 vs 命中了但都没到阈值——
+         混成一句"无命中"就是骗人（人会以为真没有）。 */
+      body="<div class='empty'>"+(errs.length
+        ?("没有达到阈值的条目（阈值 ≥"+min+" 次；共 "+errs.length+" 条低于阈值）")
+        :"无命中")+"</div>";
+    }
+    h+=body;
+    h+="<div class='sub2 rep-rem'>"+repRemain(gate, min,
+      Math.min(gate.over.length, N))+"</div>";
     return h;
   };
   if(f.only||f.q){
     $("rep-meta").textContent+="｜过滤后异常根因 "+errs.length+" 条";
     out.innerHTML=errTable();
+    wireRepThresh(out);
     return;
   }
   const tot=d.tools.reduce((a,t)=>a+t.calls,0);
@@ -2512,12 +2575,17 @@ function renderErrors(d,out){
   }
   const ATTOK=(d.attrib_status==="ok");
   const CONF={"high":"高","medium":"中","low":"低"};
-  html+=pats.length?("<table><thead><tr><th class='num'>次数</th>"+
+  /* 同一套阈值（第③步）：模式表原先 slice(0,60) 静默截断，尾部不报数。 */
+  const pMin=repMinOf();
+  const pGate=repGate(pats.map(x=>({count:x.count,t:x})), pMin);
+  html+=repMinChips();
+  html+=pGate.over.length?("<table><thead><tr><th class='num'>次数</th>"+
     "<th>模式</th><th>类别</th><th>工具</th>"+
     (ATTOK?"<th title='归因是**候选**（机器判断会错）；这里的类别仍是事实层口径，"+
       "归因类别若不同会在格内另标。裁决请回填 attribations 台账。'>根因 / 应对</th>":"")+
     "<th style='max-width:190px'>样例锚点</th></tr></thead><tbody>"+
-    pats.slice(0,60).map(x=>{
+    pGate.over.slice(0,60).map(row=>{
+      const x=row.t;
       const pl=patternPlain(x.pattern);   /* P1-1 模式人话（未收录不显示） */
       let attCell="";
       if(ATTOK){
@@ -2552,11 +2620,15 @@ function renderErrors(d,out){
       "data-pat2=\""+esc(x.pattern)+"\">会话列表 →</a></div>"+
       "</td></tr>";}).join("")+"</tbody></table>")
     :"<div class='empty'>steps 表无错误记录</div>";
+  if(pGate.over.length||pGate.underN)
+    html+="<div class='sub2 rep-rem'>"+repRemain(pGate, pMin,
+      Math.min(pGate.over.length, 60))+"</div>";
   out.innerHTML=html;
   for(const el of out.querySelectorAll("[data-errchip]"))
     el.onclick=()=>{if(typeof state==="undefined")return;
       state.errChip=el.dataset.errchip||"";
       if(state.repLast)renderErrors(state.repLast,out);};
+  wireRepThresh(out);
   if(typeof bindPatternDrill==="function")bindPatternDrill(out);
 }
 /* P2-5 第二跳入口接线：模式次数 / 「会话列表 →」都通向命中会话清单 */
@@ -4796,9 +4868,15 @@ function renderRings(d){
   if(!rs.length){box.innerHTML="<div class='empty'>无环数据</div>";return;}
   box.innerHTML=rs.map(r=>{
     const blocked=(r.arms||[]).filter(a=>a.value>0 && a.kind!=="stock").length;
+    /* 「另有 N 段」= 没进积压但确实有数的段（累计量 / 零星 1–2 条）。
+       不写这一行的话，人会以为"环上就两段有料"，其实是被分类挡掉了。 */
+    const quiet=(r.arms||[]).filter(a=>a.value>0 &&
+      (a.kind==="stock"||a.level==="watch")).length;
     return "<div class='ring'><div class='rt'>"+esc(r.title)+
       "　<span class='sub2'>"+(blocked?
-        ("有 "+blocked+" 段有积压"):"无积压")+"</span></div>"+
+        ("有 "+blocked+" 段有积压"):"无积压")+"</span>"+
+      (quiet?("<span class='sub2'>｜另有 "+quiet+
+        " 段为累计/零星（不计入积压）</span>"):"")+"</div>"+
       "<div class='rd'>"+esc(r.definition||"")+"</div>"+
       "<div class='arms'>"+(r.arms||[]).map(a=>armHtml(a)).join("")+"</div></div>";
   }).join("");

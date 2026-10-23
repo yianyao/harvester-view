@@ -57,6 +57,14 @@ eval(extractFn("renderTopics", "d,out"));
 eval(extractFn("renderChain", "d,out,idx"));
 eval(extractFn("bindChainSwitch", "root,d"));
 eval(extractFn("bindTopicNodes", "root"));
+/* 第③步：renderErrors 依赖模块级"次数阈值"辅助块（repMinOf/repGate/
+   repRemain/repMinChips/wireRepThresh）。extract 只提单个函数，这里按注释头
+   到 wireRepThresh 的收尾整块提出；`const` 在 eval 里不外泄，故改成 `var`。 */
+const _th0 = html.indexOf("/* 报告页「次数阈值」");
+const _th1 = html.indexOf("\n}\n", html.indexOf("function wireRepThresh(")) + 3;
+if (_th0 < 0 || _th1 < 2) throw new Error("阈值辅助块提取失败");
+eval(html.slice(_th0, _th1).replace("const REP_MIN_DEFAULT = 3;",
+                                    "var REP_MIN_DEFAULT = 3;"));
 eval(extractFn("renderErrors", "d,out"));
 
 const topics = (P.topics && P.topics.topics) || [];
@@ -162,6 +170,13 @@ if (bcSum === 0 || pats.length === 0) {
   note("errors chips 对账", "真库窗口内无错误（无数据可断言）");
 } else {
   const erOut = mkOut();
+  /* 第③步：报告页默认按次数阈值（≥3）过滤；本节验的是「归因格 ↔ 载荷」对账，
+     不是阈值，故显式用「全部」（阈值 1）——否则 1–2 次的未归因模式被滤掉，
+     对账④会以为是"页面漏了"（判据：门要测什么，就把别的变量钉死）。 */
+  stateStub.repMin = 1;
+  stateStub.repLast = ER;
+  state.repMin = 1;        /* 真桩在全局 state 上（renderErrors 读的就是它） */
+  state.repLast = ER;
   renderErrors(ER, erOut);
   check("chips 行数 = 类别数 + 全部（真库 " + Object.keys(bc).length + " 类）",
     (erOut.innerHTML.match(/data-errchip=/g) || []).length ===

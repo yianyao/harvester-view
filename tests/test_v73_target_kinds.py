@@ -150,6 +150,15 @@ class TestLegendMatchesPolicy(unittest.TestCase):
         self.assertIn("不是待办的活", HTML)
         self.assertIn("累计", HTML)
 
+    def test_report_threshold_equals_severity_constant(self):
+        """页面里 `REP_MIN_DEFAULT` 是 JS 常量，后端阈值是 Python 常量——
+        两边各写一份就会漂（漂了页面报的是别的阈值）。这里钉住相等。"""
+        import re
+        m = re.search(r"const REP_MIN_DEFAULT\s*=\s*(\d+);", HTML)
+        self.assertIsNotNone(m, "页面必须有 REP_MIN_DEFAULT（报告页次数阈值）")
+        self.assertEqual(int(m.group(1)), sev.ACTION_MIN,
+                         "页面阈值 REP_MIN_DEFAULT 与 severity.ACTION_MIN 不一致")
+
 
 class _RealCfg:
     """真库 cfg（与 test_v40 同款路径；缺库时整类 skip）。"""

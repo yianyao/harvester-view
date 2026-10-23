@@ -140,6 +140,15 @@ ACT_RESP["/api/actions"] = {
 ACT_RESP["/api/commands"] = COMMANDS;
 
 /* ---- extract 真源码并执行 ---- */
+/* 第③步：renderErrors 依赖模块级"次数阈值"辅助块（repMinOf/repGate/
+   repRemain/repMinChips/wireRepThresh）。extract 只提单个函数，这里按注释头
+   到 wireRepThresh 的收尾整块提出；`const` 在 eval 里不外泄，故改成 `var`。 */
+const _th0 = html.indexOf("/* 报告页「次数阈值」");
+const _th1 = html.indexOf("\n}\n", html.indexOf("function wireRepThresh(")) + 3;
+if (_th0 < 0 || _th1 < 2) throw new Error("阈值辅助块提取失败");
+eval(html.slice(_th0, _th1).replace("const REP_MIN_DEFAULT = 3;",
+                                    "var REP_MIN_DEFAULT = 3;"));
+
 for (const [n, sig] of [
   ["tierLabel", "t"], ["cmdCommands", ""], ["renderCmdCards", ""],
   ["renderCmdActions", ""], ["selectCmdCommand", "name"],

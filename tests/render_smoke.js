@@ -73,6 +73,19 @@ const DATA = {
   by_source: {},
 };
 
+/* 第③步：renderTools 里的 errTable 现在调模块级阈值辅助函数
+   （repMinOf/repGate/repRemain/repMinChips/wireRepThresh）。extract 只提单个
+   函数，这里把**整块**提出来（从注释头到 wireRepThresh 的收尾 `}`），并把
+   `const REP_MIN_DEFAULT` 改成 `var`——eval 里的 const 不外泄，会报未定义。 */
+function extractBlock(firstMarker, lastFn) {
+  const i = html.indexOf(firstMarker);
+  const fnAt = html.indexOf("function " + lastFn + "(");
+  const j = html.indexOf("\n}\n", fnAt);
+  if (i < 0 || fnAt < 0 || j < 0) throw new Error("extractBlock fail: " + firstMarker);
+  return html.slice(i, j + 3).replace("const REP_MIN_DEFAULT = 3;",
+                                      "var REP_MIN_DEFAULT = 3;");
+}
+eval(extractBlock("/* 报告页「次数阈值」", "wireRepThresh"));
 eval(extract("renderTools"));
 eval(extract("renderSkills"));
 function pTag(){return "";} /* P5-2 桩：身份徽章不参与卡片渲染断言 */
@@ -92,6 +105,9 @@ function runTools(q, only) {
 }
 
 /* --- P0-2 renderTools --- */
+/* 第③步起根因表默认按次数阈值（≥3）过滤；本节验的是"渲染/过滤/proots"，
+   故把阈值显式调到 1（全部）。阈值本身由 render_threshold.js 专测。 */
+state.repMin = 1;
 let h0 = runTools("", false);
 check("默认视图渲染根因表", h0.includes("异常根因明细"));
 check("roots 优先：模式占位符名出现", h0.includes("P1-file-changed"));
@@ -419,6 +435,9 @@ const DEP = Object.assign({}, DE, { patterns: [
     samples: [] },
   { pattern: "PAT-TI-B", "class": "tool_interface", count: 3, tools: ["t3"],
     samples: [] }] });
+/* 第③步起模式表默认按次数阈值（≥3）过滤；本节只验 chips 口径，
+   故先显式把阈值调成 1（"全部"）——阈值本身由 render_threshold.js 专测。 */
+state.repMin = 1;
 state.errChip = "";
 const depAll = mkOut();
 renderErrors(DEP, depAll);

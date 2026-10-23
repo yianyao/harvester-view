@@ -2318,11 +2318,16 @@ function renderTools(d,out){
   const rawTip=t=>(t.raw_tools||[]).filter(x=>x!==t.tool);
   const lowBadge=t=>t.low_sample?"<span class='badge b-org' "+
     "title='样本量低于阈值，结论仅供观察'>low-sample</span>":"";
-  let html="<h3 class='sec'>工具失败率排行</h3><table><thead><tr>"+
+  /* 排序口径在**端点侧**（toolstats.tool_rows）：样本不足（calls < rank_min_calls）
+   的行带 ranked=false，页面只负责把两段分开渲染——页面不重排、不再算一遍，
+   否则就是第二套口径（用户 2026-10-23 批准的①：1 次调用 1 次失败不该霸榜）。 */
+  const rankedRows=d.tools.filter(t=>t.ranked!==false);
+  const smallRows=d.tools.filter(t=>t.ranked===false);
+  const toolTable=(rows,emptyMsg)=>rows.length?("<table><thead><tr>"+
     "<th>工具</th><th class='num'>调用</th><th class='num'>成功</th>"+
     "<th class='num'>失败</th><th class='num'>失败率</th>"+
     "<th class='num'>放弃</th></tr></thead><tbody>"+
-    (d.tools.length?d.tools.map(t=>{
+    rows.map(t=>{
       const rt=rawTip(t);
       const gnum=t.given_up?"<span class='badge b-red' "+
         "title='错误后同会话同工具无再次调用（未解决）'>"+t.given_up+"</span>"
@@ -2333,9 +2338,21 @@ function renderTools(d,out){
       "</td><td class='num'>"+t.calls+"</td><td class='num'>"+t.success+
       "</td><td class='num'>"+t.error+"</td><td class='num'>"+
       (t.fail_rate*100).toFixed(1)+"%</td><td class='num'>"+gnum+
-      "</td></tr>";}).join("")
-    :"<tr><td colspan='6' class='empty'>无工具调用数据</td></tr>")+
-    "</tbody></table>";
+      "</td></tr>";}).join("")+"</tbody></table>")
+    :"<div class='empty'>"+esc(emptyMsg)+"</div>";
+  let html="<h3 class='sec'>工具失败排行"+
+    (rankedRows.length?"（按失败次数，样本 ≥"+
+      esc(d.rank_min_calls==null?20:d.rank_min_calls)+" 次调用）":"")+
+    "</h3>"+toolTable(rankedRows,"样本充足的工具里没有失败记录");
+  if(smallRows.length){
+    const smallErr=smallRows.reduce((a,t)=>a+t.error,0);
+    html+="<details><summary class='sub2'>样本不足（"+smallRows.length+
+      " 个工具，均 <"+(d.rank_min_calls==null?20:d.rank_min_calls)+
+      " 次调用，合计失败 "+smallErr+" 次）——**不进排行、不下结论**，点开看明细</summary>"+
+      "<p class='sub2'>这些行的失败率不可比（1 次调用 1 次失败也是 100%）。"+
+      "要看趋势请先攒样本，或按调用量排序看绝对次数。</p>"+
+      toolTable(smallRows,"（无）")+"</details>";
+  }
   if(d.flow&&d.flow.errors){
     const f=d.flow;
     html+="<h3 class='sec'>失败后续行为（重试/放弃）</h3><p class='sub2'>"+
@@ -3487,9 +3504,12 @@ function mdReport(kind,d){
       (d.tools||[]).map(t=>[t.tool+
         ((t.raw_tools||[]).filter(x=>x!==t.tool).length?
           "（"+t.raw_tools.filter(x=>x!==t.tool).join("/")+"）":"")+
-        (t.low_sample?" [low-sample]":""),
+        (t.low_sample?" [low-sample]":"")+
+        (t.ranked===false?" [样本不足·未进排行]":""),
         t.calls,t.success,t.error,
         (t.fail_rate*100).toFixed(1)+"%",t.given_up||0]));
+    md+="\n> 排序：样本不足（调用 <"+(d.rank_min_calls==null?20:d.rank_min_calls)+
+      " 次）的行排在末尾且标「样本不足·未进排行」；排行按**失败次数**降序，不按失败率。\n";
     const f=d.flow;
     if(f&&f.errors)md+="\n失败后续：重试 "+f.retried+"（"+
       (f.retried/f.errors*100).toFixed(0)+"%）｜放弃 "+f.given_up+"（"+

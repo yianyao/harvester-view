@@ -468,5 +468,56 @@ check("chips 选中用法类（两行合计 x5）",
   !depTI.innerHTML.includes("PAT-ENV"));
 state.errChip = "";
 
+/* ===== 列表页总纪律（2026-10-23 用户口径）：**全量渲染，或说清藏了几条** =====
+   任何列表页都不许静默截断。这里给每页塞 30 条，两个可接受结局：
+   ① 30 条名字都在（没截断）；② 页面写明「另有 N / 共 N / 前 N 条」（截断但报数）。
+   两个都不满足 = 静默丢行 → 红。 */
+const N30 = 30;
+const mk30 = (f) => Array.from({ length: N30 }, (_, i) => f(i));
+const EXPLAINED = /另有\s*\d+|共\s*\d+\s*(条|个)|前\s*\d+\s*条|已过滤/;
+const lostRows = (html, names) => names.filter(n => html.indexOf(n) < 0).length;
+
+/* skills */
+const SK30 = { n_invocations: 300, min_calls: 1, skills: mk30(i => ({
+  skill: "sk-" + String(i).padStart(2, "0"), calls: 30 - i, sids: 1, ok: 30 - i,
+  err: 0, no_result: 0, sources: ["src"], args_samples: [], chains: {},
+  anchors: [] })) };
+store = freshStore("", false);
+const sk30Out = mkOut();
+renderSkills(SK30, sk30Out);
+{
+  const names = mk30(i => "sk-" + String(i).padStart(2, "0"));
+  check("skills 30 条：全渲染或报数（不静默丢行）",
+    lostRows(sk30Out.innerHTML, names) === 0 || EXPLAINED.test(sk30Out.innerHTML));
+}
+
+/* cards */
+/* cards：卡片页的"清单"是**校验异常清单**（无问题的卡不进表，这是设计），
+   所以夹具必须每张都带一个问题，才能验"30 条异常全在或报数"。 */
+const CD30 = { root: "/cards", summary: { cards: N30, ok: 0, warn: 0, error: N30,
+  anchor_checked: N30, anchor_misses: 0 },
+  cards: mk30(i => ({ path: "card-" + String(i).padStart(2, "0") + ".md",
+                      errors: ["锚点缺失 #" + i], warnings: [] })) };
+store = freshStore("", false);
+const cd30Out = mkOut();
+renderCards(CD30, cd30Out);
+{
+  const names = mk30(i => "card-" + String(i).padStart(2, "0") + ".md");
+  check("cards 30 张：全渲染或报数（不静默丢行）",
+    lostRows(cd30Out.innerHTML, names) === 0 || EXPLAINED.test(cd30Out.innerHTML));
+}
+
+/* topics */
+const TP30 = { topics: mk30(i => ({ id: "tp-" + i,
+  name: "主题-" + String(i).padStart(2, "0"), keywords: "", members_count: 1,
+  first_activity: null, last_activity: null, chains_count: 0, chain_names: [] })) };
+const tp30Out = mkOut();
+renderTopics(TP30, tp30Out);
+{
+  const names = mk30(i => "主题-" + String(i).padStart(2, "0"));
+  check("topics 30 个：全渲染或报数（不静默丢行）",
+    lostRows(tp30Out.innerHTML, names) === 0 || EXPLAINED.test(tp30Out.innerHTML));
+}
+
 if (failed) { console.error(failed + " check(s) failed"); process.exit(1); }
 console.log("ALL RENDER CHECKS PASSED");

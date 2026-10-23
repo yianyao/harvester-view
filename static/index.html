@@ -504,7 +504,7 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
       <!-- v0.73（用户裁决：发布镜像内容直接删了，留来干嘛）：镜像段落
            整段删除，只在上面迁移句留一笔带过的操作口。 -->
       </div></details>
-    <div id="work-head"><div class="empty">从「今日工作台」点任意数字进入。</div></div>
+    <div id="work-head"><div class="empty">这里会列出你选中的那一项的处理单（还没选：回「今日工作台」点任意数字）。</div></div>
     <div id="work-pkg"></div>
     <div id="work-items"></div>
     <div id="work-foot" class="sub2"></div>
@@ -1038,19 +1038,23 @@ function bindCardDirect(root){
 }
 
 /* ---------- API 访问（经本地代理） ---------- */
+/* 连不上本地服务的统一提示（P9：同一句原来在 3 个 fetch 包里各写一遍，
+   改一处漏两处；现在一个函数，且说清是哪两个服务）。 */
+function offlineBanner(){
+  showBanner("warn","连不上本地服务：确认 view.py（页面 8088）与 "+
+    "actionsserve（动作 8766）都在跑");
+}
 async function api(path){
   let res;
   try{ res=await fetch("/u/"+state.no+path); }
-  catch(e){ showBanner("warn","本地代理不可达？请确认 view.py 正在运行");
-            throw e; }
+  catch(e){ offlineBanner(); throw e; }
   if(res.ok){ softClearBanner(); return res.json(); }
   return failApi(res);
 }
 async function apiAll(path){ /* /u/all/* 聚合端点 */
   let res;
   try{ res=await fetch(path); }
-  catch(e){ showBanner("warn","本地代理不可达？请确认 view.py 正在运行");
-            throw e; }
+  catch(e){ offlineBanner(); throw e; }
   if(res.ok){ softClearBanner(); return res.json(); }
   return failApi(res);
 }
@@ -1058,8 +1062,7 @@ async function apiAll(path){ /* /u/all/* 聚合端点 */
 async function apiText(path){
   let res;
   try{ res=await fetch("/u/"+state.no+path); }
-  catch(e){ showBanner("warn","本地代理不可达？请确认 view.py 正在运行");
-            throw e; }
+  catch(e){ offlineBanner(); throw e; }
   if(res.ok){ softClearBanner(); return res.text(); }
   return failApi(res);
 }
@@ -1875,7 +1878,7 @@ function renderRepConcl(kind,d){
       sub:"机械事实：由 /api/reports/tools 现算；「最该先看」=放弃数优先、"+
         "失败数次之的第一名。",
       actions:[{id:"root",label:"看根因",title:"跳到本页根因明细"},
-        {id:"bench",label:"起草班规",title:"打开建议池（agents 报告）"},
+        {id:"bench",label:"起草班规",title:"把这条工具失败写进建议池（agents 报告）"},
         {id:"cmd",label:"在命令台打开",title:"把 report-tools 装到命令台就地执行（A 档只读，结果与本页同源）"}]});
     handlers={root:()=>$("rep-out").scrollIntoView({behavior:"smooth"}),
       bench:()=>{$("rep-kind").value="agents";loadReport(true).catch(()=>{});},
@@ -1893,7 +1896,7 @@ function renderRepConcl(kind,d){
           :"窗口内没有错误。",ok:!n}],
       sub:"机械事实：由 /api/reports/errors 现算；类别口径见「怎么读」。",
       actions:[{id:"root",label:"看根因",title:"跳到本页模式明细"},
-        {id:"bench",label:"起草班规",title:"打开建议池（agents 报告）"},
+        {id:"bench",label:"起草班规",title:"把这条错误模式写进建议池（agents 报告）"},
         {id:"cmd",label:"在命令台打开",title:"把 report-errors 装到命令台就地执行（A 档只读，结果与本页同源；窗口在命令台参数里调）"}]});
     handlers={root:()=>$("rep-out").scrollIntoView({behavior:"smooth"}),
       bench:()=>{$("rep-kind").value="agents";loadReport(true).catch(()=>{});},
@@ -1932,7 +1935,7 @@ function renderRepConcl(kind,d){
           :"窗口内没有 skill 失败。",ok:!worst}],
       sub:"机械事实：由 /api/reports/skills 现算；「最该先看」=失败数最高者。",
       actions:[{id:"root",label:"看明细",title:"跳到本页 skill 明细表"},
-        {id:"bench",label:"起草班规",title:"打开建议池（agents 报告）"},
+        {id:"bench",label:"起草班规",title:"把这个 skill 的失败写进建议池（agents 报告）"},
         {id:"cmd",label:"在命令台打开",title:"把 report-skill 装到命令台就地执行（A 档只读，结果与本页同源）"}]});
     handlers={root:()=>$("rep-out").scrollIntoView({behavior:"smooth"}),
       bench:()=>{$("rep-kind").value="agents";loadReport(true).catch(()=>{});},
@@ -2538,7 +2541,7 @@ function renderTools(d,out){
   }
   const srcs=Object.keys(d.by_source||{});
   if(srcs.length){
-    html+="<h3 class='sec'>按 Agent（数据源）分布</h3>";
+    html+="<h3 class='sec'>按 Agent（数据源）看工具失败率</h3>";
     for(const s of srcs){
       const o=d.by_source[s];
       html+="<details><summary>"+esc(s)+"（调用 "+o.calls+"｜失败 "+
@@ -2592,7 +2595,7 @@ function renderErrors(d,out){
     (bk["收尾"]||0)+"——开场高发=环境/权限未就绪；收尾高发=收尾动作踩坑。</p>";
   const srcs=d.by_source||{};
   if(Object.keys(srcs).length>1){
-    html+="<h3 class='sec'>按 Agent（数据源）分布</h3><table><thead><tr>"+
+    html+="<h3 class='sec'>按 Agent（数据源）看错误三分类</h3><table><thead><tr>"+
       "<th>数据源</th><th class='num' title='"+esc(CLS_TIP.env||"")+"'>env</th>"+
       "<th class='num' title='"+esc(CLS_TIP.tool_interface||"")+"'>tool_interface</th>"+
       "<th class='num' title='"+esc(CLS_TIP.context||"")+"'>context</th>"+
@@ -3120,7 +3123,7 @@ function renderChain(d,out,idx){
    叙事节奏 chain 的认可口径。 */
 async function loadSkillJoin(){
   const cur=state.topicCur;
-  if(!cur){showBanner("warn","先在左侧选一个主题");return;}
+  if(!cur){showBanner("warn","先选主题：五档时间线按主题现算");return;}
   if(!state.chainLast){showBanner("warn","当前主题没有 chain 视图可挂");return;}
   const skill=$("sk-join-skill").value.trim();
   const margin=$("sk-join-margin").value.trim()||"0";
@@ -3201,7 +3204,7 @@ function updateTopicCmd(){
    预填同时给 id / id_ 两形态（动作参数键 vs CLI dest）。 */
 async function topicGoCmd(){
   const cur=state.topicCur;
-  if(!cur){showBanner("warn","先在左侧选一个主题");return;}
+  if(!cur){showBanner("warn","先选主题：命令台要按这个主题预填 topic");return;}
   state.cmdCard="topic";state.actionId="topic";
   state.cmdParams={cmd:"pack",id:cur.id,id_:cur.id,
     level:packLevel()};
@@ -3226,7 +3229,7 @@ function dualtrackLevel(){
 }
 async function runDualtrack(){
   const cur=state.topicCur;
-  if(!cur){showBanner("warn","先在左侧选一个主题");return;}
+  if(!cur){showBanner("warn","先选主题：研读面要按主题现算");return;}
   const out=$("topics-timeline");
   const selLv=$("topic-level").value;
   const level=dualtrackLevel();
@@ -3266,7 +3269,7 @@ async function pollDualJob(jid){
    + 轮询——与 dualtrack 同一条作业链路（铁律 6.5）。本页只渲染。 */
 async function runBrief(){
   const cur=state.topicCur;
-  if(!cur){showBanner("warn","先在左侧选一个主题");return;}
+  if(!cur){showBanner("warn","先选主题：研读面按主题现算");return;}
   const out=$("topics-timeline");
   out.innerHTML="<div class='empty'>研读面计算中（A 档动作 topic_brief）…"+
     "确定性聚合层秒级，大主题重复会话检测可能更久。</div>";
@@ -5160,7 +5163,7 @@ async function loadWork(target){
   if(target)state.workTarget=target;
   const head=$("work-head"),box=$("work-items");
   if(!state.workTarget){
-    head.innerHTML="<div class='empty'>从「今日工作台」点任意数字进入。</div>";
+    head.innerHTML="<div class='empty'>这一项没有可展开的处理单内容（数据面只有汇总数，明细点数字进对应页看）。</div>";
     box.innerHTML="";$("work-pkg").innerHTML="";$("work-foot").innerHTML="";
     return;
   }

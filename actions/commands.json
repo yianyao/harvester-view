@@ -930,6 +930,18 @@
      "negates": null,
      "help": "报告输出路径（缺省打印到 stdout）",
      "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--json",
+     "dest": "json",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "机读出口（cards-validate/1）：schema + db_fingerprint + data（逐卡结果与文本同源）；'-'=stdout",
+     "note": null
     }
    ],
    "subactions": null,
@@ -1109,6 +1121,18 @@
      "negates": null,
      "help": "报告输出路径（缺省打印到 stdout）",
      "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--json",
+     "dest": "json",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "机读出口（chain-audit/1）：schema + db_fingerprint + data（与文本同一个聚合）；'-'=stdout",
+     "note": null
     }
    ],
    "subactions": null,
@@ -2834,6 +2858,18 @@
      "negates": null,
      "help": "报告输出路径（缺省打印到 stdout）",
      "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--json",
+     "dest": "json",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "机读出口（report-daily/1）：schema + db_fingerprint + data（与文本同一个聚合）；'-'=stdout",
+     "note": null
     }
    ],
    "subactions": null,
@@ -3059,6 +3095,18 @@
      "negates": null,
      "help": "报告输出路径（缺省打印到 stdout）",
      "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--json",
+     "dest": "json",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "机读出口（report-skill-join/1）：schema + db_fingerprint + data（与文本同一个聚合）；'-'=stdout",
+     "note": null
     }
    ],
    "subactions": null,

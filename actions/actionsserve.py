@@ -702,6 +702,19 @@ def _action_evidence_pack(cfg: Config, params: dict) -> dict:
     return _cli_report(argv)
 
 
+def _action_llm_pack(cfg: Config, params: dict) -> dict:
+    """A 档：LLM 包（`llm-pack`，第④b步）。
+
+    走**机读出口**（JSON 打到 stdout，绝不带 `--json PATH`）：包本身就是给
+    LLM 的输入，页面要原样拿走，服务端不落盘（同 `_action_evidence_pack` 纪律）。
+    """
+    faces = str(params.get("faces") or "errors")
+    argv = ["llm-pack", "--faces", faces, "--db", str(cfg.db)]
+    if params.get("limit") is not None:
+        argv += ["--limit", str(int(params["limit"]))]
+    return _cli_report(argv)
+
+
 def _action_report_daily(cfg: Config, params: dict) -> dict:
     """A 档：每日数据速览（`report-daily`，P5-⑤）。
 
@@ -1195,6 +1208,22 @@ ACTIONS: dict[str, dict] = {
         "reversible": "幂等（只读库；包打到 stdout，不落盘）",
         "writes": "",
         "handler": _action_evidence_pack,
+    },
+    "llm_pack": {
+        "tier": "A",
+        "label": "LLM 包",
+        "desc": "把「现在判不了的东西」连证据打成 llm-pack/1 交 LLM 复核"
+                "（第④b步）：每条 = 事实（锚点/工具名）+ 现有归因候选 + "
+                "**判定槽**。只读 harvester.db；回填仍走 attrib-review 台账。",
+        "params": {"faces": {"type": "text", "src": "chips", "default": "errors",
+                             "choices": ["errors", "tools", "errors,tools"],
+                             "label": "面"},
+                   "limit": {"type": "int", "src": "chips", "default": 40,
+                             "label": "每面条数"}},
+        "est_sec": 3,
+        "reversible": "幂等（只读库；包打到 stdout，不落盘）",
+        "writes": "",
+        "handler": _action_llm_pack,
     },
     "report_skill": {
         "tier": "A",

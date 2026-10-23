@@ -202,6 +202,12 @@
    "est_sec": null
   },
   {
+   "action_id": "llm_pack",
+   "tier": "A",
+   "cmd": "llm-pack",
+   "est_sec": null
+  },
+  {
    "action_id": "noise_list",
    "tier": "A",
    "cmd": "noise list",
@@ -1227,7 +1233,7 @@
  ],
  "counts": {
   "cards": 13,
-  "read_actions": 38,
+  "read_actions": 39,
   "write_actions": 17,
   "write_reversible": 14,
   "write_destructive": 3

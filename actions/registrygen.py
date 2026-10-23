@@ -53,6 +53,9 @@ READ_ACTIONS: dict[str, object] = {
     # 不进这张表就会红——`test_v54_cli_actions.WhitelistCoversAllATier`
     # 要求每个 A 档命令都有可执行动作（"只读"与"页面能执行"是同一件事）。
     "evidence_pack": "evidence-pack",
+    # 第④b步 llm-pack：A 档只读（只读 harvester.db，产物交 LLM 复核）。
+    # 同 evidence_pack：只读命令 = 页面能执行，不进表就红。
+    "llm_pack": "llm-pack",
     "topic_list": "topic",
     "topic_pack": ("topic", "pack"),
     "regress": "regress",

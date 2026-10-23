@@ -115,6 +115,10 @@ COMMAND_CARD: dict[str, str] = {
     # skills/chains 两类同命令产出，按**命令**归卡（不按 kind 拆卡），
     # 否则同一命令会出现在两张卡里、注册表按命令名去重会丢一张。
     "evidence-pack": "errors",
+    # 第④b步 llm-pack（2026-10-23 用户批准）：只读，把"现在判不了的东西"连证据
+    # 打成 llm-pack/1 交 LLM 复核 → 与 evidence-pack 同属错误/归因分析出口，
+    # 归「错误分析」卡（按**命令**归卡，不按 face 拆）。
+    "llm-pack": "errors",
     # P5-⑤ 每日速览（2026-10-16 批准）：四队列+三报告聚合，只读；
     # 归「错误分析」卡（它的三段报告全在这卡里，队列数字是附加项）
     "report-daily": "errors",

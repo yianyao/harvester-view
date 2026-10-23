@@ -2155,6 +2155,88 @@
    "nested": false
   },
   {
+   "cmd": "llm-pack",
+   "card_id": "errors",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径（只读）",
+     "note": null
+    },
+    {
+     "name": "--faces",
+     "dest": "faces",
+     "kind": "str",
+     "default": "errors",
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "要打包的面，逗号分隔（可选 errors,tools；默认 errors）",
+     "note": null
+    },
+    {
+     "name": "--limit",
+     "dest": "limit",
+     "kind": "int",
+     "default": 40,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "每面最多 N 条（默认 40；判定槽行数 = 条目数）",
+     "note": null
+    },
+    {
+     "name": "--rules",
+     "dest": "rules",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "归因规则表路径（缺省随包那份）",
+     "note": null
+    },
+    {
+     "name": "--json",
+     "dest": "json",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "机读出口（llm-pack/1）输出路径；缺省打印到 stdout",
+     "note": null
+    },
+    {
+     "name": "--validate",
+     "dest": "validate",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "校验一个已填/未填的包（结构 + 判定槽对号），合格回 0",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "nested": false
+  },
+  {
    "cmd": "mcp-serve",
    "card_id": "service",
    "tier": "C",

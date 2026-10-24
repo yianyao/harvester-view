@@ -552,10 +552,8 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
       <button id="btn-prev">上一页</button>
       <button id="btn-next">下一页</button>
       <span id="pageinfo"></span>
-      <button id="btn-batch-md" class="xbtn" disabled
-        title="勾选多个会话后，批量拉取全文并合并导出 Markdown（每会话一节，标注会话ID+异常类型；浏览器本地完成）">导出所选会话 md</button>
-      <button id="btn-batch-json" class="xbtn" disabled
-        title="勾选多个会话后，导出机器可读 JSON：错误按归一模式跨会话去重聚合，可直接交给 Agent 分析">导出所选机器可读 JSON</button>
+      <button id="btn-batch-save" class="xbtn" disabled
+        title="勾选会话后导出到服务器 docs/reports/（和「报告索引」里看到的是同一份文件）。不再下载到浏览器——那会变成两份，谁也不是最新">导出到服务器</button>
       <button id="btn-sel-topic" class="xbtn" disabled
         title="把勾选的会话挂进某个主题的成员清单（写主题台账；会写库，先预演→你确认才写）。目标主题在命令台从清单里选，不用手抄 id">勾选 → 并入主题</button>
       <button id="btn-sel-topic-new" class="xbtn" disabled
@@ -610,8 +608,7 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
     <button id="btn-triage">生成队列</button>
     <input type="search" id="tri-q" placeholder="异常关键字过滤（本地过滤）"
       style="width:170px">
-    <button id="btn-tri-export" class="xbtn" title="把当前队列导出为 Markdown 文件（浏览器本地生成）">导出 md</button>
-    <button id="btn-tri-json" class="xbtn" title="导出机器可读 JSON（含归一模式去重说明），可直接交给 Agent 分析">导出 JSON</button>
+    <button id="btn-tri-save" class="xbtn" title="把当前队列导出到服务器 docs/reports/（和「报告索引」里看到的是同一份文件）；机器可读 JSON 在命令台导出">导出到服务器</button>
     <span class="sub2" id="tri-meta"></span>
   </div>
   <div id="tri-concl"></div>
@@ -654,8 +651,7 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
     <input type="search" id="rep-q" placeholder="异常关键字过滤（本地过滤）"
       style="width:170px">
     <label class="sub2"><input type="checkbox" id="rep-erronly">只看异常</label>
-    <button id="btn-rep-export" class="xbtn" title="把当前报告导出为 Markdown 文件（浏览器本地生成）">导出 md</button>
-    <button id="btn-rep-json" class="xbtn" title="导出机器可读 JSON（上游原始结构 + 归一模式去重说明），可直接交给 Agent 分析">导出 JSON</button>
+    <button id="btn-rep-save" class="xbtn" title="把当前报告导出到服务器 docs/reports/（和「报告索引」里看到的是同一份文件）；要 JSON 就在命令台把格式改成 json">导出到服务器</button>
     <button id="btn-rep-index" class="xbtn" title="列出服务端报告目录里的 .md 报告（只读索引，可逐份看全文）">报告索引</button>
     <span class="sub2" id="rep-meta"></span>
   </div>
@@ -1056,30 +1052,44 @@ async function apiAll(path){ /* /u/all/* 聚合端点 */
   return failApi(res);
 }
 /* 文本响应（P1-4：export-analysis format=md 的 text/markdown 出口） */
-async function apiText(path){
-  let res;
-  try{ res=await fetch("/u/"+state.no+path); }
-  catch(e){ offlineBanner(); throw e; }
-  if(res.ok){ softClearBanner(); return res.text(); }
-  return failApi(res);
+/* P10：导出只留一条路——**写服务器**，与「报告索引」同一份文件。
+   旧的两个按钮（md/JSON）把同一份内容再下载到浏览器，结果是两份谁也不最新；
+   要 JSON 就去命令台把格式换成 json（同一条命令、同一个动作）。 */
+async function actWait(aid,params){
+  const r=await actJson("/api/actions/run",
+    {action_id:aid,params:params||{},view_actions_api:1});
+  if(r.__err)throw new Error(r.__err);
+  for(let i=0;i<300;i++){
+    const job=await actApi("/api/actions/job/"+r.job_id);
+    if(job.__err)throw new Error(job.__err);
+    if(job.status==="done")return job;
+    if(job.status==="failed"||job.status==="error")
+      throw new Error(job.error||"动作失败");
+    await new Promise(res=>setTimeout(res,300));
+  }
+  throw new Error("等了约 90 秒还没跑完，去命令台看作业 "+r.job_id);
 }
-/* P1-4 统一分析导出：view 端只做下载，md/JSON 拼装与去重全在端点侧
-   （/api/export-analysis，SOP-P1-4） */
-async function exportAnalysis(kind,fmt){
-  const q=new URLSearchParams({kind:kind,format:fmt});
+async function saveAnalysis(kind){
+  /* agents/cards 两面后端还没有统一导出（export-analysis 只覆盖 5 类）：
+     不许假装存了服务器——把屏幕上这份 md 存下来并说清楚为什么不进「报告索引」。 */
+  if(!["sessions","tools","errors","skills","triage"].includes(kind)){
+    dlText("harvester-"+kind+"-"+today()+".md",mdReport(kind,state.repLast));
+    showBanner("warn","「"+kind+"」这一面后端还没有统一导出（export-analysis 只覆盖 "
+      +"sessions/tools/errors/skills/triage），先存到浏览器；要进「报告索引」得先给后端加这一类");
+    return;
+  }
+  const params={kind:kind,format:"md",save:"1"};
   if(kind==="sessions"){
     const sids=[...state.sel];
     if(!sids.length){showBanner("warn","请先勾选要导出的异常会话");return;}
-    q.set("sids",sids.join(","));
+    params.sids=sids.join(",");
   }
-  const base="harvester-"+kind+"-"+today();
-  if(fmt==="json"){
-    dlJson(base+".json",await api("/api/export-analysis?"+q.toString()));
-  }else{
-    dlText(base+".md",
-      await apiText("/api/export-analysis?"+q.toString()));
-  }
-  showBanner("warn","已导出 "+kind+"（"+fmt+"，浏览器下载）");
+  try{
+    const job=await actWait("export_analysis",params);
+    const out=String(((job.result||{}).stdout)||"").trim();
+    showBanner("ok",out||("已导出 "+kind+"：服务器端已落盘，去「报告索引」看"));
+    if(typeof loadReportsIndex==="function")loadReportsIndex();
+  }catch(e){showBanner("err","导出失败："+e.message);}
 }
 async function failApi(res){
   let body={}; try{ body=await res.json(); }catch(e){}
@@ -1629,8 +1639,7 @@ async function loadSessions(){
 function updateSelInfo(){
   const n=state.sel.size;
   $("selinfo").textContent=n?("已勾选 "+n+" 个会话（跨页累计）"):"";
-  $("btn-batch-md").disabled=!n;
-  $("btn-batch-json").disabled=!n;
+  $("btn-batch-save").disabled=!n;
   $("btn-sel-topic").disabled=!n;
   $("btn-sel-topic-new").disabled=!n;
 }
@@ -3659,14 +3668,6 @@ function dlText(filename,text){
   setTimeout(()=>URL.revokeObjectURL(a.href),3000);
 }
 /* 机器可读导出：JSON 下载（浏览器本地完成） */
-function dlJson(filename,obj){
-  const b=new Blob([JSON.stringify(obj,null,1)],
-    {type:"application/json;charset=utf-8"});
-  const a=document.createElement("a");
-  a.href=URL.createObjectURL(b);a.download=filename;
-  document.body.appendChild(a);a.click();a.remove();
-  setTimeout(()=>URL.revokeObjectURL(a.href),3000);
-}
 async function copyText(text,btn){
   try{ await navigator.clipboard.writeText(text); }
   catch(e){ /* file:// 或旧浏览器降级 */
@@ -5715,10 +5716,7 @@ $("sel-all").onchange=()=>{
     cb.checked=on;toggleSel(cb.dataset.sid,on);
   }
 };
-$("btn-batch-md").onclick=()=>exportAnalysis("sessions","md")
-  .catch(e=>showBanner("err","批量导出失败："+e.message));
-$("btn-batch-json").onclick=()=>exportAnalysis("sessions","json")
-  .catch(e=>showBanner("err","批量导出失败："+e.message));
+  $("btn-batch-save").onclick=()=>saveAnalysis("sessions");
 /* 勾选 → 并入主题 / 注册新主题（v0.75；用户 2026-10-15 拍板实施）。
    纪律同会话抑制：**不新造写路径**——只把 B 档动作（topic_add /
    topic_register，冻结注册表白名单内）装到命令台走两段提交（预演→
@@ -5745,14 +5743,6 @@ $("rep-q").addEventListener("input",rerenderReport);
 $("rep-erronly").onchange=rerenderReport;
 $("tri-q").addEventListener("input",()=>{
   if(state.loaded.triage)loadTriage(false).catch(()=>{});});
-/* 机器可读导出（报告/队列）：上游 JSON 原始结构 + 去重说明头 */
-function machineWrap(kind,d){
-  return {kind:kind, generated_at:new Date().toISOString(),
-    hint:"harvester-view 导出的机器可读快照（上游 API 原始结构）。"+
-      "errors/patterns 已在上游按归一模式去重聚类（pattern 为归一键；"+
-      "samples 含 (sid,seq) 锚点，可回溯原会话原文），可直接交给 Agent 分析。",
-    data:d};
-}
 $("btn-prev").onclick=()=>{state.offset=Math.max(0,state.offset-state.limit);
   loadSessions().catch(()=>{});};
 $("btn-next").onclick=()=>{state.offset+=state.limit;
@@ -5780,38 +5770,8 @@ $("btn-topic-brief").onclick=()=>runBrief()
 $("btn-topic-cmd").onclick=e=>{
   const b=e.currentTarget;
   if(b.dataset.cmd)copyText(b.dataset.cmd,b);};
-$("btn-rep-export").onclick=()=>{
-  if(!state.repLast){showBanner("warn","请先点“生成报告”再导出");return;}
-  /* P1-4：tools/errors/skills 改调统一导出端点（md/JSON 同源）；
-     agents/cards 端点未覆盖，保留本地拼装 */
-  if(["tools","errors","skills"].includes(state.repKind)){
-    exportAnalysis(state.repKind,"md")
-      .catch(e=>showBanner("err","导出失败："+e.message));
-    return;
-  }
-  dlText("harvester-report-"+state.repKind+"-"+today()+".md",
-    mdReport(state.repKind,state.repLast));
-};
-$("btn-rep-json").onclick=()=>{
-  if(!state.repLast){showBanner("warn","请先点“生成报告”再导出");return;}
-  if(["tools","errors","skills"].includes(state.repKind)){
-    exportAnalysis(state.repKind,"json")
-      .catch(e=>showBanner("err","导出失败："+e.message));
-    return;
-  }
-  dlJson("harvester-report-"+state.repKind+"-"+today()+".json",
-    machineWrap("report-"+state.repKind,state.repLast));
-};
-$("btn-tri-export").onclick=()=>{
-  if(!state.triLast){showBanner("warn","请先点“生成队列”再导出");return;}
-  exportAnalysis("triage","md")
-    .catch(e=>showBanner("err","导出失败："+e.message));
-};
-$("btn-tri-json").onclick=()=>{
-  if(!state.triLast){showBanner("warn","请先点“生成队列”再导出");return;}
-  exportAnalysis("triage","json")
-    .catch(e=>showBanner("err","导出失败："+e.message));
-};
+$("btn-rep-save").onclick=()=>saveAnalysis(state.repKind);
+$("btn-tri-save").onclick=()=>saveAnalysis("triage");
 
 $("btn-cmd-refresh").onclick=()=>loadCmdData(true).catch(()=>{});
 /* P9（用户 2026-10-23 第 3 条）：动词卡全表不是主角——默认收起，

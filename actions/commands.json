@@ -725,6 +725,18 @@
      "negates": null,
      "help": "索引库路径",
      "note": null
+    },
+    {
+     "name": "--dry-run",
+     "dest": "dry_run",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "只算会写到哪个文件，不建目录、不写卡片（页面预演用）",
+     "note": null
     }
    ],
    "subactions": null,
@@ -1426,11 +1438,35 @@
      "negates": null,
      "help": "归因台账 meta 库（只用于标出「已裁决」；不写）",
      "note": null
+    },
+    {
+     "name": "--chain-root",
+     "dest": "chain_root",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "chain 文件根目录（kind=chains 时用；缺省 knowledge/topics）",
+     "note": null
+    },
+    {
+     "name": "--rules",
+     "dest": "rules",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "归因规则表路径（缺省随包那份）",
+     "note": null
     }
    ],
    "subactions": null,
    "help": null,
-   "purpose": "把数据面打成可评审包（人读 + 机读）",
+   "purpose": "旧名（已并入 llm-pack，保留兼容）",
    "nested": false
   },
   {
@@ -1637,6 +1673,18 @@
      "negates": null,
      "help": "输出路径（缺省打印到 stdout）",
      "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--save",
+     "dest": "save",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "不打印，落盘到标准报告目录 docs/reports/<kind>-YYYY-MM-DD.<md|json>（与页面「报告索引」同一个目录；给了 --out 时以 --out 为准）",
+     "note": null
     }
    ],
    "subactions": null,
@@ -1905,9 +1953,21 @@
      "default": "~/.workbuddy/knowledge",
      "required": false,
      "choices": null,
-     "src": "none",
+     "src": "server",
      "negates": null,
      "help": "镜像位（缺省 WorkBuddy 知识库位置）",
+     "note": null
+    },
+    {
+     "name": "--dry-run",
+     "dest": "dry_run",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "只算会复制几个文件，不建目录、不写镜像位（页面预演用）",
      "note": null
     }
    ],
@@ -2229,7 +2289,7 @@
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": "要打包的面，逗号分隔（errors,tools,skills,chains；默认 errors）",
+     "help": "要打包的面，逗号分隔（errors,tools,skills,chains,attrib；默认 errors）",
      "note": null
     },
     {
@@ -2257,6 +2317,30 @@
      "note": null
     },
     {
+     "name": "--since",
+     "dest": "since",
+     "kind": "float",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "只取最近 N 天（errors/attrib/skills 生效）",
+     "note": "只统计最近 N 天（按 steps.ts，近似口径）"
+    },
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "归因台账 meta 库（只标出「已裁决」；不写）",
+     "note": null
+    },
+    {
      "name": "--rules",
      "dest": "rules",
      "kind": "str",
@@ -2267,6 +2351,18 @@
      "negates": null,
      "help": "归因规则表路径（缺省随包那份）",
      "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "人读出口（Markdown）输出路径；可与 --json 同给",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
     },
     {
      "name": "--json",

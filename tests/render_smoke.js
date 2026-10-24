@@ -356,18 +356,30 @@ check("锚点跳转接线 openSession+openTurn",
   gSrc.includes("openSession(") && gSrc.includes("openTurn("));
 check("跳转先切回会话 tab", gSrc.includes('switchTab("sessions")'));
 
-/* --- v0.22 P1-4 统一分析导出（view 端只做下载，SOP-P1-4） --- */
-check("exportAnalysis 走 /api/export-analysis 端点",
-  html.includes("/api/export-analysis"));
-check("apiText 消费 text/markdown 出口",
-  html.includes("async function apiText"));
-check("六按钮全部接线 exportAnalysis（定义+sessions/triage/报告 md|json）",
-  (html.match(/exportAnalysis\(/g) || []).length >= 7);
+/* --- P10：导出合并成"一条路 = 写服务器"（用户 2026-10-24 裁决） ---
+ * 旧的 4+2 个按钮（md/JSON 各一份，浏览器下载）已合并成每页一个「导出到服务器」：
+ * 走 A 档动作 export_analysis + `--save`（路径后端算），产物进 docs/reports/，
+ * 与「报告索引」同一份。断言要能证明"旧出口真的没了"，不是"新函数存在"。 */
+check("导出走动作通道 export_analysis + save（不是浏览器下载）",
+  /saveAnalysis\(kind\)\{[\s\S]*?save:"1"[\s\S]*?actWait\("export_analysis"/.test(html));
+check("三个页面各一个导出按钮（报告/队列/批量）",
+  html.includes('id="btn-rep-save"') && html.includes('id="btn-tri-save"') &&
+  html.includes('id="btn-batch-save"'));
+check("旧的两两导出按钮全部消失",
+  !html.includes("btn-rep-export") && !html.includes("btn-rep-json") &&
+  !html.includes("btn-tri-export") && !html.includes("btn-tri-json") &&
+  !html.includes("btn-batch-md") && !html.includes("btn-batch-json"));
+check("浏览器下载出口已删（exportAnalysis/dlJson/apiText 不留死代码）",
+  !html.includes("function exportAnalysis") &&
+  !html.includes("function dlJson") &&
+  !html.includes("async function apiText"));
+check("agents/cards 兜底：后端没统一导出就明说，不假装存服务器",
+  /includes\(kind\)\)\{[\s\S]*?dlText\([\s\S]*?后端还没有统一导出/.test(html));
 check("旧本地拼装已移除（exportAbnormal*/mdTriage）",
   !html.includes("exportAbnormalMd") &&
   !html.includes("exportAbnormalJson") &&
   !html.includes("function mdTriage"));
-check("agents/cards 报告仍可本地导出（端点未覆盖，mdReport 保留）",
+check("agents/cards 报告仍可导出（mdReport 保留）",
   html.includes("mdReport("));
 
 /* --- v0.51 banner 增强 + 锚点/下钻并发守卫（用户 2026-10-13 报） ---

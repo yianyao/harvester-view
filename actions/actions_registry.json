@@ -14,7 +14,9 @@
   "keywords_meta": "keywords_meta.db（n-gram 统计累积表）",
   "cards_meta": "cards_meta.db（卡片复核台账：人裁过的不许再烦人，v0.74）",
   "attrib_meta": "attrib_meta.db（归因裁决台账：人裁过的候选不再列出，v0.79 P6）",
-  "repo_files": "主库仓内工作文件（建议池 agents_suggestions.md / 蒸馏包 docs/distill_prompts/*.md；覆盖前自动备份，不碰库与 AGENTS.md）"
+  "repo_files": "主库仓内工作文件（建议池 agents_suggestions.md / 蒸馏包 docs/distill_prompts/*.md；覆盖前自动备份，不碰库与 AGENTS.md）",
+  "cards_root": "卡片库根目录（knowledge/cards：新增脚手架 md，不覆盖既有卡；v0.80 P10）",
+  "kb_mirror": "WorkBuddy 知识库镜像位（~/.workbuddy/knowledge：只从正本单向喂，永不删除镜像里多出来的文件；v0.80 P10）"
  },
  "cards": [
   {
@@ -459,6 +461,7 @@
      "label": "谁裁决的（写进台账；缺省留空不猜身份）"
     }
    ],
+   "no_params_reason": "",
    "writes": "attrib_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -541,7 +544,79 @@
      "label": "只裁决包含该子串的警告（可多次；缺省=整卡当前警告一言而决）"
     }
    ],
+   "no_params_reason": "",
    "writes": "cards_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  },
+  {
+   "action_id": "cards_new",
+   "tier": "B",
+   "cmd": "cards new",
+   "subaction": null,
+   "risk": "reversible",
+   "target": "cards_root",
+   "summary": "为会话 {sid} 生成卡片脚手架（{type} 卡型）",
+   "detail": "在卡片库根新增一个脚手架 md：frontmatter 的锚点是真实会话回合，evidence 与正文**留白待人工补全**。**不覆盖任何既有卡**（文件名取当天序号的下一个号），不碰库、不碰 AGENTS.md。生成后要补 evidence/正文再跑 `cards validate`——脚手架本身校验不过（那是设计，不是 bug）。",
+   "params": [
+    {
+     "name": "sid",
+     "dest": "sid",
+     "arg": "--sid",
+     "kind": "str",
+     "src": "sessions_api",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "会话 sid（出坑/有料的那次会话；明细锚点可一键预填）"
+    },
+    {
+     "name": "type",
+     "dest": "type",
+     "arg": "--type",
+     "kind": "enum",
+     "src": "chips",
+     "server": false,
+     "required": false,
+     "choices": [
+      "pitfall",
+      "workflow",
+      "insight"
+     ],
+     "default": "pitfall",
+     "note": null,
+     "label": "卡型：pitfall（坑）/insight（洞见）/workflow（流程）"
+    },
+    {
+     "name": "title",
+     "dest": "title",
+     "arg": "--title",
+     "kind": "str",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "卡片标题（缺省用会话标题）"
+    },
+    {
+     "name": "turn",
+     "dest": "turn",
+     "arg": "--turn",
+     "kind": "int",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "锚点回合号（可选；填了就指向那一回合）"
+    }
+   ],
+   "no_params_reason": "",
+   "writes": "cards_root（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
   {
@@ -594,6 +669,7 @@
      "label": "裁决说明（写进台账，供日后复查）"
     }
    ],
+   "no_params_reason": "",
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -651,7 +727,22 @@
      "label": "会话原文截断预算（字符数）"
     }
    ],
+   "no_params_reason": "",
    "writes": "repo_files（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  },
+  {
+   "action_id": "kb_publish",
+   "tier": "B",
+   "cmd": "kb-publish",
+   "subaction": null,
+   "risk": "reversible",
+   "target": "kb_mirror",
+   "summary": "把正本 knowledge/ 发布到 WorkBuddy 知识库镜像位",
+   "detail": "单向：**正本 → 镜像**，只喂不收。逐文件「缺失或正本较新才覆盖」，**永不删除镜像里多出来的文件**；只碰 `cards/` 与 `topics/` 两个子目录。幂等：正本没变时重跑 = 0 复制。镜像位由服务端定（页面不传路径）。",
+   "params": [],
+   "no_params_reason": "两个参数（正本根 knowledge/、镜像位 ~/.workbuddy/knowledge）都是起服时定死的路径，页面**不能**传——让人指路等于给「把知识库发到任意目录」留后门；要写什么由预演逐行给出（会复制几个、跳过几个、镜像位在哪）。",
+   "writes": "kb_mirror（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
   {
@@ -691,6 +782,7 @@
      "label": "跑完顺手 VACUUM（回收空闲页）"
     }
    ],
+   "no_params_reason": "",
    "writes": "keywords_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -731,6 +823,7 @@
      "label": "为什么判零散（写进零散表，供日后复查；可空）"
     }
    ],
+   "no_params_reason": "",
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -784,6 +877,7 @@
      "label": "谁做的（写进抑制表；缺省留空，不猜身份）"
     }
    ],
+   "no_params_reason": "",
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "会丢信息（源主题行/历史 run 删除后页面上找不回）"
   },
@@ -811,6 +905,7 @@
      "label": "要取消抑制的 sid（库口径；多个用逗号分隔）"
     }
    ],
+   "no_params_reason": "",
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -864,6 +959,7 @@
      "label": "最多列几条（默认 15）"
     }
    ],
+   "no_params_reason": "",
    "writes": "repo_files（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -934,6 +1030,7 @@
      "label": "备注（写进台账供日后翻账；以 pattern: 开头的备注会被效果评估认作班规挂钩）"
     }
    ],
+   "no_params_reason": "",
    "writes": "suggestions_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -987,6 +1084,7 @@
      "label": "成员证据说明（可空）"
     }
    ],
+   "no_params_reason": "",
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -1014,6 +1112,7 @@
      "label": "要删除的主题"
     }
    ],
+   "no_params_reason": "",
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "会丢信息（源主题行/历史 run 删除后页面上找不回）"
   },
@@ -1054,6 +1153,7 @@
      "label": "定稿关键词（逗号分隔，覆盖式）"
     }
    ],
+   "no_params_reason": "",
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -1107,6 +1207,7 @@
      "label": "保留源主题行（默认不保留）"
     }
    ],
+   "no_params_reason": "",
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "会丢信息（源主题行/历史 run 删除后页面上找不回）"
   },
@@ -1147,6 +1248,7 @@
      "label": "关键词（逗号分隔）"
     }
    ],
+   "no_params_reason": "",
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -1187,6 +1289,7 @@
      "label": "要移除的成员 sid"
     }
    ],
+   "no_params_reason": "",
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -1227,6 +1330,7 @@
      "label": "新主题名"
     }
    ],
+   "no_params_reason": "",
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   }
@@ -1234,8 +1338,8 @@
  "counts": {
   "cards": 13,
   "read_actions": 39,
-  "write_actions": 17,
-  "write_reversible": 14,
+  "write_actions": 19,
+  "write_reversible": 16,
   "write_destructive": 3
  }
 }

@@ -205,6 +205,9 @@ def build() -> dict:
             "summary": raw["summary"],
             "detail": raw.get("detail") or "",
             "params": params,
+            # P10：零参数动作必须写明"为什么一个参数都没有"（否则就是
+            # "填了不生效的黑箱"——见 test_v38 的零参数门）。
+            "no_params_reason": (raw.get("no_params_reason") or ""),
             "writes": ("%s（两段提交：先拿 confirm_token，带 token 再执行；"
                        "每次执行进 actions_meta.db 台账）" % raw["target"]),
             "reversible": {
@@ -262,6 +265,10 @@ def build() -> dict:
             # P6-9 归因台：判定槽唯一的写出口（attribations 表；不碰 harvester.db）
             "attrib_meta": "attrib_meta.db（归因裁决台账：人裁过的候选不再列出，v0.79 P6）",
             "repo_files": "主库仓内工作文件（建议池 agents_suggestions.md / 蒸馏包 docs/distill_prompts/*.md；覆盖前自动备份，不碰库与 AGENTS.md）",
+            # P10：卡片库根（`cards new` 只**新增**脚手架，不覆盖既有卡）
+            "cards_root": "卡片库根目录（knowledge/cards：新增脚手架 md，不覆盖既有卡；v0.80 P10）",
+            # P10：WorkBuddy 知识库镜像位（`kb-publish` 单向发布；只喂不收、不删）
+            "kb_mirror": "WorkBuddy 知识库镜像位（~/.workbuddy/knowledge：只从正本单向喂，永不删除镜像里多出来的文件；v0.80 P10）",
         },
         "cards": cards,
         "read_actions": read_actions,

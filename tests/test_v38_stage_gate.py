@@ -91,8 +91,15 @@ class CardByCardWalkthrough(unittest.TestCase):
         for a in self.reg["write_actions"]:
             # v0.62 起允许零必填（如 suggest_agents：全默认参数的扫描型动作），
             # 但必须声明至少一个参数（全无参 = 填了不生效的黑箱，禁止）。
-            self.assertTrue(a["params"], "%s 一个参数都没声明？"
-                            % a["action_id"])
+            # P10 起：零参数动作**可以**存在（kb_publish 两个参数都是服务端
+            # 路径），但必须在 write_actions.json 里写明 `no_params_reason`
+            # ——"没有可填的"和"忘了填"要分得开，门只放宽到"有理由"。
+            if not a["params"]:
+                reason = (a.get("no_params_reason") or "").strip()
+                self.assertGreaterEqual(
+                    len(reason), 15,
+                    "%s 一个参数都没声明，也没写 no_params_reason"
+                    % a["action_id"])
             for p in a["params"]:
                 self.assertTrue(p.get("label"),
                                 "%s 的参数 %s 缺人话 label（页面会显示英文 dest）"

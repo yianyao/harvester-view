@@ -186,14 +186,17 @@ class TestCommandHoverTitle(unittest.TestCase):
     def test_no_copy_pasted_duplicate_hints(self):
         # P9-①（2026-10-23 用户「到处都是」）：同一句说明不许在多个出口各写一遍。
         # 判据不是"字数"，是**同一个条件给同一个答复**时只允许存在一处：
-        #   ① 连不上本地服务：一个 offlineBanner()，三处 fetch 兜底都调它；
+        #   ① 连不上本地服务：一个 offlineBanner()，每处 fetch 兜底都调它；
+        #      （P10：`apiText` 那个 text/markdown 出口随导出按钮合并删除，
+        #        兜底从三处变两处——api / actApi，少一个不是"漏了一个"）
         #   ② 四处「选主题」必须说清各自选完能看什么（不许同一句）；
         #   ③ 三处「起草班规」必须说清把哪条写进池（不许同一句）。
         self.assertEqual(self.html.count("本地代理不可达"), 0,
                          "旧的三份硬编码提示必须收进 offlineBanner()")
         self.assertEqual(self.html.count("function offlineBanner()"), 1)
-        self.assertEqual(self.html.count("catch(e){ offlineBanner(); throw e; }"), 3,
-                         "三个 fetch 兜底都要走同一个提示（漏一个就退回各写各的）")
+        self.assertEqual(self.html.count("catch(e){ offlineBanner(); throw e; }"), 2,
+                         "api/actApi 两个 fetch 兜底都要走同一个提示"
+                         "（漏一个就退回各写各的）")
         self.assertEqual(self.html.count("先在左侧选一个主题"), 0)
         realm = re.findall(r"先选主题：([^\"']+)", self.html)
         self.assertEqual(len(realm), 4, f"四处选主题提示应各说各的：{realm}")

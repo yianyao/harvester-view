@@ -515,6 +515,58 @@
      "label": "谁裁决的（写进台账；缺省留空不猜身份）"
     }
    }
+  },
+  {
+   "action_id": "cards_new",
+   "cmd": "cards new",
+   "risk": "reversible",
+   "target": "cards_root",
+   "summary": "为会话 {sid} 生成卡片脚手架（{type} 卡型）",
+   "detail": "在卡片库根新增一个脚手架 md：frontmatter 的锚点是真实会话回合，evidence 与正文**留白待人工补全**。**不覆盖任何既有卡**（文件名取当天序号的下一个号），不碰库、不碰 AGENTS.md。生成后要补 evidence/正文再跑 `cards validate`——脚手架本身校验不过（那是设计，不是 bug）。",
+   "allow": [
+    "sid",
+    "root",
+    "type",
+    "title",
+    "turn",
+    "db"
+   ],
+   "params": {
+    "sid": {
+     "map": "sid",
+     "required": true,
+     "label": "会话 sid（出坑/有料的那次会话；明细锚点可一键预填）"
+    },
+    "type": {
+     "map": "type",
+     "required": false,
+     "label": "卡型：pitfall（坑）/insight（洞见）/workflow（流程）"
+    },
+    "title": {
+     "map": "title",
+     "required": false,
+     "label": "卡片标题（缺省用会话标题）"
+    },
+    "turn": {
+     "map": "turn",
+     "required": false,
+     "label": "锚点回合号（可选；填了就指向那一回合）"
+    }
+   }
+  },
+  {
+   "action_id": "kb_publish",
+   "cmd": "kb-publish",
+   "risk": "reversible",
+   "target": "kb_mirror",
+   "summary": "把正本 knowledge/ 发布到 WorkBuddy 知识库镜像位",
+   "detail": "单向：**正本 → 镜像**，只喂不收。逐文件「缺失或正本较新才覆盖」，**永不删除镜像里多出来的文件**；只碰 `cards/` 与 `topics/` 两个子目录。幂等：正本没变时重跑 = 0 复制。镜像位由服务端定（页面不传路径）。",
+   "allow": [
+    "root",
+    "dest"
+   ],
+   "params": {},
+   "no_params_reason": "两个参数（正本根 knowledge/、镜像位 ~/.workbuddy/knowledge）都是起服时定死的路径，页面**不能**传——让人指路等于给「把知识库发到任意目录」留后门；要写什么由预演逐行给出（会复制几个、跳过几个、镜像位在哪）。"
   }
  ]
 }

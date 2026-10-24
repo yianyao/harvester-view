@@ -958,6 +958,119 @@ def _exec_draft(p: dict, cfg) -> dict:
             "path": str(path), "backup": str(bak) if bak else None}
 
 
+# ---------- 卡片脚手架 / 知识库发布（P10：把"只能复制"的两条写命令接进来）----------
+
+def _cards_new_args(p: dict, cfg) -> tuple:
+    """预演/执行共用取参（同一真源，不算两套）。
+
+    `root`/`db` 是服务端路径（页面不传）：root 缺省用起服时的 `--cards-root`，
+    db 缺省用索引库。sid 必填——给不出"哪次会话"，脚手架就没有锚点。
+    """
+    db = Path(p.get("db") or cfg.db)
+    root = Path(p.get("root") or cfg.cards_root)
+    sid = str(p.get("sid") or "").strip()
+    if not sid:
+        raise WriteError("缺 sid（要哪次会话的卡片脚手架）")
+    ctype = str(p.get("type") or "pitfall")
+    turn = p.get("turn")
+    turn = int(turn) if str(turn or "").strip() not in ("", "None") else None
+    return db, root, sid, ctype, p.get("title"), turn
+
+
+def _plan_cards_new(p: dict, cfg) -> dict:
+    """预演：只算"会写到哪个文件"，**连目录都不建**（`scaffold_card(dry_run=True)`）。"""
+    from harvester.cards import scaffold_card
+    db, root, sid, ctype, title, turn = _cards_new_args(p, cfg)
+    try:
+        out = scaffold_card(db, sid, root, ctype=ctype, title=title,
+                            turn=turn, dry_run=True)
+    except (KeyError, ValueError) as e:
+        raise WriteError(str(e.args[0]) if e.args else str(e))
+    before = _fingerprint(out)
+    human = _file_human(out, before,
+                        "动作：为会话 %s 生成卡片脚手架（%s 卡型）" % (sid, ctype))
+    human += [
+        "内容：frontmatter（id/title/type/tags/triggers/anchors/evidence/"
+        "confidence/created）+ 正文三节骨架；evidence 与正文留白，待人工补全",
+        "不会覆盖任何既有卡片：文件名取当天序号的下一个号",
+        "下一步：补全 evidence 与正文 → cards validate",
+    ]
+    return {"target_path": str(out), "before": before, "after": None,
+            "snapshot": None, "bytes": None,
+            "limits": ["序号按预演时目录里已有的卡片算；执行时若有人抢先建卡，序号会后移一档"],
+            "human": human, "noop": False}
+
+
+def _exec_cards_new(p: dict, cfg) -> dict:
+    from harvester.cards import scaffold_card
+    db, root, sid, ctype, title, turn = _cards_new_args(p, cfg)
+    try:
+        path = scaffold_card(db, sid, root, ctype=ctype, title=title, turn=turn)
+    except (KeyError, ValueError) as e:
+        raise WriteError(str(e.args[0]) if e.args else str(e))
+    return {"summary": "卡片脚手架已生成 %s（%s 卡型）；evidence 与正文待人工补全"
+                       % (path, ctype),
+            "path": str(path)}
+
+
+def _kb_root_dest(p: dict, cfg) -> tuple:
+    """正本根 = 卡片库的父目录（`knowledge/`）；镜像位 = 服务端定的那个。
+
+    **镜像位不接受页面传参**：让人指路就等于给"把知识库发到任意目录"留后门。
+    """
+    from harvester.distill import KB_DEFAULT_ROOT
+    root = Path(p.get("root") or Path(cfg.cards_root).parent)
+    dest = Path(getattr(cfg, "kb_mirror", None) or KB_DEFAULT_ROOT)
+    return root, dest
+
+
+def _plan_kb_publish(p: dict, cfg) -> dict:
+    """预演：只数"会复制几个/跳过几个"，**不建目录、不复制**。"""
+    from harvester.distill import publish_master
+    root, dest = _kb_root_dest(p, cfg)
+    try:
+        rep = publish_master(root, dest, dry_run=True)
+    except FileNotFoundError as e:
+        raise WriteError(str(e.args[0]) if e.args else str(e))
+    total = sum(rep[s]["copied"] for s in ("cards", "topics") if s in rep)
+    skip = sum(rep[s]["skipped"] for s in ("cards", "topics") if s in rep)
+    before = _fingerprint(dest)
+    human = [
+        "动作：把正本 knowledge/ 单向发布到 WorkBuddy 知识库镜像位",
+        "方向：正本 → 镜像，只喂不收（镜像里多出来的文件永远不会被删）",
+        "范围：只碰 cards/ 与 topics/ 两个子目录",
+        "会复制 %d 个文件；%d 个已是最新（按 mtime 判，跳过）"
+        % (total, skip),
+        "正本根：%s" % root,
+        "镜像位：%s%s" % (dest, "（目录还不存在，执行时会建）"
+                         if not dest.is_dir() else ""),
+    ]
+    if rep.get("missing"):
+        human.append("正本里没有这些子目录（跳过）：%s"
+                     % "、".join(rep["missing"]))
+    return {"target_path": str(dest), "before": before, "after": None,
+            "snapshot": None, "bytes": None,
+            "limits": ["复制按「正本较新才覆盖」判；同一秒内改过的文件靠 mtime 可能判成已最新"],
+            "human": human, "noop": total == 0}
+
+
+def _exec_kb_publish(p: dict, cfg) -> dict:
+    from harvester.distill import publish_master
+    root, dest = _kb_root_dest(p, cfg)
+    try:
+        rep = publish_master(root, dest)
+    except FileNotFoundError as e:
+        raise WriteError(str(e.args[0]) if e.args else str(e))
+    parts = ["%s：发布 %d 个（%d 个已最新跳过）"
+             % (s, rep[s]["copied"], rep[s]["skipped"])
+             for s in ("cards", "topics") if s in rep]
+    return {"summary": "已发布到 %s；%s%s"
+                       % (dest, "；".join(parts),
+                          "；正本缺子目录：" + "、".join(rep["missing"])
+                          if rep.get("missing") else ""),
+            "path": str(dest), "report": rep}
+
+
 #: action_id → (plan, execute)。**这张表就是 B 档的"实现白名单"**：
 #: `actions_registry.json` 声明了什么，这里必须一一对上（有测试比对）。
 # ---------- 卡片复核台账（v0.75，上游 v0.74 的 view 直给）----------
@@ -1254,6 +1367,10 @@ WRITE_ACTIONS: dict[str, dict] = {
                        "execute": _exec_suggest_agents},
     "draft_pack": {"plan": _plan_draft,
                    "execute": _exec_draft},
+    "cards_new": {"plan": _plan_cards_new,
+                  "execute": _exec_cards_new},
+    "kb_publish": {"plan": _plan_kb_publish,
+                   "execute": _exec_kb_publish},
 }
 
 

@@ -178,7 +178,7 @@ PURPOSE: dict[str, str] = {
     "report-skill-join": "chain 锚点与 skill 调用点交叉",
     "attrib": "错误模式 → 根因候选（候选，不是裁决）",
     "attrib-review": "把人的 why/fix 裁决记进 attribations 台账",
-    "evidence-pack": "把数据面打成可评审包（人读 + 机读）",
+    "evidence-pack": "旧名（已并入 llm-pack，保留兼容）",
     "llm-pack": "打包给 LLM：事实 + 归因候选 + 判定槽",
     "triage": "蒸馏队列分诊（含深挖，约 9 分钟）",
     "topic-candidates": "列主题候选簇",
@@ -394,6 +394,9 @@ SERVER_DESTS: frozenset[str] = frozenset({
     "report_root", "roots", "seed_out", "snap_dir", "stopwords",
     "triage_brief", "triage_brief_out", "triage_json",
     "triage_out", "inputs", "artifact_meta",
+    # P10：`kb-publish --dest` 是**镜像位**（WorkBuddy 主程序读的那个目录），
+    # 起服时定。让它由页面传 = 给"把知识库发到任意目录"留后门（SOP §5 红线）。
+    "dest",
 })
 
 #: **机读专用**参数（P9/G2）：`--json PATH` 是给程序/页面消费的出口，不是

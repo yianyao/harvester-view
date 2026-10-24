@@ -125,7 +125,8 @@ class Config:
                  registry_json: Path | None = None,
                  actions_meta: Path | None = None,
                  reviews_meta: Path | None = None,
-                 attrib_meta: Path | None = None):
+                 attrib_meta: Path | None = None,
+                 kb_mirror: Path | None = None):
         self.db = Path(db)
         self.cards_root = Path(cards_root)
         self.glossary = Path(glossary)
@@ -146,6 +147,10 @@ class Config:
         #: v0.79 P6 归因台账（attrib_meta.db）。缺省 None = **零感知**：
         #: 不过滤任何归因候选，行为与"没有台账"完全一致（同 cards review 口径）。
         self.attrib_meta = (Path(attrib_meta) if attrib_meta else None)
+        #: v0.80 P10 知识库镜像位（B 档 `kb_publish` 的目标）。缺省 None =
+        #: 用上游 `distill.KB_DEFAULT_ROOT`（`~/.workbuddy/knowledge`），
+        #: 页面**永远不传**这个路径（SOP §5：路径类参数起服时定）。
+        self.kb_mirror = (Path(kb_mirror) if kb_mirror else None)
         #: 是否在 timeline 端点里附带库龄判定（`stale`）。缺省 **关**：
         #: 它要扫一遍语料盘（实测 0.08 s，但盘在网络上/语料巨大时会变慢），
         #: P2-3 的验收是"无 chain 主题也能看时间线"，不该被库龄判定拖住。
@@ -589,7 +594,11 @@ def _action_deadcode_scan(cfg: Config, params: dict) -> dict:
 
 
 def _action_export_analysis(cfg: Config, params: dict) -> dict:
-    """A 档：统一分析导出（`export-analysis`；产物打印捕获，不落盘）。"""
+    """A 档：统一分析导出（`export-analysis`）。
+
+    P10：`save` 参数 = 落盘到**标准报告目录**（后端算路径，页面不传路径），
+    产物与页面「报告索引」看到的是同一份文件；不传则仍只打印（返回文本）。
+    """
     kind = str(params.get("kind") or "").strip()
     if kind not in ("sessions", "tools", "errors", "skills", "triage"):
         raise _BadRequest("kind 只支持 sessions/tools/errors/skills/triage，"
@@ -609,6 +618,8 @@ def _action_export_analysis(cfg: Config, params: dict) -> dict:
         argv += ["--top", str(int(params["top"]))]
     if cfg.cards_root and Path(cfg.cards_root).is_dir():
         argv += ["--cards-root", str(cfg.cards_root)]
+    if params.get("save"):
+        argv += ["--save"]
     return _cli_report(argv)
 
 
@@ -1169,7 +1180,8 @@ ACTIONS: dict[str, dict] = {
         "tier": "A",
         "label": "统一分析导出",
         "desc": "五类分析产物（export-analysis：sessions/tools/errors/"
-                "skills/triage），md/JSON 同源；产物回页面不落盘。",
+                "skills/triage），md/JSON 同源；缺省只回页面，save=1 时"
+                "落盘到 docs/reports/（与「报告索引」同一个目录）。",
         "params": {"kind": {"type": "text", "src": "chips", "default": "errors",
                             "label": "类别（sessions/tools/errors/skills/triage）"},
                    "format": {"type": "text", "src": "chips", "default": "md",
@@ -1179,9 +1191,15 @@ ACTIONS: dict[str, dict] = {
                    "min_count": {"type": "int", "src": "chips", "default": None,
                                  "label": "至少出现几次"},
                    "top": {"type": "int", "src": "chips", "default": None,
-                           "label": "Top N"}},
+                           "label": "Top N"},
+                   "sids": {"type": "text", "src": "chips", "default": None,
+                            "label": "sessions 类别的 sid 清单（逗号分隔）"},
+                   "save": {"type": "bool", "src": "chips", "default": 0,
+                            "label": "落盘到报告目录（与「报告索引」同一份）"}},
         "est_sec": 3,
-        "reversible": "幂等（只读库，产物返回页面）",
+        "reversible": "幂等（只读库；save=1 只多写一份报告文件，同名覆盖）",
+        # A 档判据是"不写库/不写台账"（`writes` 留给 B 档的两段提交）；
+        # 报告文件是产物不是台账，写它在 desc/reversible 里已写明。
         "writes": "",
         "handler": _action_export_analysis,
     },
@@ -1521,6 +1539,12 @@ def _clean_params(action: dict, raw: dict, cfg: Config | None = None) -> dict:
                 raise ValueError("%s 需要整数，收到 %r" % (name, val))
         elif kind in ("text", "sid", "topic_id", "level", "path"):
             out[name] = str(val)
+        elif kind == "bool":
+            # 开关类参数（P10 `save`）：页面可能传 1/"1"/true/"on"，
+            # 统一收成 0/1；认不出的值不当真也不静默 —— 当 0 处理即可，
+            # 下游只关心"要不要落盘"，没有第三种语义。
+            out[name] = (1 if str(val).strip().lower()
+                         in ("1", "true", "on", "yes") else 0)
         else:  # pragma: no cover - 注册表写错时 fail loud
             raise ValueError("动作参数类型未定义：%s=%r" % (name, kind))
     return out
@@ -2464,6 +2488,10 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--keywords-meta", default=None)
     ap.add_argument("--suggestions-meta", default=None)
     ap.add_argument("--exports-root", default=None)
+    ap.add_argument("--kb-mirror", default=None,
+                    help="WorkBuddy 知识库镜像位（B 档 kb_publish 单向发布的目标；"
+                         "缺省 = 上游 distill.KB_DEFAULT_ROOT，即 ~/.workbuddy/knowledge）。"
+                         "页面不传路径，改向只在这里")
     ap.add_argument("--commands-json", default=str(DEFAULT_COMMANDS_JSON))
     ap.add_argument("--registry-json", default=str(DEFAULT_REGISTRY_JSON),
                     help="动作注册表（P3-1 生成物；执行器只认它）")
@@ -2505,7 +2533,9 @@ def config_from_args(args) -> Config:
                                else (db.parent / "cards_meta.db")),
                   attrib_meta=(Path(args.attrib_meta)
                                if getattr(args, "attrib_meta", None)
-                               else (db.parent / "attrib_meta.db")))
+                               else (db.parent / "attrib_meta.db")),
+                  kb_mirror=(Path(args.kb_mirror)
+                             if getattr(args, "kb_mirror", None) else None))
 
 
 def serve(cfg: Config, host: str = "127.0.0.1",

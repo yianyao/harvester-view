@@ -567,6 +567,38 @@
    ],
    "params": {},
    "no_params_reason": "两个参数（正本根 knowledge/、镜像位 ~/.workbuddy/knowledge）都是起服时定死的路径，页面**不能**传——让人指路等于给「把知识库发到任意目录」留后门；要写什么由预演逐行给出（会复制几个、跳过几个、镜像位在哪）。"
+  },
+  {
+   "action_id": "chain_publish",
+   "cmd": "chain-publish",
+   "risk": "reversible",
+   "target": "knowledge_chain",
+   "summary": "把链草稿校验后发布进知识正本（主题 {id}）",
+   "detail": "链路：A 档 chain_build 出创作包 → Agent 按包 §5 写草稿到草稿位（exports/chains/<id>.md，路径服务端定，页面不传）→ 本动作过两道门：chain-validate（结构 + 锚点可回溯）与 chain-audit（引文逐字门）。两道全过才把草稿**逐字节**复制到 knowledge/topics/chain-<主题名>.md。缺省预演；目标已存在时必须显式勾「覆盖」。这是「知识正本只接受过校验的写入」的执行点（2026-10-24 用户裁决）。",
+   "allow": [
+    "id_",
+    "draft",
+    "chain_root",
+    "force",
+    "allow_audit"
+   ],
+   "params": {
+    "id": {
+     "map": "id_",
+     "required": true,
+     "label": "主题 id（要发布哪条链）"
+    },
+    "force": {
+     "map": "force",
+     "required": false,
+     "label": "目标已存在时覆盖（默认拦下）"
+    },
+    "allow_audit": {
+     "map": "allow_audit",
+     "required": false,
+     "label": "审计告警仍发布（慎用）"
+    }
+   }
   }
  ]
 }

@@ -61,6 +61,18 @@ READ_ACTIONS: dict[str, object] = {
     "dualtrack": None,
     "topic_brief": None,
     "kgraph": None,
+    # v0.81 P1-3 skill 治理档案（《优化方案》C1）：视图侧聚合（cmd=None
+    # 先例同 kgraph）——进程内 skilljoin + G4 聚合，无 CLI 对应命令。
+    "skill_matrix": None,
+    # P11 链创作包 / 产物流（用户 2026-10-24「要补一个生成链的命令给我」
+    # 「产出物的分析不见了」）：
+    # - chain_build：进程内调上游 harvester.chainbuild（确定性出包，不落盘），
+    #   对应 CLI 是 `chain-build`——**如实写上**（A 档命令必须"页面能执行"，
+    #   `test_v54_cli_actions` 的首条门就是它）；本动作走 in-process，不比
+    #   `_cli_report` 多套一层子进程。
+    # - artifacts_flow：视图侧只取双轨的下轨（无 CLI 对应，同 dualtrack）。
+    "chain_build": "chain-build",
+    "artifacts_flow": None,
     # ---- v0.63 白名单补全（用户 2026-10-14「都加上」）：覆盖 commands.json
     # 里全部剩余 A 档命令。新动作走 _cli_report（进程内真 CLI，输出捕获）。
     "adapters": "adapters",
@@ -77,6 +89,7 @@ READ_ACTIONS: dict[str, object] = {
     "kb_stats": "kb-stats",
     "report_chains": "report-chains",
     "report_daily": "report-daily",
+    "report_harness": "report-harness",
     "report_skill": "report-skill",
     "report_skill_join": "report-skill-join",
     "report_traces": "report-traces",
@@ -269,6 +282,9 @@ def build() -> dict:
             "cards_root": "卡片库根目录（knowledge/cards：新增脚手架 md，不覆盖既有卡；v0.80 P10）",
             # P10：WorkBuddy 知识库镜像位（`kb-publish` 单向发布；只喂不收、不删）
             "kb_mirror": "WorkBuddy 知识库镜像位（~/.workbuddy/knowledge：只从正本单向喂，永不删除镜像里多出来的文件；v0.80 P10）",
+            # P11：链长文正本（`chain-publish` 唯一写口；草稿必须过
+            # chain-validate + chain-audit 两道门才搬进来）
+            "knowledge_chain": "知识正本 knowledge/topics/（chain 长文：只接受过结构校验与引文逐字门的草稿，逐字节搬入、不二次加工；P11）",
         },
         "cards": cards,
         "read_actions": read_actions,

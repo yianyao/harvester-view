@@ -641,7 +641,11 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
     <select id="rep-kind">
       <option value="tools">G1 工具统计</option>
       <option value="errors">G2 错误三分类</option>
+      <option value="chains">工具链失败模式（连击/循环/空转）</option>
+      <option value="traces">Trace 耗时与取消（运行时遥测）</option>
+      <option value="harness">Harness 体检（每数据源画像）</option>
       <option value="skills">G4 Skill 行为画像</option>
+      <option value="skillmatrix">skill 治理档案（每 skill 一行）</option>
       <option value="agents">G2 建议条目（AGENTS.md 候选）</option>
       <option value="cards">G3 卡片校验</option>
     </select>
@@ -704,6 +708,12 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
         title="A 档动作 topic_brief：确定性聚合层（构成/活跃/高频问题/错误模式/skill 行为/重复会话/健康）+ chain 结论层。人裁语义，机器不给的明说">研读面</button>
       <button id="btn-topic-chain" class="xbtn" disabled
         title="切换到 chain 演进链视图（该主题已发布的长文）">chain 演进链</button>
+      <button id="btn-topic-chainbuild" class="xbtn" disabled
+        title="A 档动作 chain_build：出「链创作包」（判据头+主题画像+按月分桶锚点候选+格式契约+写作指令）。不代笔——演变与转折交给 Agent 写">生成链</button>
+      <button id="btn-topic-chainpub" class="xbtn" disabled
+        title="B 档动作 chain_publish：把 Agent 写好的草稿过 chain-validate + chain-audit，全过才落进知识正本（跳命令台两段提交）">校验并发布</button>
+      <button id="btn-topic-artifacts" class="xbtn" disabled
+        title="A 档动作 artifacts_flow：只下轨的产物流——成员会话的 Write/Edit 版本序列，秒开（双轨里要等 90s）">产物流</button>
       <button id="btn-topic-dual" class="xbtn" disabled
         title="A 档动作 dualtrack：上轨讨论流+下轨产物流+打磨带/反转点候选；大主题约 90s，作业后台跑">双轨时间线</button>
     </div>
@@ -1942,6 +1952,106 @@ function renderRepConcl(kind,d){
     handlers={root:()=>$("rep-out").scrollIntoView({behavior:"smooth"}),
       bench:()=>{$("rep-kind").value="agents";loadReport(true).catch(()=>{});},
       cmd:()=>openInCmd("report_errors",{})};
+  }else if(kind==="chains"){
+    /* v0.81 P1-1：工具链失败模式结论卡（数字全部取自本响应） */
+    const st=(d.streaks||[]), lp=(d.loops||[]), sp=(d.spins||[]);
+    const worst=st.slice().sort((a,b)=>b[3]-a[3])[0];
+    cc=conclusionCard({
+      lines:[{text:"窗口内 "+st.length+" 段连击、"+lp.length+" 段循环、"+
+        sp.length+" 段空转（长会话 "+((d.long||[]).length)+
+        " 个，步数 p95="+(d.p95||0)+"）。"},
+        {text:worst?("最该先看："+esc(worst[1])+" 在 "+esc(shortSid(worst[0]))+
+          " 上连续调用 "+worst[3]+" 次——连击=不看完结果就下一步。")
+          :"窗口内没有连击。",ok:!worst}],
+      sub:"数字是现场算出来的（/api/reports/chains，与 CLI report-chains "+
+        "同一聚合函数）；这里数的是**打法**（连击/循环/空转），"+
+        "G1 数的是单件工具——两边互补，别混着比。",
+      actions:[{id:"root",label:"看明细",title:"跳到本页三种打法明细"},
+        {id:"cmd",label:"在命令台打开",title:"把 report-chains 装到命令台就地执行（A 档只读，结果与本页同源）"}]});
+    handlers={root:()=>$("rep-out").scrollIntoView({behavior:"smooth"}),
+      cmd:()=>openInCmd("report_chains",{})};
+  }else if(kind==="traces"){
+    /* v0.81 P1-1：trace 结论卡（取消率是现有报告里唯一覆盖"用户打断"的） */
+    if(!d.configured){
+      cc=conclusionCard({
+        lines:[{text:"未配置 trace 目录（起服加 --traces-root）。"}],
+        sub:"traces 来自运行时遥测（~/.workbuddy/traces），"+
+          "与索引库是两套数据源；没配就不猜，明确说没有。",
+        actions:[]});
+    }else{
+      const tools=d.tools||[];
+      const tot=tools.reduce((a,t)=>a+t.calls,0);
+      const cxl=tools.reduce((a,t)=>a+t.cancelled,0);
+      const slow=tools.filter(t=>t.calls>=20)
+        .sort((a,b)=>b.p95_ms-a.p95_ms)[0];
+      cc=conclusionCard({
+        lines:[{text:"工具调用 "+tot+" 次，用户取消 "+cxl+" 次"+
+          (tot?("（"+(cxl/tot*100).toFixed(1)+"%）"):"")+"。"},
+          {text:slow?("最慢："+esc(slow.tool)+"（p95 "+slow.p95_ms+"ms）——"+
+            "慢不等于错，但拖长的是人的等待。")
+            :"样本不足 20 次的工具不评快慢。",ok:!slow}],
+        sub:"数字是现场算出来的（/api/reports/traces，与 CLI report-traces "+
+          "同一聚合函数）；取消=用户手动打断，是 G1/steps 看不见的失败形态。",
+        actions:[{id:"root",label:"看明细",title:"跳到本页耗时表"},
+          {id:"cmd",label:"在命令台打开",title:"把 report-traces 装到命令台就地执行（A 档只读，结果与本页同源）"}]});
+      handlers={root:()=>$("rep-out").scrollIntoView({behavior:"smooth"}),
+        cmd:()=>openInCmd("report_traces",{})};
+    }
+  }else if(kind==="harness"){
+    /* v0.81 P1-2：harness 体检结论卡（数字全部取自本响应） */
+    const srcs=d.sources||[], t=d.totals||{};
+    const live=srcs.filter(s=>s.telemetry);
+    const worst=live.filter(s=>s.paired&&s.results>=20)
+      .sort((a,b)=>b.fail_rate-a.fail_rate)[0];
+    const idle=srcs.filter(s=>!s.telemetry).length;
+    cc=conclusionCard({
+      lines:[{text:t.sources+" 个数据源里 "+live.length+
+        " 个有工具遥测；总体失败率 "+(t.fail_rate==null
+          ?"—（无结果相可算）":(t.fail_rate*100).toFixed(1)+"%")+
+        "（error "+t.errors+" / result "+t.results+"）。"},
+        {text:worst?("最该先看："+esc(worst.name)+"（失败率 "+
+          (worst.fail_rate*100).toFixed(1)+"%，result 相 "+worst.results+
+          " 次）——点源名可下钻它的会话。")
+          :"遥测源里没有 result 相 ≥20 的样本，失败率不可比，不排名。",ok:!worst},
+        {text:idle?(idle+" 个纯聊天平台源已折叠（没有工具遥测，"+
+          "画像两列必然是「—」）——折叠的是视图，点展开可看全。")
+          :"没有纯聊天平台源。",ok:!idle}],
+      sub:"数字是现场算出来的（/api/harness，与 CLI report-harness "+
+        "同一聚合函数）；失败率分母 = result 相步骤数，「没有数据」与"+
+        "「没有错误」分开显示，绝不并成 0%。",
+      actions:[{id:"root",label:"看画像",title:"跳到每源一行画像表"},
+        {id:"cmd",label:"在命令台打开",title:"把 report-harness 装到命令台就地执行（A 档只读，结果与本页同源）"}]});
+    handlers={root:()=>$("rep-out").scrollIntoView({behavior:"smooth"}),
+      cmd:()=>openInCmd("report_harness",{})};
+  }else if(kind==="skillmatrix"){
+    /* v0.81 P1-3：skill 治理档案结论卡（数字全部取自本响应） */
+    const t=d.totals||{}, sk=d.skills||[];
+    const named=sk.filter(s=>s.skill!=="（未识别）");
+    const cross=sk.filter(s=>(s.disambig||[]).some(x=>x.indexOf("跨 ")===0));
+    const bad=named.filter(s=>s.err>0).sort((a,b)=>b.err-a.err)[0];
+    const orphan=named.filter(s=>!s.topics_count)
+      .sort((a,b)=>b.calls-a.calls)[0];
+    cc=conclusionCard({
+      lines:[{text:(t.skills||0)+" 个 skill 共被调用 "+(t.calls||0)+
+        " 次，失败 "+(t.failed||0)+" 次；名解析不出 "+(t.unknown_named||0)+
+        " 个（已单列，不混进正常 skill）。"},
+        {text:bad?("最该先看："+esc(bad.skill)+"（失败 "+bad.err+"/"+
+          bad.calls+"）——关联错误："+esc((bad.top_error||{}).text||"（无错误文本）"))
+          :"没有 skill 失败记录。",ok:!bad},
+        {text:orphan?("服务主题为 0 的最高调用 skill："+esc(orphan.skill)+
+          "（"+orphan.calls+" 次）——注意「0」只说明已扫的 "+
+          (t.chains_scanned||0)+" 条 chain 里没有它，无 chain 的主题不计入。")
+          :"每个 skill 都至少服务了 1 个有 chain 的主题。",ok:!orphan},
+        {text:cross.length?(cross.length+" 个 skill 跨多个 harness 出现（"+
+          "同名可能不同物）——已标消歧，别把两套名词表的同名项当同一个。")
+          :"没有跨 harness 同名的 skill。",ok:!cross.length}],
+      sub:"G4 画像数字是上游口径（behstats skill_summary），「服务的主题」"+
+        "是本页聚合（skilljoin 交叉，只扫有 chain 的主题）——两者不同源；"+
+        "调用 1–2 次的偶发 skill 默认折叠并报数。",
+      actions:[{id:"root",label:"看档案",title:"跳到每 skill 一行档案表"},
+        {id:"g4",label:"对比 G4 画像",title:"切到 G4 Skill 行为画像（上游口径，与本页不同源）"}]});
+    handlers={root:()=>$("rep-out").scrollIntoView({behavior:"smooth"}),
+      g4:()=>{$("rep-kind").value="skills";loadReport(true).catch(()=>{});}};
   }else if(kind==="agents"){
     const entries=d.entries||[];
     const todo=entries.filter(e=>(e.unresolved_count||0)>=1).length;
@@ -2337,6 +2447,38 @@ async function atrPack(){
 }
 
 /* ---------- Tab 3: 报告 ---------- */
+/* 报告页里唯一走「A 档动作通道」的一档：skill 治理档案（action_id=
+   skill_matrix，8766）。它和 kgraph/dualtrack 同属 view 侧聚合——要读
+   topics_meta + chain 目录做 skilljoin 交叉，api-serve（8765）不持有这
+   两个位置；同步 GET 会吊死页面（铁律 6.5），故入队 + 轮询。 */
+async function waitJob(jid,tick){
+  for(;;){
+    const job=await actApi("/api/actions/job/"+jid);
+    if(job.__err)return {__err:job.__err};
+    if(job.status==="queued"||job.status==="running"){
+      if(tick)tick();
+      await new Promise(r=>setTimeout(r,800));
+      continue;
+    }
+    return job;
+  }
+}
+async function runSkillMatrix(out){
+  if(!(state.act&&state.act.actions&&state.act.actions.length))
+    await loadCmdData().catch(()=>{});
+  const spec=actionSpec("skill_matrix");
+  if(!spec)throw new Error("注册表里没有 skill_matrix（重新生成 actions_registry.json 后刷新）");
+  const r=await actJson("/api/actions/run",{action_id:"skill_matrix",
+    params:{},view_actions_api:1});
+  if(r.__err)throw new Error("档案动作入队失败："+r.__err);
+  const job=await waitJob(r.job_id,()=>{
+    out.innerHTML="<div class='empty'>skill 治理档案聚合中（A 档动作 "+
+      "skill_matrix）…逐个有 chain 的主题做 skilljoin 交叉，约 "+
+      esc(String(spec.est_sec||20))+"s</div>";});
+  if(job.__err)throw new Error("作业查询失败："+job.__err);
+  if(job.status==="failed")throw new Error(job.error||"动作失败（无详情）");
+  return job.result||{};
+}
 async function loadReport(manual){
   const kind=$("rep-kind").value;
   state.repKind=kind;
@@ -2353,6 +2495,10 @@ async function loadReport(manual){
   try{
     const d = kind==="cards"
       ? await api("/api/cards")
+      : kind==="harness"
+      ? await api("/api/harness?"+p.toString())
+      : kind==="skillmatrix"
+      ? await runSkillMatrix(out)
       : await api("/api/reports/"+kind+"?"+p.toString());
     state.repLast=d;
     /* P1-3：卡片本体来自 view 仓本地服务（决策 D9）；失败不阻断校验页 */
@@ -2368,7 +2514,11 @@ async function loadReport(manual){
     $("rep-intro").innerHTML=panelIntro(kind);
     if(kind==="tools")renderTools(d,out);
     else if(kind==="errors")renderErrors(d,out);
+    else if(kind==="chains")renderChains(d,out);
+    else if(kind==="traces")renderTraces(d,out);
+    else if(kind==="harness")renderHarness(d,out);
     else if(kind==="skills")renderSkills(d,out);
+    else if(kind==="skillmatrix")renderSkillMatrix(d,out);
     else if(kind==="agents")renderAgents(d,out);
     else if(kind==="cards")renderCards(d,out);
     bindAnchors(out);
@@ -2376,10 +2526,14 @@ async function loadReport(manual){
     if(glossary.loaded)applyTermTooltips(out);
     /* v0.64（用户批注 362/343）：本页四个报告默认都是**窗口口径**——在 meta 行
        统一声明，并写明与工作台（全库口径）的对账方法；不用每个报告各自重复。 */
+    /* skill 治理档案走的是全库扫描的动作，时间窗选择器对它无效——明说，
+       不让"选了近 7 天却拿到全库"变成静默的口径欺骗。 */
     const win=daysVal("rep-days");
-    $("rep-meta").textContent=(win
+    $("rep-meta").textContent=(kind==="skillmatrix"
+      ?"口径=全部数据（skill 调用点全库扫描，时间窗选择器对本档无效）｜"
+      :(win
       ?("口径=近 "+win+" 天窗口内（全库口径见工作台「闭环健康」，两边数字不同是口径不同不是账错）｜")
-      :"口径=全部数据（与工作台「闭环健康」同口径）｜")
+      :"口径=全部数据（与工作台「闭环健康」同口径）｜"))
       +$("rep-meta").textContent;
     $("rep-meta").textContent+=($("rep-meta").textContent?"｜":"")+
       "生成于 "+new Date().toLocaleTimeString("zh-CN",{hour12:false})+
@@ -2454,12 +2608,22 @@ function repMinChips() {
     + REP_MIN_DEFAULT + "'>只看 ≥" + REP_MIN_DEFAULT + " 次（默认）</span></div>";
 }
 /* 阈值 chip 的接线（两条路径——"过滤态提前 return" 与全量态——都要接上，
-   否则点了没反应；这是本仓踩过的"按钮不接线"老坑）。 */
+   否则点了没反应；这是本仓踩过的"按钮不接线"老坑）。
+   v0.81：chains / traces 报告也带阈值 chip——按 state.repKind 选渲染器
+   （缺函数时退回 errors，渲染门的提取环境不因此炸）。 */
 function wireRepThresh(out) {
   for (const el of out.querySelectorAll("[data-repmin]"))
     el.onclick = () => { if (typeof state === "undefined") return;
       state.repMin = parseInt(el.dataset.repmin, 10) || 1;
-      if (state.repLast) renderErrors(state.repLast, out); };
+      if (!state.repLast) return;
+      if (state.repKind === "chains" && typeof renderChains === "function")
+        renderChains(state.repLast, out);
+      else if (state.repKind === "traces" && typeof renderTraces === "function")
+        renderTraces(state.repLast, out);
+      else if (state.repKind === "skillmatrix"
+               && typeof renderSkillMatrix === "function")
+        renderSkillMatrix(state.repLast, out);
+      else renderErrors(state.repLast, out); };
 }
 
 function renderTools(d,out){
@@ -2592,6 +2756,235 @@ function renderTools(d,out){
   /* v0.21 P0-2：默认视图也渲染聚合根因（不再只藏在过滤态） */
   if(errs.length)html+=errTable();
   out.innerHTML=html;
+}
+/* v0.81 P1-1：工具链失败模式（/api/reports/chains，与 CLI report-chains
+   同一聚合函数 chainstats.collect）。G1 数的是**单件工具**；这里数的是
+   **打法**：同工具连击（连续同工具 call）、序列循环（A↔B 完整周期）、
+   空转（同工具连续 error 不换招）、长回合（步数超 p95）。
+   三种模式行都可点：点会话名进会话原文（无回合号，gotoAnchor 会明说）。
+   阈值 chip 与 errors 同口径（默认 ≥3；被滤掉的条数与合计都报数）。 */
+function renderChains(d,out){
+  const f=repFilter();
+  const N=60;
+  const sidLink=sid=>"<a href='javascript:void(0)' class='anchor' data-sid=\""+
+    esc(sid)+"\" data-seq=\"0\" data-err=\"\" title=\""+esc(sid)+
+    "\">"+esc(shortSid(sid))+"</a>";
+  const toRows=(list,fmt)=>(list||[]).map(x=>Object.assign({sid:x[0]},fmt(x)));
+  const raw={
+    streaks:toRows(d.streaks,x=>({count:x[3],tool:x[1],pos:"起始 seq "+x[2]})),
+    loops:toRows(d.loops,x=>({count:x[2],tool:x[1],pos:"起始 seq "+x[3]})),
+    spins:toRows(d.spins,x=>({count:x[2],tool:x[1],pos:""}))};
+  if(f.q)for(const k of Object.keys(raw))
+    raw[k]=raw[k].filter(r=>hitQ(r.tool+" "+r.sid,f.q));
+  /* 单位随各表不同（连击次数/完整周期/连续错误）——余量文案必须带单位，
+     不许笼统一句"次"（那正是两套口径的开端）。 */
+  const patTable=(rows,unit,emptyMsg)=>{
+    const min=repMinOf();
+    const gate=repGate(rows,min);
+    let h;
+    if(gate.over.length)
+      h="<table><thead><tr><th class='num'>"+unit+"</th><th>工具/循环对</th>"+
+        "<th>会话</th><th>位置</th></tr></thead><tbody>"+
+        gate.over.slice(0,N).map(r=>"<tr><td class='num'>"+r.count+
+          "</td><td>"+esc(r.tool)+"</td><td>"+sidLink(r.sid)+
+          "</td><td class='sub2'>"+esc(r.pos)+"</td></tr>").join("")+
+        "</tbody></table>";
+    else h="<div class='empty'>"+(rows.length
+      ?("没有达到阈值的条目（阈值 ≥"+min+"；共 "+rows.length+
+        " 条低于阈值）")
+      :esc(emptyMsg))+"</div>";
+    h+="<div class='sub2 rep-rem'>共 "+gate.over.length+" 条 / 合计 "+
+      gate.total+" "+unit;
+    if(gate.underN)h+="；<b>另有 "+gate.underN+" 条次数 &lt;"+min+
+      "（合计 "+gate.underCount+" "+unit+"）按阈值未显示</b>";
+    if(gate.over.length>N)
+      h+="；表内只显示前 "+N+" 条（完整清单用「导出到服务器」存当前屏幕这份）";
+    return h+"</div>";
+  };
+  $("rep-meta").textContent="会话 "+(d.sessions||0)+"｜步骤 "+(d.steps||0)+
+    "｜步数 p95="+(d.p95||0)+"｜连击 "+raw.streaks.length+
+    "｜循环 "+raw.loops.length+"｜空转 "+raw.spins.length+
+    "｜长会话 "+((d.long||[]).length)+
+    (f.q?("｜过滤后：连击 "+raw.streaks.length+" 循环 "+raw.loops.length+
+      " 空转 "+raw.spins.length):"");
+  const top=d.top||[];
+  const longSet=new Set((d.long||[]).map(x=>x[0]));
+  let html="<h3 class='sec'>高步会话 Top"+(d.top_n||10)+
+    "（步数 = call+result 两行口径；超 p95 标红）</h3>"+
+    (top.length?("<table><thead><tr><th>会话</th><th class='num'>步数</th>"+
+      "<th>超 p95？</th></tr></thead><tbody>"+
+      top.map(x=>"<tr><td>"+sidLink(x[0])+"</td><td class='num'>"+x[1]+
+        "</td><td>"+(longSet.has(x[0])
+          ?"<span class='errline'>是（&gt;"+(d.p95||0)+"）</span>":"—")+
+        "</td></tr>").join("")+"</tbody></table>")
+      :"<div class='empty'>窗口内没有会话</div>")+
+    "<h3 class='sec'>三种失败打法（阈值与错误报告同口径）</h3>"+
+    repMinChips()+
+    "<h4 class='sec2'>同工具连击（后端口径：连续同工具 call ≥5）</h4>"+
+    patTable(raw.streaks,"连击次数","窗口内没有连击")+
+    "<h4 class='sec2'>序列循环（后端口径：A↔B 完整周期 ≥3）</h4>"+
+    patTable(raw.loops,"完整周期","窗口内没有循环")+
+    "<h4 class='sec2'>空转（后端口径：同工具连续 error ≥5）</h4>"+
+    patTable(raw.spins,"连续错误","窗口内没有空转");
+  const rr=d.result_rows||0;
+  if(rr)
+    html+="<p class='sub2'>结果行共 "+rr+" 条，其中 error "+(d.error_results||0)+
+      " 条（"+(rr?(d.error_results/rr*100).toFixed(1):"0.0")+
+      "%）——空转检测看的是「连续报错还不换招」的那几段。</p>";
+  out.innerHTML=html;
+  wireRepThresh(out);
+}
+/* v0.81 P1-1：OTel trace 工具统计（/api/reports/traces，与 CLI
+   report-traces 同一聚合函数 tracestats.collect）。与 G1 分工：
+   steps 来自会话轨迹（对齐对话轮次，可算重试/放弃）；traces 来自
+   运行时遥测——精确耗时 + **用户取消** + 子代理维度。取消率只在
+   这里有："用户手动打断"是现有全部报告都不覆盖的失败形态。 */
+function renderTraces(d,out){
+  if(!d.configured){
+    out.innerHTML="<div class='empty'>未配置 trace 目录："+
+      esc(d.hint||"起服加 --traces-root（缺省 ~/.workbuddy/traces）")+
+      "</div>";
+    $("rep-meta").textContent="";
+    return;
+  }
+  const f=repFilter();
+  const s=d.summary||{};
+  const g=d.generation||{};
+  const ms=v=>(v==null?"—":(v>=1000?(v/1000).toFixed(1)+"s":v+"ms"));
+  let tools=d.tools||[];
+  if(f.q)tools=tools.filter(t=>hitQ(t.tool,f.q));
+  const tot=tools.reduce((a,t)=>({calls:a.calls+t.calls,
+    errors:a.errors+t.errors,cxl:a.cxl+t.cancelled,
+    run:a.run+t.running}),{calls:0,errors:0,cxl:0,run:0});
+  $("rep-meta").textContent="trace 文件 "+(s.files||0)+"（损坏 "+
+    (s.bad_files||0)+"）｜span "+(s.spans||0)+"｜工具调用 "+tot.calls+
+    "｜失败 "+tot.errors+"｜取消 "+tot.cxl+"｜未闭合 "+tot.run+
+    "｜模型调用 "+(g.calls||0)+" 次（p50 "+ms(g.p50_ms)+
+    " / p95 "+ms(g.p95_ms)+"）"+(f.q?("｜过滤后 "+tools.length+" 件"):"");
+  const gate=repGate(tools.map(t=>({count:t.calls,t:t})),repMinOf());
+  const shown=gate.over.map(r=>r.t);
+  const small=gate.under.map(r=>r.t);
+  const tTable=rows=>"<table><thead><tr><th>工具</th>"+
+    "<th class='num'>调用</th><th class='num'>失败</th>"+
+    "<th class='num'>取消</th><th class='num'>取消率</th>"+
+    "<th class='num'>未闭合</th><th class='num'>p50</th>"+
+    "<th class='num'>p95</th></tr></thead><tbody>"+
+    rows.map(t=>"<tr><td>"+esc(t.tool)+"</td><td class='num'>"+t.calls+
+      "</td><td class='num'>"+(t.errors
+        ?"<span class='errline'>"+t.errors+"</span>":"0")+
+      "</td><td class='num'>"+(t.cancelled
+        ?"<span class='errline'>"+t.cancelled+"</span>":"0")+
+      "</td><td class='num'>"+(t.cancel_rate*100).toFixed(1)+"%</td>"+
+      "<td class='num'>"+t.running+"</td><td class='num'>"+ms(t.p50_ms)+
+      "</td><td class='num'>"+ms(t.p95_ms)+"</td></tr>").join("")+
+    "</tbody></table>";
+  let html="<h3 class='sec'>工具耗时与取消（按调用量）</h3>"+repMinChips()+
+    (shown.length?tTable(shown)
+      :"<div class='empty'>"+(tools.length
+        ?("没有达到阈值的工具（阈值 ≥"+repMinOf()+" 次调用；共 "+
+          tools.length+" 件低于阈值）")
+        :"trace 里没有工具调用记录")+"</div>")+
+    "<div class='sub2 rep-rem'>共 "+gate.over.length+" 件 / 合计 "+
+      gate.total+" 次调用";
+  if(gate.underN)html+="；<b>另有 "+gate.underN+" 件调用 &lt;"+repMinOf()+
+    "（合计 "+gate.underCount+" 次）按阈值未显示——调用量小的工具，"+
+    "其失败率/取消率不可比</b>";
+  html+="</div>";
+  html+="<p class='sub2'>取消 = 用户手动打断（span status=cancelled）；"+
+    "未闭合 = 进程异常退出留下的 running span（不是错误，是痕迹）。"+
+    "耗时取 span.duration（宿主已算好的毫秒数）。</p>";
+  if(g.calls)
+    html+="<h3 class='sec'>模型调用（generation span）</h3><p class='sub2'>"+
+      g.calls+" 次｜失败 "+g.errors+"｜总耗时 "+ms(g.total_ms)+
+      "｜p50 "+ms(g.p50_ms)+" / p95 "+ms(g.p95_ms)+
+      "——p95 远大于 p50 说明长尾集中在少数难回合。</p>";
+  const ag=s.agents||{};
+  const ags=Object.keys(ag);
+  if(ags.length)
+    html+="<h3 class='sec'>子代理（agentName）维度</h3><p class='sub2'>"+
+      ags.map(a=>esc(a)+" ×"+ag[a]).join("｜")+"</p>";
+  out.innerHTML=html;
+  wireRepThresh(out);
+}
+/* v0.81 P1-2：Harness 体检（/api/harness，与 CLI report-harness 同一聚合
+   函数）。VIEW 定位②（harness 感知与治理）的底座：每源一行画像。
+   两条展示纪律：
+   ① 「没有数据」与「没有错误」分开——无结果相的源显示「—（无结果相）」，
+      纯聊天平台显示「—（无遥测）」，绝不渲染成 0%；
+   ② 无工具遥测的源**默认折叠**（用户定位②的前提：一眼看到值得看的），
+      折叠时如实报数、可一键展开——折叠的是视图，不是数据。 */
+function renderHarness(d,out){
+  const f=repFilter();
+  const t=d.totals||{};
+  const fr=v=>v==null?"—":(v*100).toFixed(1)+"%";
+  $("rep-meta").textContent="数据源 "+(t.sources||0)+" 个｜会话 "+
+    (t.sessions||0)+"｜消息 "+(t.messages||0)+"｜步骤 "+(t.steps||0)+
+    "｜总体失败率 "+(t.fail_rate==null?"—（无结果相可算）":fr(t.fail_rate))+
+    "（error "+(t.errors||0)+" / result "+(t.results||0)+"）";
+  let rows=d.sources||[];
+  if(f.q)rows=rows.filter(s=>hitQ(s.name+" "+(s.top_tools||[])
+    .map(x=>x.tool).join(" ")+" "+(s.top_skills||[]).map(x=>x.skill)
+    .join(" "),f.q));
+  /* 折叠开关：无遥测源（纯聊天平台）默认收起——它们的工具/skill 两列
+     必然是「—」，占了版面却提供不了治理信息；折叠条报数，可展开。 */
+  const quiet=rows.filter(s=>!s.telemetry);
+  const live=rows.filter(s=>s.telemetry);
+  const collapsed=(typeof state!=="undefined"&&state.harnessHideQuiet!==false)
+    &&quiet.length>0;
+  const shown=collapsed?live:rows;
+  const rowHtml=s=>{
+    const fail=s.paired
+      ?(s.fail_rate>=0.05
+        ?"<span class='errline' title='失败率 ≥5%'>"+fr(s.fail_rate)+"</span>"
+        :fr(s.fail_rate))
+      :(s.telemetry?"—（无结果相）":"—（无遥测）");
+    const lowSample=s.paired&&s.results<20;
+    const tools=(s.top_tools||[]).map(x=>esc(x.tool)+" ×"+x.steps)
+      .join("、")||"—";
+    const toolsMore=(s.top_tools||[]).length&&s.tools_total>s.top_tools.length
+      ?(" <span class='sub2'>等 "+s.tools_total+" 件</span>"):"";
+    const skills=(s.top_skills||[]).map(x=>esc(x.skill)+" ×"+x.count)
+      .join("、")||"—";
+    const skillsMore=(s.top_skills||[]).length&&s.skills_total>s.top_skills.length
+      ?(" <span class='sub2'>等 "+s.skills_total+" 次</span>"):"";
+    return "<tr><td><a href='javascript:void(0)' class='anchor' "+
+      "data-src=\""+esc(s.name)+"\" title=\"看这个数据源的会话\">"+
+      esc(s.name)+"</a></td>"+
+      "<td class='num'>"+s.sessions+"</td><td class='num'>"+s.messages+
+      "</td><td class='num'>"+s.steps+"</td>"+
+      "<td class='num'>"+fail+(lowSample
+        ?"<div class='sub2' title='result 相不足 20，率不可比'>样本少</div>":"")+
+      "</td><td class='sub2'>"+tools+toolsMore+"</td>"+
+      "<td class='sub2'>"+skills+skillsMore+"</td>"+
+      "<td class='sub2'>"+esc(s.last_active||"—")+"</td></tr>";
+  };
+  let html="<h3 class='sec'>数据源画像（=Agent Harness 身份）</h3>";
+  if(collapsed)
+    html+="<div class='chiprow'><span class='chip' "+
+      "id='hq-open'>展开 "+quiet.length+" 个无工具遥测的数据源（纯聊天平台，"+
+      "两列必然是「—」）</span></div>";
+  html+="<table><thead><tr><th>数据源</th><th class='num'>会话</th>"+
+    "<th class='num'>消息</th><th class='num'>步骤</th>"+
+    "<th class='num'>失败率</th><th>代表工具（按步骤行数）</th>"+
+    "<th>代表 skill</th><th>最近活跃</th></tr></thead><tbody>"+
+    (shown.length?shown.map(rowHtml).join("")
+      :"<tr><td colspan='8'><div class='empty'>"+
+        (rows.length?"过滤后没有数据源":"窗口内没有会话")+
+        "</div></td></tr>")+
+    "</tbody></table>";
+  html+="<p class='sub2'>失败率分母 = result 相步骤数；"+
+    "「—（无遥测）」= 纯聊天平台没有工具遥测，"+
+    "「—（无结果相）」= 只落了 call 相（如 vscode-copilot），"+
+    "两者都**不是** 0%——没有数据与没有错误是两件事。"+
+    "取消率不在本面（steps 无 cancelled 形态，见「Trace 耗时与取消」）。</p>";
+  out.innerHTML=html;
+  const open=$("hq-open");
+  if(open)open.onclick=()=>{state.harnessHideQuiet=false;renderHarness(d,out);};
+  /* 点源名 → 会话检索按该源筛选（治理入口：从画像下钻到会话） */
+  for(const a of out.querySelectorAll("[data-src]"))
+    a.onclick=()=>{ $("f-source").value=a.dataset.src;
+      switchTab("sessions"); state.offset=0;
+      loadSessions().catch(()=>{}); };
 }
 function renderErrors(d,out){
   const m=d.meta||{};
@@ -2817,6 +3210,110 @@ function renderSkills(d,out){
     html+="</details>";
   }
   out.innerHTML=html;
+}
+/* ---------- v0.81 P1-3 skill 治理档案（A 档动作 skill_matrix） ----------
+   每个 skill 一行 = G4 画像（调用/会话/成功/失败/无结果）+ 服务的主题
+   （skilljoin 交叉）+ 关联错误 top1 + 消歧状态。
+
+   两条必须说清的话（d.note 后端已带，页头照抄）：
+   ① G4 数字是**上游口径**（behstats skill_summary），「服务的主题」是本页
+     聚合（对有 chain 的主题逐个做 skilljoin）——两者不同源，别混着读；
+   ② 无 chain 的主题不计入服务主题数，所以「0 个主题」不等于"没服务过"。
+
+   折叠纪律（用户定位②）：调用 1–2 次的 skill 是偶发内容，默认折叠隐藏，
+   但**折掉了多少条、合计多少次必须报数**（本仓"被丢掉的部分必须可见"）。 */
+function renderSkillMatrix(d,out){
+  const f=repFilter();
+  let skills=d.skills||[];
+  if(f.q)skills=skills.filter(s=>hitQ(s.skill+" "+(s.topics_served||[])
+    .join("/")+" "+(s.sources||[]).join("/"),f.q));
+  if(f.only)skills=skills.filter(s=>s.err>0||s.no_result>0||
+    (s.disambig&&s.disambig.length));
+  const t=d.totals||{};
+  const min=repMinOf();
+  const g=repGate(skills.map(s=>({skill:s,count:s.calls})),min);
+  $("rep-meta").textContent="skill "+skills.length+" 个｜调用 "+
+    (t.calls||0)+" 次｜失败 "+(t.failed||0)+" 次｜名解析不出 "+
+    (t.unknown_named||0)+" 个｜已扫 chain "+(t.chains_scanned||0)+"/"+
+    (t.chains_total||0)+"｜注册主题 "+(t.topics_registered||0)+
+    (f.q||f.only?"｜已过滤 "+skills.length+" 个":"");
+  let html="<div class='sub2'>"+esc(d.note||"")+"</div>";
+  html+=repMinChips();
+  if(t.chains_scanned===0)
+    html+="<div class='sub2'>当前没有扫到任何 chain 长文（chain 根未配置或"+
+      "目录下无 chain-*.md）——「服务主题」一列因此全是 0，这是没扫到，不是"+
+      "这些 skill 没服务过主题。</div>";
+  const rows=g.over.map(x=>x.skill);
+  html+=rows.length?("<table><thead><tr><th>Skill</th><th class='num'>调用</th>"+
+    "<th class='num'>会话</th><th class='num'>成功</th><th class='num'>失败</th>"+
+    "<th class='num'>无结果</th><th>服务的主题</th><th>关联错误 top1</th>"+
+    "<th>消歧状态</th></tr></thead><tbody>"+rows.map(s=>{
+      const fr=(s.fail_rate===null||s.fail_rate===undefined)
+        ?"—":(s.fail_rate*100).toFixed(1)+"%";
+      const tp=(s.topics_served||[]).length
+        ?s.topics_served.map(x=>"<span class='anchor'>"+esc(x)+"</span>")
+          .join(" ")
+        :"<span class='sub2'>0（无 chain 主题不计入）</span>";
+      const er=s.top_error
+        ?esc(s.top_error.text)+" <span class='sub2'>×"+s.top_error.count+"</span>"
+        :"<span class='sub2'>—</span>";
+      const dg=(s.disambig||[]).length
+        ?s.disambig.map(x=>"<span class='anchor'>"+esc(x)+"</span>").join(" ")
+        :"<span class='sub2'>—</span>";
+      return "<tr><td>"+esc(s.skill)+"</td><td class='num'>"+s.calls+
+        " <span class='sub2'>("+fr+")</span></td><td class='num'>"+s.sids+
+        "</td><td class='num'>"+s.ok+"</td><td class='num'>"+s.err+
+        "</td><td class='num'>"+s.no_result+"</td><td>"+tp+"</td><td>"+er+
+        "</td><td>"+dg+"</td></tr>";
+    }).join("")+"</tbody></table>")
+    :"<div class='empty'>"+(skills.length
+      ?"当前过滤条件下没有 skill 行（过滤前 "+skills.length+" 个）"
+      :"全库没有 skill 调用点（Chat 平台会话本来就没有工具遥测，这不是故障）")+
+      "</div>";
+  if(g.underN)
+    html+="<div class='sub2'>另有 "+g.underN+" 个调用次数 &lt;"+min+
+      " 的 skill 未列出（合计 "+g.underCount+" 次调用）——偶发项默认折叠，点上方"+
+      "「全部（阈值 ≥1）」可展开。</div>";
+  if((d.chain_errors||[]).length)
+    html+="<div class='sub2'>跳过的 chain 文档："+d.chain_errors.map(e=>
+      esc(e)).join("；")+"（这些主题没进「服务主题」统计）</div>";
+  /* v0.81 P1-5：`cards index-md` 的面板位（原先只有命令台位）。它是 skill
+     **触发词撞车**的消歧原料，属治理档案的一部分，故挂在本页底部；按需载入
+     （点开才跑），不拖慢档案表本身。 */
+  html+="<details><summary>触发词消歧素材（cards index-md）</summary>"+
+    "<div class='sub2'>卡片里记录的 skill 触发行 + 疑似易混对——两个 skill 的"+
+    "触发词撞车时，从这里看是谁跟谁撞。按需载入（A 档只读动作 "+
+    "cards_index_md，约 2s，不落盘）。</div>"+
+    "<button class='xbtn' data-sm-indexmd>载入触发词素材</button>"+
+    "<div id='sm-indexmd' class='sub2'></div></details>";
+  out.innerHTML=html;
+  wireRepThresh(out);
+  for(const b of out.querySelectorAll("[data-sm-indexmd]"))
+    b.onclick=()=>{loadSmIndexMd(out);};
+}
+/* 触发词素材按需载入（A 档动作 cards_index_md，与命令台同一条作业链路）。
+   卡片目录为空是**常见态**（蒸馏产出卡片前本来就没有）——明说"没卡片"，
+   不假报成故障。 */
+async function loadSmIndexMd(out){
+  const box=$("sm-indexmd");
+  box.textContent="载入中…（A 档动作 cards_index_md，只读）";
+  try{
+    const r=await actJson("/api/actions/run",{action_id:"cards_index_md",
+      params:{},view_actions_api:1});
+    if(r.__err){box.textContent="载入失败："+r.__err;return;}
+    const job=await waitJob(r.job_id);
+    if(job.__err){box.textContent="作业查询失败："+job.__err;return;}
+    if(job.status==="failed"){
+      box.textContent="动作失败："+(job.error||"（无详情）");return;}
+    const md=((job.result||{}).stdout||"").trim();
+    if(!md){
+      box.textContent="（卡片目录里没有可索引的卡片——还没蒸出卡片，这不是故障）";
+      return;
+    }
+    box.innerHTML="<textarea readonly rows='16' style='width:100%;"+
+      "font-size:11px'>"+esc(md)+"</textarea><div class='sub2'>整段可复制"+
+      "（存档请用命令台加 --out，本页永不落盘）。</div>";
+  }catch(e){box.textContent="载入失败："+e.message;}
 }
 function renderAgents(d,out){
   const m=d.meta||{};
@@ -3045,10 +3542,18 @@ async function openTopicChain(id){
     state.topicCur={id:id};
     updateTopicCmd();
     $("topics-right").style.display="none";
+    /* P11（用户 2026-10-24）：「没链」不再是死胡同。链是写作产物，
+       给一条明路：出创作包 → Agent 写 → 校验并发布。 */
     $("topics-timeline").innerHTML=errorBox(
-      "该主题尚无 chain 长文——点上方「去命令台」（已预填 topic pack 参数），"
-      +"核对后执行取蒸馏包（A 档动作，选参数→执行）；"
-      +"由 Agent 消费创作 chain-*.md 放入 knowledge/topics/ 后刷新即见。");
+      "该主题尚无 chain 长文（演进链）。链不是聚合出来的——它要 Agent 按"
+      +"「链创作包」写：包里是判据头 + 主题画像 + 按月分桶的锚点候选 + 格式契约"
+      +"+ 写作指令。")
+      +"<div style='margin-top:10px'>"
+      +"<button id='btn-chain-empty-build' class='xbtn'>生成链创作包</button>"
+      +"<span class='sub2'> 生成后把包交给 Agent 写，写完点「校验并发布」"
+      +"（结构校验 + 引文逐字门，全过才进知识正本）</span></div>";
+    const eb=$("btn-chain-empty-build");
+    if(eb)eb.onclick=()=>runChainBuild();
     return;
   }
   if(!res.ok){ await failApi(res); return; }
@@ -3225,11 +3730,20 @@ function topicPackCmd(id,level,sid){
 function updateTopicCmd(){
   const cur=state.topicCur;
   const off=!cur;
+  /* P11 修死锁：工具栏原本只在 openTopicChain() 里 display=""，
+     而「chain 演进链」「双轨时间线」两个按钮**就在这条工具栏里**——
+     v0.76 把默认视图改成研读面后，从研读面出发永远看不见这条栏，
+     等于三个派生视图入口全部失联（用户 2026-10-24「双轨跑哪去了」）。
+     选中主题即显示，放在这个"选中后统一收口"的函数里，一处管两出口。 */
+  if(cur)$("topics-toolbar").style.display="";
   $("btn-topic-cmd").disabled=off;
   $("btn-topic-gocmd").disabled=off;
   $("btn-topic-dual").disabled=off;
   $("btn-topic-brief").disabled=off;
   $("btn-topic-chain").disabled=off;
+  $("btn-topic-chainbuild").disabled=off;
+  $("btn-topic-chainpub").disabled=off;
+  $("btn-topic-artifacts").disabled=off;
   if(cur)$("btn-topic-cmd").dataset.cmd=
     topicPackCmd(cur.id,packLevel());
 }
@@ -3248,6 +3762,160 @@ async function topicGoCmd(){
   renderCmdCards();renderCmdActions();renderCmdParams();updateCmdPreview();
   if(state.act.loaded)state.loaded.cmd=true;   /* 防 switchTab 再拉一遍 */
   switchTab("cmd");
+}
+
+/* ---------- P11 链创作包 / 链发布 / 产物流（用户 2026-10-24）----------
+   背景：用户「不仅仅是补一条链那么简单，要补一个生成链的命令给我；更干脆的，
+   是我能直接就看到链」。链是**写作产物**（演变与转折），聚合器算不出来，
+   所以本页做的是「一键出包 + 一键校验发布」，而不是假装能一键成文：
+     chain_build  (A) → 创作包（判据头/画像/锚点候选/格式契约/写作指令）
+     chain_publish(B) → chain-validate + chain-audit 全过才落 knowledge/topics/
+   两者都走冻结注册表里的动作（页面只渲染，不造新写路径）。 */
+
+async function runChainBuild(){
+  const cur=state.topicCur;
+  if(!cur){showBanner("warn","先选主题：创作包按主题现算");return;}
+  const out=$("topics-timeline");
+  out.innerHTML="<div class='empty'>链创作包生成中（A 档动作 chain_build）…"+
+    "读成员首轮原话并分桶，大主题要几十秒。</div>";
+  const r=await actJson("/api/actions/run",{action_id:"chain_build",
+    params:{id:cur.id},view_actions_api:1});
+  if(r.__err){out.innerHTML=errorBox("创作包入队失败："+r.__err);return;}
+  pollChainBuild(r.job_id);
+}
+async function pollChainBuild(jid){
+  const job=await actApi("/api/actions/job/"+jid);
+  const out=$("topics-timeline");
+  if(job.__err){out.innerHTML=errorBox("作业查询失败："+job.__err);return;}
+  if(job.status==="queued"||job.status==="running"){
+    out.innerHTML="<div class='empty'>链创作包生成中…</div>";
+    setTimeout(()=>pollChainBuild(jid),800); return;
+  }
+  if(job.status==="failed"){
+    out.innerHTML=errorBox("创作包失败："+(job.error||""));return;
+  }
+  renderChainPack(job.result||{},out);
+}
+/* 创作包渲染：结论在上、下一步在中、全量包折在下面。
+   **不许把包当链**——所以标题与按钮都写明「这是素材，链要人写」。 */
+function renderChainPack(d,out){
+  const c=d.counts||{}, b=d.budget||{}, t=d.topic||{};
+  let h="<div class='up-card'><b>链创作包已生成</b>（<span class='sub2'>"+
+    esc(String(d.prompt_version||""))+"</span>）"+
+    "<div class='sub2'>主题 "+esc(String(t.name||""))+"｜成员 "+
+    esc(String(c.members||0))+"｜时间桶 "+esc(String(c.buckets||0))+
+    "｜锚点候选 "+esc(String(c.anchor_candidates||0))+"，包给 "+
+    esc(String(c.anchor_shown||0))+
+    (b.truncated?("（另有 "+esc(String(b.budget_skipped||0))+
+      " 个被字符预算砍掉——调大预算或按桶重跑）"):"")+
+    "｜包体 "+esc(String(d.chars||0))+" 字</div></div>";
+  h+="<div class='up-card'><b>这不是链</b>——是素材与格式契约。"+
+    "链要写「变化」（之前怎么做、后来改成什么、为什么改），机器不代笔。"+
+    "<ol style='margin:6px 0 0 18px;padding:0'>"+
+    ((d.next_steps||[]).map(s=>"<li>"+esc(s)+"</li>").join(""))+"</ol>"+
+    "<div style='margin-top:10px'>"+
+    "<button id='btn-cp-copy' class='xbtn'>复制创作包</button>"+
+    "<button id='btn-cp-pub' class='xbtn'>校验并发布（B 档）</button>"+
+    "</div>"+
+    "<div class='sub2' style='margin-top:6px'>草稿位："+
+    esc(String(d.draft_path||""))+"（Agent 把链写到这个路径，再点发布）</div>"+
+    "</div>";
+  h+="<details class='card'><summary>完整创作包（"+esc(String(d.chars||0))+
+    " 字，点开可全选复制）</summary><pre class='cmd'>"+
+    esc(String(d.pack||""))+"</pre></details>";
+  out.innerHTML=h;
+  const cp=$("btn-cp-copy");
+  if(cp)cp.onclick=async()=>{
+    try{await navigator.clipboard.writeText(String(d.pack||""));
+      cp.textContent="已复制 ✓";setTimeout(()=>{cp.textContent="复制创作包";},1500);}
+    catch(e){showBanner("warn","浏览器拒绝了剪贴板——展开下面的包手动全选复制");}
+  };
+  const pub=$("btn-cp-pub");
+  if(pub)pub.onclick=()=>{
+    const cur=state.topicCur;
+    if(!cur)return;
+    openInCmd("chain_publish",{id:cur.id,force:false,allow_audit:false});
+  };
+}
+
+async function runArtifactsFlow(){
+  const cur=state.topicCur;
+  if(!cur){showBanner("warn","先选主题：产物流按主题成员聚合");return;}
+  const out=$("topics-timeline");
+  out.innerHTML="<div class='empty'>产物流查询中（A 档动作 artifacts_flow）…"+
+    "只查 artifacts_meta 一条 SQL，秒级。</div>";
+  const r=await actJson("/api/actions/run",{action_id:"artifacts_flow",
+    params:{id:cur.id},view_actions_api:1});
+  if(r.__err){out.innerHTML=errorBox("产物流入队失败："+r.__err);return;}
+  pollArtifactsFlow(r.job_id);
+}
+async function pollArtifactsFlow(jid){
+  const job=await actApi("/api/actions/job/"+jid);
+  const out=$("topics-timeline");
+  if(job.__err){out.innerHTML=errorBox("作业查询失败："+job.__err);return;}
+  if(job.status==="queued"||job.status==="running"){
+    out.innerHTML="<div class='empty'>产物流查询中…</div>";
+    setTimeout(()=>pollArtifactsFlow(jid),600); return;
+  }
+  if(job.status==="failed"){
+    out.innerHTML=errorBox("产物流失败："+(job.error||""));return;
+  }
+  renderArtifactsFlow(job.result||{},out);
+}
+/* 产物流：与双轨下轨**同一份数据**（服务端同一函数），但单独成视图——
+   原来要看产物得先等 90s 的讨论流+打磨带计算。覆盖度照旧自陈。 */
+function renderArtifactsFlow(d,out){
+  const art=d.artifacts||{}, t=d.topic||{};
+  let h="<div class='up-card'><b>产物流</b>（<span class='sub2'>"+
+    esc(String(t.name||""))+"｜成员 "+esc(String(d.members||0))+"</span>）"+
+    "<div class='sub2'>文件 "+esc(String(art.n_files||0))+" 个｜版本 "+
+    esc(String(art.n_versions||0))+" 个</div></div>";
+  const cov=art.coverage||null;
+  if(cov&&cov.line_text){
+    h+="<p class='sub2 cov'>"+esc(cov.line_text)+
+      "　——本面不代表全库（产物仅来自 dsh 源）</p>";
+  }else{
+    h+="<p class='sub2 cov'>覆盖度未知（后端未返回 coverage）——本面不代表全库</p>";
+  }
+  if(!art.configured){
+    h+=errorBox(art.hint||"未配置 artifacts_meta（起服加 --artifacts-meta）");
+    out.innerHTML=h;return;
+  }
+  const files=art.files||[];
+  if(!files.length){
+    h+=errorBox(art.hint||"该主题成员暂无产物记录——单会话产物先由人跑 "
+      +"`python -m harvester artifacts extract --sid <sid>` 登记（本视图不代跑）");
+    out.innerHTML=h;return;
+  }
+  h+="<table><thead><tr><th>文件</th><th>会话</th><th class='num'>版本</th>"+
+    "<th>最近一版</th></tr></thead><tbody>";
+  for(const f of files){
+    const vs=f.versions||[], last=vs[vs.length-1]||{};
+    h+="<tr><td>"+esc(f.file_path||"（未知文件）")+"</td>"+
+      "<td class='sub2'>"+esc(shortSid(f.sid||""))+"</td>"+
+      "<td class='num'>"+esc(String(f.n_versions||0))+"</td>"+
+      "<td class='sub2'>"+esc(String(last.tool||"?"))+" "+
+      esc(String(last.ts||""))+"　"+esc(String(last.old_len||0))+"→"+
+      esc(String(last.new_len||0))+" 字</td></tr>";
+  }
+  h+="</tbody></table>";
+  h+="<details class='card'><summary>逐版明细（写了几版、每版前后预览）</summary>";
+  for(const f of files){
+    h+="<div class='up-card'><b>"+esc(f.file_path||"（未知文件）")+"</b>"+
+      "<div class='sub2'>"+esc(String(f.sid||""))+"｜"+
+      esc(String(f.n_versions||0))+" 版</div>";
+    for(const v of (f.versions||[])){
+      h+="<div class='sub2'>#"+esc(String(v.seq||0))+" "+esc(String(v.tool||""))+
+        " "+esc(String(v.ts||""))+"　"+esc(String(v.old_len||0))+"→"+
+        esc(String(v.new_len||0))+" 字</div>";
+      if(v.new_preview)h+="<pre class='cmd'>"+esc(v.new_preview)+"</pre>";
+    }
+    h+="</div>";
+  }
+  h+="</details>";
+  h+="<p class='sub2'>"+
+    esc(String(art.honest||"版本为 Write/Edit 提取记录，非文件系统快照"))+"</p>";
+  out.innerHTML=h;
 }
 
 /* ---------- P4-4 双轨时间线（主题工作台） ----------
@@ -3750,11 +4418,91 @@ function mdReport(kind,d){
     md+="\n## 错误模式明细\n\n"+mdTable(["次数","模式","类别","工具"],
       (d.patterns||[]).map(x=>["x"+x.count,x.pattern,x["class"],
         x.tools.join("/")]));
+  }else if(kind==="chains"){
+    /* v0.81 P1-1：与 renderChains 同口径（同一份响应的两种出口） */
+    md+="：工具链失败模式\n\n- 会话 "+(d.sessions||0)+" / 步骤 "+
+      (d.steps||0)+"｜步数 p95="+(d.p95||0)+
+      "\n- 连击 "+((d.streaks||[]).length)+" 段｜循环 "+
+      ((d.loops||[]).length)+" 段｜空转 "+((d.spins||[]).length)+
+      " 段｜长会话 "+((d.long||[]).length)+" 个\n";
+    md+="\n## 高步会话 Top"+(d.top_n||10)+"\n\n"+
+      mdTable(["会话","步数"],(d.top||[]).map(x=>[x[0],x[1]]));
+    md+="\n## 同工具连击（后端口径 ≥5）\n\n"+
+      mdTable(["连击次数","工具","会话","起始 seq"],
+      (d.streaks||[]).map(x=>[x[3],x[1],x[0],x[2]]));
+    md+="\n## 序列循环（后端口径 ≥3）\n\n"+
+      mdTable(["完整周期","循环对","会话","起始 seq"],
+      (d.loops||[]).map(x=>[x[2],x[1],x[0],x[3]]));
+    md+="\n## 空转（后端口径 ≥5）\n\n"+
+      mdTable(["连续错误","工具","会话"],(d.spins||[]).map(x=>[x[2],x[1],x[0]]));
+    if(d.result_rows)
+      md+="\n> 结果行共 "+d.result_rows+" 条，其中 error "+
+        (d.error_results||0)+" 条。\n";
+  }else if(kind==="traces"){
+    /* v0.81 P1-1：与 renderTraces 同口径 */
+    if(!d.configured){
+      md+="：Trace 耗时与取消\n\n未配置 trace 目录（起服加 --traces-root）。\n";
+    }else{
+      const s=d.summary||{}, g=d.generation||{};
+      md+="：Trace 耗时与取消\n\n- trace 文件 "+(s.files||0)+
+        "（损坏 "+(s.bad_files||0)+"）｜span "+(s.spans||0)+"\n"+
+        "- 模型调用 "+(g.calls||0)+" 次（失败 "+(g.errors||0)+
+        "，p50 "+(g.p50_ms||0)+"ms / p95 "+(g.p95_ms||0)+"ms）\n";
+      md+="\n## 工具耗时与取消\n\n"+
+        mdTable(["工具","调用","失败","取消","取消率%","未闭合","p50ms","p95ms"],
+        (d.tools||[]).map(t=>[t.tool,t.calls,t.errors,t.cancelled,
+          (t.cancel_rate*100).toFixed(1),t.running,t.p50_ms,t.p95_ms]));
+      const ag=s.agents||{};
+      if(Object.keys(ag).length)
+        md+="\n## 子代理维度\n\n"+
+          mdTable(["agentName","span 数"],
+          Object.entries(ag).map(e=>[e[0],e[1]]));
+    }
+  }else if(kind==="harness"){
+    /* v0.81 P1-2：与 renderHarness 同口径（含「无遥测/无结果相」分开说） */
+    const t=d.totals||{};
+    md+="：Harness 体检（按数据源）\n\n- 数据源 "+(t.sources||0)+
+      " 个｜会话 "+(t.sessions||0)+"｜消息 "+(t.messages||0)+
+      "｜步骤 "+(t.steps||0)+"\n- 总体失败率 "+(t.fail_rate==null
+        ?"—（无结果相可算）":(t.fail_rate*100).toFixed(1)+"%")+
+      "（error "+(t.errors||0)+" / result "+(t.results||0)+"）\n";
+    md+=mdTable(["数据源","会话","消息","步骤","失败率","代表工具","代表 skill",
+      "最近活跃"],
+      (d.sources||[]).map(s=>[s.name,s.sessions,s.messages,s.steps,
+        s.paired?((s.fail_rate*100).toFixed(1)+"%")
+          :(s.telemetry?"—（无结果相）":"—（无遥测）"),
+        (s.top_tools||[]).map(x=>x.tool+"×"+x.steps).join("、")+
+          ((s.top_tools||[]).length&&s.tools_total>s.top_tools.length
+            ?" 等"+s.tools_total+"件":""),
+        (s.top_skills||[]).map(x=>x.skill+"×"+x.count).join("、")+
+          ((s.top_skills||[]).length&&s.skills_total>s.top_skills.length
+            ?" 等"+s.skills_total+"次":""),
+        s.last_active||"—"]));
+    md+="\n> 失败率分母 = result 相步骤数；「—（无遥测）」= 纯聊天平台，"+
+      "「—（无结果相）」= 只落 call 相，两者都不是 0%。取消率不在本面。\n";
   }else if(kind==="skills"){
     md+="：G4 Skill 行为画像（调用 "+d.n_invocations+" 次）\n\n"+
       mdTable(["Skill","调用","会话","成功","失败","无结果","来源"],
       (d.skills||[]).map(s=>[s.skill,s.calls,s.sids,s.ok,s.err,
         s.no_result,s.sources.join("/")]));
+  }else if(kind==="skillmatrix"){
+    /* v0.81 P1-3：与 renderSkillMatrix 同口径（同一份响应的两种出口） */
+    const t=d.totals||{};
+    md+="：skill 治理档案\n\n- skill "+(t.skills||0)+" 个｜调用 "+
+      (t.calls||0)+" 次｜失败 "+(t.failed||0)+" 次｜名解析不出 "+
+      (t.unknown_named||0)+" 个\n- 已扫 chain "+(t.chains_scanned||0)+"/"+
+      (t.chains_total||0)+"｜注册主题 "+(t.topics_registered||0)+"\n\n"+
+      mdTable(["Skill","调用","失败率","会话","成功","失败","无结果",
+        "服务的主题","关联错误 top1","消歧状态"],
+      (d.skills||[]).map(s=>[s.skill,
+        s.calls+"（"+(s.fail_rate==null?"—":(s.fail_rate*100).toFixed(1)+"%")+"）",
+        s.sids,s.ok,s.err,s.no_result,
+        (s.topics_served||[]).join("、")||"0（无 chain 主题不计入）",
+        s.top_error?(s.top_error.text+" ×"+s.top_error.count):"—",
+        (s.disambig||[]).join("；")||"—"]));
+    md+="\n> "+(d.note||"")+"\n";
+    if((d.chain_errors||[]).length)
+      md+="\n> 跳过的 chain 文档："+d.chain_errors.join("；")+"\n";
   }else if(kind==="agents"){
     md+="：G2 建议条目（AGENTS.md 候选）\n";
     const todo=(d.entries||[]).filter(e=>(e.unresolved_count||0)>=1);
@@ -5079,13 +5827,34 @@ async function loadOverview(){
   renderQueueDetail(d);
   renderRings(d);
   loadDailyCard().catch(()=>{});  /* P5-⑤ 昨日报告卡：失败不影响主渲染 */
-  const fp=d.db_fingerprint||{};
-  $("home-foot").innerHTML="库快照："+(fp.sessions||"?")+" 会话 / "+
-    (fp.steps||"?")+" 步骤 / "+(fp.errors||"?")+" 错误 @ "+
-    esc(fp.db_mtime||"—")+
-    (fp.stale===true?"　<span class='errline'>⚠ STALE 语料比库新</span>":"")+
-    "　（本页数字全部现算，非缓存）";
+  $("home-foot").innerHTML=homeFootHtml(d);
   if(glossary.loaded)applyTermTooltips(out);
+}
+/* v0.81 P1-4：工作台页脚的**库龄/STALE** 一行。抽成函数是为了能被渲染门
+   从 index.html 里提出来直接跑（门只认函数）。
+   基准**优先入库水位**（corpus_indexed_mtime = 上次索引时看到的语料最新
+   mtime）；没有水位才退让到库文件 mtime——退让必须明说"可能偏旧"，因为
+   无变化的 update 不落盘，库 mtime 会停在原地（假陈旧）。
+   stale 三态分别渲染：**True 报 STALE / False 报一致 / null 什么都不说**
+   （"没判定"绝不画成"新鲜✓"，那是本块要治的病）。 */
+function homeFootHtml(d){
+  const fp=(d&&d.db_fingerprint)||{};
+  const fr=(d&&d.freshness)||{};
+  const days=(fr.age_days!=null)?fr.age_days:fp.age_days;
+  let ageTxt=null;
+  if(days!=null)
+    ageTxt="库龄 "+ageHuman(days)+"（基准="+
+      ((fr.age_basis||"")==="corpus_indexed_mtime"?"入库水位"
+        :(fr.age_basis||"")==="db_mtime"?"库文件 mtime，无水位记录，可能偏旧"
+        :"—")+"）";
+  return "库快照："+(fp.sessions||"?")+" 会话 / "+(fp.steps||"?")+
+    " 步骤 / "+(fp.errors||"?")+" 错误 @ "+esc(fp.db_mtime||"—")+
+    (fr.corpus_indexed_mtime?("　入库水位 "+esc(fr.corpus_indexed_mtime)):"")+
+    (ageTxt?"　"+esc(ageTxt):"")+
+    (fp.stale===true?"　<span class='errline'>⚠ STALE 语料比库新</span>"
+      :fp.stale===false?"　<span class='sub2'>✓ 语料与入库水位一致</span>":"")+
+    "　（本页数字全部现算，非缓存）"+
+    (fr.note?"<div class='sub2'>"+esc(fr.note)+"</div>":"");
 }
 /* P5-⑤（用户 2026-10-16 批准）：「昨日报告」卡。
    数据源：主仓 /api/report-daily（文件名白名单 daily-YYYY-MM-DD.md，
@@ -5763,6 +6532,13 @@ $("btn-topics-refresh").onclick=()=>loadTopics().catch(()=>{});
 $("topic-level").onchange=()=>updateTopicCmd();
 $("btn-topic-gocmd").onclick=()=>topicGoCmd();
 $("btn-topic-dual").onclick=()=>runDualtrack();
+/* P11：生成链 / 校验并发布 / 产物流。发布走 B 档两段提交（跳命令台），
+   页面不造第二条写路径。 */
+$("btn-topic-chainbuild").onclick=()=>runChainBuild();
+$("btn-topic-chainpub").onclick=()=>{const c=state.topicCur;
+  if(!c)return;
+  openInCmd("chain_publish",{id:c.id,force:false,allow_audit:false});};
+$("btn-topic-artifacts").onclick=()=>runArtifactsFlow();
 $("btn-topic-chain").onclick=()=>{const c=state.topicCur;
   if(c)openTopicChain(c.id);};
 $("btn-topic-brief").onclick=()=>runBrief()
@@ -5878,13 +6654,39 @@ function pTag(kind){
 function freshKey(fp){
   return fp?[fp.sessions,fp.steps,fp.errors,fp.db_mtime].join("|"):"";
 }
+/* ---- v0.81 P1-4 库龄 ----
+   基准**优先入库水位**（`corpus_indexed_mtime` = 上次索引时看到的语料最新
+   mtime）；没有水位才退让到库文件 mtime——退让时必须明说"可能偏旧"，因为
+   无变化的 update 不落盘，库 mtime 会停在原地（假陈旧，dbmeta 模块头记着）。
+   STALE_AGE_DAYS=7 是**本仓自定的提醒阈值**（不是上游口径）：库龄过 7 天
+   就把新鲜度条转黄，只提醒不阻断——数字照常看，但别当成"刚发生的事"。 */
+const STALE_AGE_DAYS = 7;
+function fpAgeDays(fp){
+  const ts=(fp&&(fp.corpus_indexed_mtime||fp.db_mtime))||"";
+  if(!ts)return null;
+  const t=new Date(String(ts).replace(" ","T")).getTime();
+  if(!isFinite(t))return null;
+  return Math.max(0,(Date.now()-t)/86400000);
+}
+function ageHuman(d){
+  /* null/空串是**没算出来**，不是 0——`Number(null)===0` 会把它说成
+     「约 1 小时」，那正是本页面要治的"拿没判定冒充新鲜"。 */
+  if(d===null||d===undefined||d==="")return "—";
+  const n=Number(d);
+  if(!isFinite(n))return "—";
+  if(n<1)return "约 "+Math.max(1,Math.round(n*24))+" 小时";
+  if(n<10)return n.toFixed(1)+" 天";
+  return Math.round(n)+" 天";
+}
 function renderFreshBar(){
   const bar=$("freshbar");
   if(!bar)return;
   const fr=state.fresh;
   if(!fr||!fr.cur){bar.style.display="none";bar.innerHTML="";return;}
   const moved=!!(fr.base&&freshKey(fr.cur)!==freshKey(fr.base));
-  const bad=moved||fr.corpusStale===true;
+  const age=fpAgeDays(fr.cur);
+  const old=age!=null&&age>STALE_AGE_DAYS;
+  const bad=moved||fr.corpusStale===true||old;
   bar.style.display="block";
   bar.className=bad?"stale":"";
   const fp=fr.cur;
@@ -5892,10 +6694,15 @@ function renderFreshBar(){
   if(moved)why="库已更新（"+(fr.base.sessions||"?")+"→"+(fp.sessions||"?")+
     " 会话），本页数字是旧的";
   else if(fr.corpusStale===true)why="语料比库新——有会话还没收割入库";
+  else if(old)why="库龄 "+ageHuman(age)+" 未同步（阈值 "+STALE_AGE_DAYS+
+    " 天）——数字照常看，但别当成刚发生的事";
   else why="指纹一致，页面数字与库同步";
+  const ageTxt=age==null?"":("｜库龄 "+ageHuman(age)+
+    "（基准="+(fp.corpus_indexed_mtime?"入库水位"
+      :(fp.db_mtime?"库文件 mtime·无水位记录":"—"))+"）");
   bar.innerHTML="<b>数据新鲜度</b>｜"+why+
     "（"+(fp.sessions||"?")+" 会话 / "+(fp.errors||"?")+" 错误 @ "+
-    esc(String(fp.db_mtime||"—"))+"）"+
+    esc(String(fp.db_mtime||"—"))+ageTxt+"）"+
     (moved?"<span class='fb-act' id='fb-reload' "+
       "title='重载页面取最新库'>刷新页面</span>"+
       "<span class='fb-act' id='fb-rebase' "+
@@ -5910,8 +6717,12 @@ async function pollFreshBar(){
     const m=await api("/api/meta");
     const fp=m&&m.db_fingerprint;
     if(!fp)return;
-    if(!state.fresh)state.fresh={base:fp,cur:fp,corpusStale:false};
-    else state.fresh.cur=fp;
+    /* v0.81 P1-4：/api/meta 也带 stale（起服加了 --corpus-watermark 时才有
+       真值）。**只有真值才写**——null（未判定）不许被当成 false（新鲜）。 */
+    if(!state.fresh)state.fresh={base:fp,cur:fp,
+      corpusStale:fp.stale===true};
+    else{ state.fresh.cur=fp;
+      if(fp.stale===true||fp.stale===false)state.fresh.corpusStale=fp.stale; }
     renderFreshBar();
   }catch(e){}
 }

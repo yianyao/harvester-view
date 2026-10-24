@@ -329,6 +329,28 @@ async function main() {
   ok(!out4.innerHTML.includes("<img src=x"),
      "主题名经 esc 转义，无注入");
 
+  /* ⑩ 主题工具栏可达性（P11，用户 2026-10-24「双轨跑哪去了」）：
+     三个派生视图入口（研读面 / chain 演进链 / 双轨时间线）都长在
+     #topics-toolbar 上，而这条工具栏原来**只在 openTopicChain() 里**显示。
+     v0.76 把默认视图改成研读面后 → 从落地状态出发永远看不见工具栏，
+     入口自我闭锁（死锁）。门真跑 updateTopicCmd：选中主题必须显示工具栏
+     并启用三按钮；未选主题仍禁用（不给空壳入口）。 */
+  function topicPackCmd() { return "python -m harvester topic pack"; }
+  eval(extract("updateTopicCmd", ""));
+  const tb = $("topics-toolbar");
+  tb.style.display = "none";
+  state.topicCur = { id: "t-fix" };
+  updateTopicCmd();
+  eq(tb.style.display, "",
+     "⑩ 选中主题即显示 #topics-toolbar（链/双轨入口不再失联）");
+  ok(!$("btn-topic-chain").disabled && !$("btn-topic-dual").disabled &&
+     !$("btn-topic-brief").disabled,
+     "⑩ 研读面/chain 演进链/双轨三按钮随选中主题一并启用");
+  state.topicCur = null;
+  updateTopicCmd();
+  ok($("btn-topic-chain").disabled && $("btn-topic-dual").disabled,
+     "⑩ 未选主题时按钮仍禁用（不给空壳入口）");
+
   if (failed) { console.error("\n" + failed + " CHECK(S) FAILED"); process.exit(1); }
   console.log("\nALL DUALTRACK CHECKS PASSED");
 }

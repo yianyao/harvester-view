@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 import sys
 import tempfile
@@ -282,9 +283,132 @@ class SuppressPlanTest(unittest.TestCase):
     @staticmethod
     def _machine_vars(name: str) -> tuple:
         """各脚本里「机器相关路径」应有的覆盖口清单。"""
-        if name == "start-viewv2.cmd":
-            return ("CARDS_ROOT", "CHAIN_ROOT")
-        return ("CARDS_ROOT",)
+        # v0.81：三个脚本都显式传 --chain-root（P0-3），默认值同样必须可用
+        # 环境变量改向（可迁移铁律：迁移时 set CHAIN_ROOT=... 即可）。
+        return ("CARDS_ROOT", "CHAIN_ROOT")
+
+    def test_start_scripts_launch_three_services(self):
+        """v0.81 P0-1：三个启动器都必须起**三个服务**（VIEW 是三服务体系）。
+
+        `start.cmd` / `start-system.cmd` 原来只起 api-serve + view 两个——
+        而 README 把这两个列为「方式一（推荐）」。后果是默认落地页
+        「今日工作台」直接残（/api/overview 走 8766），命令台/处理单/
+        归因台/主题研读面/双轨/图谱/全部 B 档写动作整片不可用。
+        门读真脚本文本：服务行为对、但没人给它正确的启动参数，
+        等于功能没接通——这是唯一能被测试钉住的地方。
+        """
+        for name in ("start-viewv2.cmd", "start.cmd", "start-system.cmd"):
+            path = ROOT / name
+            self.assertTrue(path.is_file(), "找不到 %s" % name)
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for svc, needle in (("api-serve（8765）", "-m harvester api-serve"),
+                                ("actions-serve（8766）",
+                                 "-m actions.actionsserve"),
+                                ("view（8088）", "view.py")):
+                lines = [ln for ln in text.splitlines()
+                         if needle in ln and ln.strip().startswith("start")]
+                self.assertEqual(len(lines), 1,
+                                 "%s 应有恰好一行启动 %s（实际 %d 行）"
+                                 % (name, svc, len(lines)))
+
+    def test_start_scripts_pass_reviews_meta(self):
+        """v0.81 P0-2：两个服务都必须显式传 `--reviews-meta`。
+
+        缺它=人裁过的警告反复烦人：① actionsserve 缺省 None，
+        `card_review` 预演即报错「未配置 reviews_meta」；② api-serve 的
+        缺省是**相对路径** `cards_meta.db`（换目录起服就静默丢台账）；
+        ③ G3 卡片校验读不到裁决，v0.74「人裁过的不许再烦人」落空。
+        台账文件 `cards_meta.db` 与 db 同目录，零迁移成本。
+        """
+        for name in ("start-viewv2.cmd", "start.cmd", "start-system.cmd"):
+            text = (ROOT / name).read_text(encoding="utf-8",
+                                           errors="replace")
+            for needle in ("-m harvester api-serve",
+                           "-m actions.actionsserve"):
+                lines = [ln for ln in text.splitlines()
+                         if needle in ln and ln.strip().startswith("start")]
+                self.assertEqual(len(lines), 1, "%s 的 %s 启动行不唯一"
+                                 % (name, needle))
+                self.assertIn("--reviews-meta", lines[0],
+                              "%s 的 %s 没传 --reviews-meta（card_review "
+                              "预演即报错；人裁过的警告会反复出现）"
+                              % (name, needle))
+
+    def test_start_scripts_pass_chain_root(self):
+        """v0.81 P0-3：api-serve 与 actions-serve 都必须显式传 `--chain-root`。
+
+        api-serve 的缺省是 cwd 相对的 `knowledge/topics`——从别处起服就
+        静默 404，VIEW 显示「该主题尚无 chain 长文」的**假空态**
+        （链文件明明在）。这正是定位 3「人的变化轨迹」的核心视图，
+        失效形态是"看起来正常"，最难被发现。
+        """
+        for name in ("start-viewv2.cmd", "start.cmd", "start-system.cmd"):
+            text = (ROOT / name).read_text(encoding="utf-8",
+                                           errors="replace")
+            for needle in ("-m harvester api-serve",
+                           "-m actions.actionsserve"):
+                lines = [ln for ln in text.splitlines()
+                         if needle in ln and ln.strip().startswith("start")]
+                self.assertEqual(len(lines), 1, "%s 的 %s 启动行不唯一"
+                                 % (name, needle))
+                self.assertIn("--chain-root", lines[0],
+                              "%s 的 %s 没传 --chain-root（cwd 兜底会造出"
+                              "「尚无 chain 长文」假空态）" % (name, needle))
+
+    def test_start_scripts_pass_corpus_watermark(self):
+        """v0.81 P1-4：两个服务都必须传 `--corpus-watermark`（库龄判定开关）。
+
+        不传 ⇒ 库快照里的 `stale` 恒 null = **"没判定"**，而页面两条提示
+        （home-foot 的 STALE 徽章、顶部新鲜度条）读的就是它——于是"库半个月
+        没同步、看板照常渲染"这种慢性误导**永远不会被发现**。
+        判定要 stat 一遍语料盘，所以默认关、由启动器显式开——门钉住这个"开"。
+        """
+        for name in ("start-viewv2.cmd", "start.cmd", "start-system.cmd"):
+            text = (ROOT / name).read_text(encoding="utf-8",
+                                           errors="replace")
+            for needle in ("-m harvester api-serve",
+                           "-m actions.actionsserve"):
+                lines = [ln for ln in text.splitlines()
+                         if needle in ln and ln.strip().startswith("start")]
+                self.assertEqual(len(lines), 1, "%s 的 %s 启动行不唯一"
+                                 % (name, needle))
+                self.assertIn("--corpus-watermark", lines[0],
+                              "%s 的 %s 没传 --corpus-watermark（stale 恒为"
+                              " null：库多久没同步都不会有人告诉你）"
+                              % (name, needle))
+
+    def test_desktop_shell_matches_start_script(self):
+        """P11：桌面壳 `desktop/main.js` 与 `start-viewv2.cmd` 参数必须一致。
+
+        main.js 是**第二份**服务命令行（它自己的注释写着"与 start-viewv2.cmd
+        逐条一致，唯一真源"）。可它缺参数时**没有任何红字**：窗口照常打开、
+        页面照常渲染，只是人裁台账（--reviews-meta）、主题链长文
+        （--chain-root）、库龄判定（--corpus-watermark）静默失效——而用户
+        日常正是用桌面应用启动，漏一次等于这轮 P0/P1 修复全部落空。
+        门按「服务」抽两边 `--flag` 集合，任一侧多一个少一个都红。
+        """
+        cmd_text = (ROOT / "start-viewv2.cmd").read_text(encoding="utf-8",
+                                                         errors="replace")
+        js_text = (ROOT / "desktop" / "main.js").read_text(encoding="utf-8",
+                                                           errors="replace")
+        flags = re.compile(r"--[a-z][a-z-]*")
+        for svc, needle in (("api-serve", "-m harvester api-serve"),
+                            ("actions-serve", "-m actions.actionsserve"),
+                            ("view", "view.py")):
+            cmd_lines = [ln for ln in cmd_text.splitlines()
+                         if needle in ln and ln.strip().startswith("start")]
+            self.assertEqual(len(cmd_lines), 1,
+                             "start-viewv2.cmd 的 %s 启动行不唯一" % svc)
+            want = set(flags.findall(cmd_lines[0]))
+            m = re.search(r'name:\s*"%s".*?\]\s*\}' % re.escape(svc),
+                          js_text, re.S)
+            self.assertIsNotNone(m, "main.js 里找不到 %s 的服务定义" % svc)
+            got = set(flags.findall(m.group(0)))
+            self.assertEqual(
+                want, got,
+                "desktop/main.js 的 %s 参数与 start-viewv2.cmd 不一致："
+                "缺 %s，多 %s——桌面应用是日常启动方式，缺参数不报错，"
+                "只会静默少功能" % (svc, sorted(want - got), sorted(got - want)))
 
     def test_plan_lists_export_copies_to_delete(self):
         """`deleted` 是**逐文件一条记录**（sid + json + md），不是裸文件名。

@@ -1332,6 +1332,102 @@ def _exec_attrib_verdict(p: dict, cfg) -> dict:
                        "重跑 attrib 即不再把该候选列进候选区"}
 
 
+# ---------- 链长文发布（P11，用户 2026-10-24 裁决）----------
+# 链路：A 档 `chain_build` 出创作包（不落盘）→ Agent 按包 §5 写草稿到
+# **草稿位**（服务端定路径）→ 本动作两道校验门（结构/锚点 + 引文逐字）
+# 全过才把草稿逐字节复制进 knowledge/topics/（知识正本）。
+# 红线：页面绝不传路径；路径类参数一律 server 注入。
+
+def chain_draft_path(cfg, topic_id: str) -> Path:
+    """链草稿位（服务端定）：`<exports-root>/chains/<topic-id>.md`。
+
+    为什么放 exports 而不是直接写 knowledge/topics/：正本只接受过校验的
+    写入。草稿位是工作区，Agent 随便改；发布动作负责"过了门才搬进去"。
+    """
+    import re as _re
+    root = (Path(cfg.exports_root) if cfg.exports_root
+            else _repo_root(cfg) / "exports")
+    safe = _re.sub(r"[^0-9A-Za-z_.\-]+", "-", str(topic_id)).strip("-")
+    return root / "chains" / ("%s.md" % (safe or "topic"))
+
+
+def _chain_publish_args(p: dict, cfg):
+    """plan/execute 共用取参（同一真源）。"""
+    err = ensure_harvester_importable()
+    if err:
+        raise WriteError(err)
+    db = _require_db(cfg)
+    tid = str(p.get("id") or "").strip()
+    if not tid:
+        raise WriteError("缺主题 id（要发布哪个主题的链）")
+    if cfg.topics_meta is None or not Path(cfg.topics_meta).is_file():
+        raise WriteError("未配置 topics_meta（起服时加 --topics-meta）——"
+                         "没有主题库就没法核成员与锚点")
+    if not cfg.chain_root:
+        raise WriteError("未配置 chain_root（起服时加 --chain-root）——"
+                         "不知道正本该落哪儿")
+    draft = chain_draft_path(cfg, tid)
+    if not draft.is_file():
+        raise WriteError(
+            "草稿不存在：%s｜先点「生成链创作包」，把包交给 Agent，"
+            "让它把 chain 长文写到这个路径再来发布" % draft)
+    return draft, Path(cfg.chain_root), Path(cfg.topics_meta), Path(db), tid
+
+
+def _plan_chain_publish(p: dict, cfg) -> dict:
+    from harvester.chainbuild import publish
+    draft, chain_root, meta, db, tid = _chain_publish_args(p, cfg)
+    force = bool(p.get("force"))
+    r = publish(draft, chain_root, meta, db, apply=False,
+                force=force, allow_audit=bool(p.get("allow_audit")))
+    out = Path(r["target"] or "")
+    before = _fingerprint(out)
+    v, a = r["validate"], r["audit"]
+    human = [
+        "动作：把链草稿校验后发布进知识正本（主题 %s）" % tid,
+        "草稿：%s（%d 字节）" % (draft, draft.stat().st_size),
+        "结构校验：%s（stages %s / nodes %s）"
+        % ("通过" if v["ok"] else "**未通过**",
+           (v.get("stats") or {}).get("stages", 0),
+           (v.get("stats") or {}).get("nodes", 0)),
+        "引文逐字门：%s（未命中 %d 条）｜锚点语义门：%s（疑似错配 %d 个）"
+        % ("通过" if a["ok"] else "**未通过**", a["quotes_unmatched"],
+           "通过" if a.get("anchors_suspicious", 0) == 0 else "有告警",
+           a.get("anchors_suspicious", 0)),
+        "写入：%s%s" % (out, "（已存在 → 发布即覆盖，注意）"
+                       if before.get("exists") else "（新文件）"),
+    ]
+    for b in r["blockers"]:
+        human.append("拦下：%s" % b)
+    for w in r["warnings"]:
+        human.append("警告：%s" % w)
+    if r["ok"]:
+        human.append("下一步：确认无误后执行；执行即把草稿**逐字节**搬进正本，"
+                     "主题页刷新即见新链")
+    else:
+        human.append("结论：**现在发布不了**——上面「拦下」全清掉再来")
+    return {"target_path": str(out), "before": before, "after": None,
+            "snapshot": None, "bytes": draft.stat().st_size,
+            "limits": ["校验按预演时的草稿与库算；执行时以实况为准"
+                       "（草稿若在执行前又被改，执行会用最新内容重算一遍）"],
+            "human": human, "noop": False}
+
+
+def _exec_chain_publish(p: dict, cfg) -> dict:
+    from harvester.chainbuild import publish
+    draft, chain_root, meta, db, tid = _chain_publish_args(p, cfg)
+    r = publish(draft, chain_root, meta, db, apply=True,
+                force=bool(p.get("force")),
+                allow_audit=bool(p.get("allow_audit")))
+    if not r["ok"] or not r["applied"]:
+        raise WriteError("发布被拦下：%s" % ("；".join(r["blockers"])
+                                            or "未知原因"))
+    return {"summary": "链已发布进知识正本：%s（来自草稿 %s）"
+                       "——主题页点「chain 演进链」即见" % (r["target"], draft),
+            "path": r["target"], "draft": str(draft),
+            "stages": (r["validate"].get("stats") or {}).get("stages", 0)}
+
+
 WRITE_ACTIONS: dict[str, dict] = {
     "session_suppress": {"plan": _plan_session_suppress,
                          "execute": _exec_session_suppress},
@@ -1371,6 +1467,8 @@ WRITE_ACTIONS: dict[str, dict] = {
                   "execute": _exec_cards_new},
     "kb_publish": {"plan": _plan_kb_publish,
                    "execute": _exec_kb_publish},
+    "chain_publish": {"plan": _plan_chain_publish,
+                      "execute": _exec_chain_publish},
 }
 
 

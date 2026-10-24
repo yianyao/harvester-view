@@ -49,13 +49,30 @@ rem with the project); WorkBuddy dir is a publish mirror (harvester kb-publish).
 rem Env var CARDS_ROOT still wins for exotic layouts.
 if not defined CARDS_ROOT set "CARDS_ROOT=%SRV%\knowledge\cards"
 if not exist "%CARDS_ROOT%" mkdir "%CARDS_ROOT%"
+rem v0.81 P0-3: chain-root pinned EXPLICITLY. api-serve's default is the
+rem cwd-relative "knowledge/topics" - starting the service from any other
+rem directory 404s the chain endpoint and the page shows a FALSE empty
+rem state ("this topic has no chain doc yet"). Env var wins for exotic
+rem layouts (portability rule: machine paths must be overridable).
+if not defined CHAIN_ROOT set "CHAIN_ROOT=%SRV%\knowledge\topics"
 
 rem v0.22 topics/keywords/suggestions: meta libs live next to harvester.db.
 rem api-serve degrades gracefully if one is missing (hint, no crash).
-start "harvester api-serve :8765" /D "%SRV%" %PY% -m harvester api-serve --db "%SRV%\harvester.db" --cards-root "%CARDS_ROOT%" --topics-meta "%SRV%\topics_meta.db" --keywords-meta "%SRV%\keywords_meta.db" --suggestions-meta "%SRV%\suggestions_meta.db"
+rem v0.81 P0-2/P0-3: --reviews-meta and --chain-root are pinned EXPLICITLY.
+rem Both defaults are cwd-relative ("cards_meta.db" / "knowledge/topics"),
+rem so starting from another directory silently loses the human review
+rem ledger (card_review would fail) and the chain docs (false empty state).
+start "harvester api-serve :8765" /D "%SRV%" %PY% -m harvester api-serve --db "%SRV%\harvester.db" --cards-root "%CARDS_ROOT%" --topics-meta "%SRV%\topics_meta.db" --keywords-meta "%SRV%\keywords_meta.db" --suggestions-meta "%SRV%\suggestions_meta.db" --chain-root "%CHAIN_ROOT%" --reviews-meta "%SRV%\cards_meta.db" --corpus-watermark
+rem v0.81 P0-1: the VIEW is a THREE-service system. Without actions-serve
+rem the landing page (today workbench), command console, work items,
+rem attribution desk, topic reading/dualtrack faces, knowledge graph and
+rem ALL B-tier write actions are unreachable (a yellow banner only).
+rem --reviews-meta: without it card_review fails at preview time
+rem ("reviews_meta not configured") - the button goes red on click.
+start "harvester actions-serve :8766" /D "%~dp0" %PY% -m actions.actionsserve --db "%SRV%\harvester.db" --cards-root "%CARDS_ROOT%" --topics-meta "%SRV%\topics_meta.db" --artifacts-meta "%SRV%\artifacts_meta.db" --keywords-meta "%SRV%\keywords_meta.db" --suggestions-meta "%SRV%\suggestions_meta.db" --chain-root "%CHAIN_ROOT%" --reviews-meta "%SRV%\cards_meta.db" --exports-root "%SRV%\exports" --corpus-watermark
 rem --no-open: view.py must NOT open its own tab; the line below opens exactly one.
 start "harvester-view :8088" /D "%~dp0" %PY% view.py --no-open
 timeout /t 3 /nobreak >nul
 start "" http://127.0.0.1:8088/
-echo [start] api-serve + view launched with: %PY%
-echo [start] Close both console windows to stop.
+echo [start] api-serve + actions-serve + view launched with: %PY%
+echo [start] Close the three console windows to stop.

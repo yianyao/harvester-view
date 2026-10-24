@@ -22,6 +22,10 @@ const fs = require("fs");
 const ROOT = path.resolve(__dirname, "..");            // harvester-view/
 const SRV = path.resolve(ROOT, "..", "session-harvester");
 const VIEW_PORT = 8088, ACTIONS_PORT = 8766, API_PORT = 8765;
+/* 目录改向口：与 start-viewv2.cmd 的 `if not defined ...` 同义（迁移时
+ * set CARDS_ROOT=... 即可，不必改本文件）。 */
+const CARDS_ROOT = process.env.CARDS_ROOT || path.join(SRV, "knowledge", "cards");
+const CHAIN_ROOT = process.env.CHAIN_ROOT || path.join(SRV, "knowledge", "topics");
 const BUNDLED_PY = path.join(process.env.USERPROFILE || "",
   ".workbuddy", "binaries", "python", "envs", "default",
   "Scripts", "python.exe");
@@ -66,27 +70,33 @@ function portUp(port, timeoutMs = 700) {
   });
 }
 
-/* ---- 服务清单（与 start-viewv2.cmd 逐条一致） ---- */
+/* ---- 服务清单（与 start-viewv2.cmd 逐条一致；门：harvester-view/tests/
+ * test_v41_suppress_view.py::test_desktop_shell_matches_start_script） ---- */
 function services() {
   const { exe, prefix } = pyPick();
   return [
     { port: API_PORT, name: "api-serve", cwd: SRV, args: [
       ...prefix, "-m", "harvester", "api-serve",
       "--db", path.join(SRV, "harvester.db"),
-      "--cards-root", path.join(SRV, "knowledge", "cards"),
+      "--cards-root", CARDS_ROOT,
       "--topics-meta", path.join(SRV, "topics_meta.db"),
       "--keywords-meta", path.join(SRV, "keywords_meta.db"),
-      "--suggestions-meta", path.join(SRV, "suggestions_meta.db")] },
+      "--suggestions-meta", path.join(SRV, "suggestions_meta.db"),
+      "--chain-root", CHAIN_ROOT,
+      "--reviews-meta", path.join(SRV, "cards_meta.db"),
+      "--corpus-watermark"] },
     { port: ACTIONS_PORT, name: "actions-serve", cwd: ROOT, args: [
       ...prefix, "-m", "actions.actionsserve",
       "--db", path.join(SRV, "harvester.db"),
-      "--cards-root", path.join(SRV, "knowledge", "cards"),
+      "--cards-root", CARDS_ROOT,
       "--topics-meta", path.join(SRV, "topics_meta.db"),
       "--artifacts-meta", path.join(SRV, "artifacts_meta.db"),
       "--keywords-meta", path.join(SRV, "keywords_meta.db"),
       "--suggestions-meta", path.join(SRV, "suggestions_meta.db"),
-      "--chain-root", path.join(SRV, "knowledge", "topics"),
-      "--exports-root", path.join(SRV, "exports")] },
+      "--chain-root", CHAIN_ROOT,
+      "--exports-root", path.join(SRV, "exports"),
+      "--reviews-meta", path.join(SRV, "cards_meta.db"),
+      "--corpus-watermark"] },
     { port: VIEW_PORT, name: "view", cwd: ROOT, args: [
       ...prefix, "view.py", "--no-open"] },
   ].map(s => ({ ...s, exe }));

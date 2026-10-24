@@ -12,6 +12,43 @@
 > harvester-view 是架在接口之上的"看板"。视图坏了不影响数据，
 > 数据库不升级视图也能照常用（只要接口版本兼容）。
 
+## P11（2026-10-24）：链看得见了 · 产物流单开 · 工具栏自我闭锁修复
+
+用户当轮原话：「**我既然生成了主题，该有的就该有**（现在是主题咋生成也没有相应命令，
+或者有命令却不知道藏哪去了吧？）同理，有个双轨还是三轨的，现在也不知道跑哪去了，
+产出物的分析还是啥，也不见了」。这一轮就是把"东西在、但人找不到"的三件事各给一个入口。
+
+1. **「链」全是 `—` 的真相：不是没画，是没链**。磁盘上只有 3 条 `chain-*.md`，
+   16 个主题里只有 2 个挂得上（`tp-20261008-010` 2 条 / `tp-20261010-002` 1 条），
+   其余 14 个确实是 0 条；`/api/topics` 的 `chains_count` 实测正确（接线是通的）。
+   但**"0 条"当时是死路**——空态只让人去命令台，命令台上也没有出包命令。
+   现在两道命令 + 页面三个按钮：
+   - `chain-build`（A 档只读）→ 生成**链创作包**（素材 + 格式契约，不写链正文）；
+   - `chain-publish`（B 档，预演→你确认才写）→ 过 `chain-validate` + `chain-audit`
+     两道门才许落知识正本。
+2. **链长文为什么不由机器写**：用户要的是「思想/技法/观念的演变和转折」，聚合器
+   算不出转折，硬生成就是伪史。所以是「命令出包 + Agent 写 + 命令校验落盘」——
+   创作包里明写「这不是链」「机器不代笔」，并把 §5 写作指令与 §6 校验命令一起给出，
+   让接手的人不必再猜该跑什么。
+3. **工具栏自我闭锁（真 bug，v0.76 起的）**：`#topics-toolbar` 只在 `openTopicChain()`
+   里 `display=""`，而**打开它的入口按钮恰好就在这条工具栏里** → 默认研读面下
+   永远点不到它。现在 `updateTopicCmd()` 在选中主题时统一放开，未选中仍禁用。
+   门：`render_dualtrack.js` 三条（选中即显示 / 三按钮启用 / 未选仍禁用）。
+4. **产物流单开**（`artifacts_flow`，A 档只读，与双轨下轨**同源** `_artifacts_track`）：
+   以前想看覆盖度得等整条双轨跑完（90 秒级），现在秒开。覆盖度自陈原样透传
+   （「没有遥测 ≠ 0%」那句话不丢），两种空态分开（"这个主题没有文件产物" vs
+   "上游没给覆盖度"）。
+5. **桌面壳是第二份服务命令行**：`desktop/main.js` 的 `services()` 与三个 .cmd
+   各写一遍参数，漏参不报错、只静默少功能（上一轮就是这么漏掉的）。已补齐
+   `--chain-root` / `--reviews-meta` / `--corpus-watermark`，并加门
+   `test_v41_suppress_view.SuppressPlanTest.test_desktop_shell_matches_start_script`
+   ——按服务比对 `.cmd` 与 `main.js` 的 `--flag` **集合相等**（不是"包含"，多写也要对齐）。
+   桌面端**不需要重新打包**：无 electron-builder/dist，快捷方式直指
+   `node_modules/electron/dist/electron.exe` + cwd=`desktop`，改 js 重启即生效。
+6. **门**：`tests/render_chainflow.js`（22 条断言）——创作包视图（"这不是链"/
+   "机器不代笔"/草稿位/预算截断报数/HTML 转义/发布按钮跳 `chain_publish`）、
+   产物流（覆盖度透传 + 两种空态分开）、真跑入队轮询、404 空态按钮可点。
+
 ## P10（2026-10-24）：重复提示合并 · 命令能跑就别只给复制 · 图谱不再挤左边
 
 用户当轮七条批注，这里记**已做**的四条（其余三条是裁决项，见交接文档）。
@@ -835,10 +872,13 @@ skill 行为链 31 / 待做卡片 0 / 可评估 9 / 无变化 0）**每一行都
 - **B 档动作 9 → 11**（可逆 8、破坏性 3）；破坏性清单与 B 档计数分别由
   `tests/test_v38_stage_gate.py` / `tests/test_v36_write_actions.py` **钉死**，
   一变就必须回来显式复核（本轮两处都按这个流程改，并在注释里写了理由）。
-- **门**：`tests/test_v41_suppress_view.py`（17 例）——注册表形状与「写对库」、
+- **门**：`tests/test_v41_suppress_view.py`（24 例）——注册表形状与「写对库」、
   预演零副作用 + 快照不含正文、口径人话逐字、**端到端只在临时库上**（抑制 →
   三表该 sid 0 行 + 抑制表有行 + exports 副本被删；恢复 → 抑制行没了且**数据不回来**）、
-  `/api/suppressed` **只读不建表**；`tests/render_cmd.js` 加了 14 条渲染/接线断言。
+  `/api/suppressed` **只读不建表**；v0.81 追加三条**启动器门**（P0-1/2/3）：
+  三个 .cmd 都必须起齐三服务、两个服务行都必须显式传 `--reviews-meta` 与
+  `--chain-root`（读真脚本文本，防"功能在但没人给它正确参数"的回潮）；
+  `tests/render_cmd.js` 加了 14 条渲染/接线断言。
 
 - **配置要求（v0.49 续批，踩过一次）**：actions-serve **必须传 `--exports-root`**
   （`start-viewv2.cmd` 已补）。不传的话 `cfg.exports_root=None` → 抑制会写表、会删库内行，
@@ -912,37 +952,64 @@ skill 行为链 31 / 待做卡片 0 / 可评估 9 / 无变化 0）**每一行都
 
 ### 方式一：一键启动（推荐）
 
-提供两个启动器，二选一：
+提供三个启动器，按本机 Python 情况选择（都起齐三个服务，任选其一）：
 
 | 启动器 | Python 来源 | 适用场景 |
 |---|---|---|
+| `start-viewv2.cmd` | 探测顺序同 start-system.cmd（`py -3` → `python` → uv → WorkBuddy 自带） | **想要启动自检**：起服后逐个端口报 OK/FAIL，窗口停住不闪退 |
 | `start.cmd` | 硬编码 WorkBuddy 自带解释器（非沙箱，只是绝对路径指向 WorkBuddy 安装目录下的 Python） | 本机没装独立 Python、但装有 WorkBuddy |
 | `start-system.cmd` | 自动探测系统 Python（先 `py -3` 后 `python`，要求 ≥3.10） | 本机已安装 Python 3.10+ |
 
-两者做同样四件事：
+三者做同样五件事：
 
 1. 检查 Python 与 `harvester.db` 是否存在；
-2. 确保 `../session-harvester/cards_pending/` 目录存在（卡片校验端点需要）；
-3. 启动两个控制台窗口：api-serve（:8765，带 `--cards-root`）+ view（:8088）；
+2. 确保卡片目录（`../session-harvester/knowledge/cards/`）存在；
+3. **启动三个控制台窗口**：api-serve（:8765，只读查询 API）+
+   actions-serve（:8766，动作面：今日工作台/命令台/处理单/归因台/
+   主题研读面/双轨/知识图谱/**全部 B 档写动作**）+ view（:8088，页面+代理）；
 4. 自动打开浏览器。
 
-**停止 = 关闭那两个控制台窗口。**
+**停止 = 关闭那三个控制台窗口。**
+
+> ⚠️ VIEW 是**三服务**体系：缺 actions-serve（8766）时默认落地页
+> 「今日工作台」直接残（黄条 + 空面板），命令台/处理单/归因台/主题
+> 研读面/双轨/知识图谱与全部 B 档写动作都不可用。三个启动器均已起齐。
+>
+> 关键 meta 参数由启动器钉死（`tests/test_v41_suppress_view.py` 有门
+> 防回潮，缺一个就红）：`--reviews-meta`（卡片人工裁决台账，缺它
+> card_review 预演即报错、人裁过的警告反复出现）、`--chain-root`
+> （主题演进链长文目录，缺它走 cwd 兜底、从别处起服会显示假空态）、
+> `--exports-root`（抑制清 exports 副本）、`--corpus-watermark`
+> （库龄 STALE 判定）。机器相关的路径都可用环境变量改向
+> （`CARDS_ROOT` / `CHAIN_ROOT`）。
 
 ### 方式二：手动启动
 
 ```bash
-# 1. 起上游（主项目 session-harvester 目录下）
+# 1. 起上游只读查询 API（主项目 session-harvester 目录下）
 python -m harvester api-serve --db harvester.db \
-    --cards-root cards_pending          # 默认 127.0.0.1:8765
+    --cards-root knowledge/cards \
+    --chain-root knowledge/topics \
+    --reviews-meta cards_meta.db \
+    --corpus-watermark             # 默认 127.0.0.1:8765
 
-# 2. 起本视图（本仓库目录下）
-python view.py                          # 默认 127.0.0.1:8088
+# 2. 起动作面（本仓库目录下）
+python -m actions.actionsserve --db ../session-harvester/harvester.db \
+    --cards-root ../session-harvester/knowledge/cards \
+    --topics-meta ../session-harvester/topics_meta.db \
+    --chain-root ../session-harvester/knowledge/topics \
+    --exports-root ../session-harvester/exports \
+    --reviews-meta ../session-harvester/cards_meta.db \
+    --corpus-watermark             # 默认 127.0.0.1:8766
+
+# 3. 起页面 + 代理（本仓库目录下）
+python view.py                     # 默认 127.0.0.1:8088
 ```
 
 `--cards-root` 指向卡片目录（目录可暂时为空）：不配则报告页的
 "卡片校验"会明确报"未配置 --cards-root"。
 
-> ⚠️ **改了代码后必须重启两个服务**：Python 进程启动时加载代码，
+> ⚠️ **改了代码后必须重启三个服务**：Python 进程启动时加载代码，
 > 旧进程不会自动感知新端点/新字段（表现多为"接口报未知路由"）。
 
 ### 页面顶部信息条
@@ -950,6 +1017,22 @@ python view.py                          # 默认 127.0.0.1:8088
 - 黄条 "本地代理不可达？" → api-serve 没起或端口不对；
 - 红条 "上游鉴权失败" → config.json 里 token 与上游启动参数不一致；
 - 红条 "API 版本不匹配" → 两边代码版本相差过大，各升级到配套版本。
+
+### 库龄 / STALE 提示条（数据新鲜度）
+
+页面顶部「数据新鲜度」条 + 工作台页脚的库快照行，回答"**这页的数字有多旧**"：
+
+| 显示 | 含义 |
+|---|---|
+| 库龄 N 天（基准=入库水位） | 距**上次索引时看到的语料水位**多久。基准不是库文件 mtime——无变化的 update 不落盘，库 mtime 会停在原地，用它会得出假陈旧 |
+| 基准=库文件 mtime，无水位记录，可能偏旧 | 库里没有入库水位记录（跑一次 update 才会记）时的退让显示，**明说可能偏旧** |
+| ⚠ STALE 语料比库新 | 有会话还没收割进库，跑一次 `update` |
+| 库已更新（1000→1720 会话），本页数字是旧的 | 库被 sync/update 过，指纹变了，刷新页面取新数 |
+| 库龄 N 天未同步（阈值 7 天） | 条转黄提醒。数字照常看，但别当成刚发生的事 |
+
+**`stale` 恒为 null（没判定）时，页面既不报 STALE 也不报「一致」**——
+起服没加 `--corpus-watermark`、或库里没有水位记录，两种都是"没判"，
+**绝不画成"新鲜 ✓"**（那正是慢性误导的来源）。三个启动器已默认开启该开关。
 
 ## 四个页签
 
@@ -998,7 +1081,11 @@ python view.py                          # 默认 127.0.0.1:8088
 |---|---|
 | G1 工具统计 | 工具失败率排行、失败后行为（重试/放弃占比）、按 Agent（数据源）分布 |
 | G2 错误三分类 | 错误按"环境 / 用法 / 目标状态"三分类 + 轨迹位置分桶（开场/中途/收尾）+ 模式聚类明细（锚点可点） |
+| 工具链失败模式（chains） | 长回合 / 同工具连击 / 序列循环 / 连续空转 / 高步会话 Top N；低于阈值的段折叠并**报数** |
+| Trace 耗时与取消（traces） | 运行时遥测（不来自索引库）：工具 p50/p95 耗时、用户取消率、模型调用长尾。目录未配置时明说没有，**不拿索引库数据冒充** |
+| Harness 体检（harness） | 每个数据源一行画像：会话/消息/步骤/失败率/代表工具/代表 skill/最近活跃。无工具遥测的源显示「—（无遥测）」，**绝不渲染成 0%** |
 | G4 Skill 行为画像 | 每个 skill 的调用量 / 成功率 / 触发任务抽样 / 调用后行为链 / 锚点 |
+| skill 治理档案（skillmatrix） | 每个 skill 一行：G4 画像 **+ 服务的主题**（skilljoin 交叉）+ 最近败在什么上 + 消歧状态（名解析不出 / 跨 harness 同名）。底部按需载入 `cards index-md` 触发词素材。画像与「服务主题」**不同源**，页面分开标注 |
 | G2 建议条目 | 把高频错误模式写成 AGENTS.md 候选规则句（机器产出，人工审阅后自行并入） |
 | G3 卡片校验 | 校验 cards_pending/ 目录下草稿卡的 frontmatter 与锚点真实性，给出"能否并入主库"结论 |
 
@@ -1066,8 +1153,12 @@ python view.py                          # 默认 127.0.0.1:8088
 | `/api/session/<sid>`、`/api/session/<sid>/turn/<n>` | 会话回合列表 / 回合全文 |
 | `/api/facets`、`/api/search` | 分布统计 / 全文检索 |
 | `/api/triage` | 蒸馏队列（A–D 四节数据） |
-| `/api/reports/tools\|errors\|skills\|agents` | 四种全局报告 |
+| `/api/reports/tools\|errors\|chains\|traces\|skills\|agents` | 六种全局报告（chains/traces 为 v0.81 P1-1 新增；traces 需 --traces-root） |
+| `/api/harness` | Harness 体检：每数据源一行画像（v0.81 P1-2，与 CLI `report-harness` 同一聚合函数） |
 | `/api/cards` | 卡片校验（需 --cards-root；未配 400 / 目录缺失 404） |
+
+动作面（actions-serve，默认 :8766）v0.81 新增动作：`skill_matrix`
+（skill 治理档案，聚合口径，页头明示与 G4 不同源）。
 
 ## 安全模型
 
@@ -1107,13 +1198,14 @@ A：大库首次查询要把数据从磁盘读进 SQLite 页缓存（冷启动�
 亚秒级。这是正常现象，不是卡死。
 
 **Q：页面功能对不上文档 / 报"未知路由"？**
-A：九成是**旧进程还在跑**。关掉 api-serve 与 view 两个窗口，重新
+A：九成是**旧进程还在跑**。关掉 api-serve、actions-serve 与 view 三个窗口，重新
 start.cmd。
 
 **Q：改了 `index.html`，刷新还是原样（或"好像没看到变化"）？**
 A：按顺序三查，**别猜**：
-1. **服务在不在**：`Get-NetTCPConnection -State Listen | ? LocalPort -in 8088,8765`
-   —— 8088 没监听就是 view 没起（`view.py --no-open`），你看到的只能是遗留标签页。
+1. **服务在不在**：`Get-NetTCPConnection -State Listen | ? LocalPort -in 8088,8765,8766`
+   —— 8088 没监听就是 view 没起（`view.py --no-open`），你看到的只能是遗留标签页；
+   8766 没监听则工作台/命令台/处理单/主题页整片黄条。
 2. **服务的是不是新文件**：`curl http://127.0.0.1:8088/` 的长度应与
    `static/index.html` 一致；不一致 = 起着旧进程。
 3. **标签页是不是旧的**：浏览器内存里的 JS 不会因服务端换文件而更新 →
@@ -1129,6 +1221,11 @@ A：导出走浏览器下载（看下载栏）；复制依赖剪贴板权限，�
 
 ## 测试
 
+> **基线（2026-10-24 实测）**：Python 全量 `Ran 437 tests / OK`；
+> node 渲染门 23 支逐文件全 PASSED（清单见下，**缺 node 时套件里转 skip，不是通过**）。
+> 加/删用例后请回来改这一行——它是读者判断"我自己跑对了没"的唯一依据
+> （上面各小节里出现的旧数字是**当时**的记录，不随本轮变动）。
+
 ```bash
 # 全套件（跑之前先设 PYTHONPATH 指向 session-harvester/scripts/sandbox）
 python -m unittest discover -s tests -v
@@ -1140,9 +1237,23 @@ node tests/render_home.js       # P3-3 今日工作台（四队列 + 闭环健�
 node tests/boot_sequence.js     # 启动序列真跑（"永远加载中"那个真缺陷的回归门）
 node tests/render_work.js       # v0.49 处理单（对账报警 + 建议 + 命令包 + 送命令台）
 node tests/render_summary.js    # v0.74 卡片解释层 + v0.79 触发层（c-trig）
-node tests/render_dualtrack.js  # v0.77 双轨时间线 + ts 锚点
+node tests/render_dualtrack.js  # v0.77 双轨时间线 + ts 锚点（含工具栏死锁回归）
+node tests/render_chainflow.js  # P11 链创作包视图 + 产物流视图 + 404 空态入口
 node tests/render_reports.js    # v0.79 报告索引 + 昨日卡全文
 node tests/render_kgraph.js     # v0.87 知识图谱（ECharts 照搬账/两态/诚实空态）
+node tests/render_chains_traces.js  # v0.81 P1-1 工具链失败模式 + Trace 耗时/取消
+node tests/render_harness.js        # v0.81 P1-2 Harness 体检（无遥测 ≠ 无错误 ≠ 0%）
+node tests/render_skillmatrix.js    # v0.81 P1-3/1-5 skill 治理档案 + index-md 面板位
+node tests/render_freshness.js      # v0.81 P1-4 库龄/STALE（没判定 ≠ 新鲜）
+node tests/render_brief.js          # v0.76 主题研读面（知识优先 C 位 + 四原则）
+node tests/render_fresh.js          # P5-2 三身份视觉 + 新鲜度常驻条
+node tests/render_arm_kinds.js      # 累计量长得不像警报 / 待处理才发黄
+node tests/render_threshold.js      # 次数阈值 + 被滤掉的部分必须报数
+node tests/render_tools_rank.js     # 工具表分「排行 / 样本不足」两段
+node tests/render_attrib.js         # P6-9 归因台（候选与判定槽同屏）
+node tests/render_skilljoin.js      # P4-5 skill 调用点挂轨道（成败可见）
+node tests/render_tour.js           # P5-1 五页引导「5 分钟之旅」
+node tests/render_real.js           # 跨仓库真实载荷门（真库取数喂真渲染函数）
 
 # v0.49 自查：把 5 个缺陷故意放回去，确认每道门都会红（末行打印 5/5 被抓）
 python docs/reports/mutation-check-v049.py
@@ -1150,6 +1261,9 @@ python docs/reports/mutation-check-v049.py
 # 跨仓库真实载荷门（真库取数喂真渲染函数；**退出码 3 = 未执行，不是通过**）
 python tests/check_real_payload.py
 ```
+
+以上 **23 支**（22 个 `render_*.js` + `boot_sequence.js`），这就是全部——
+以前这里只列了一部分，等于让剩下的门"藏起来"了。
 
 **另一支：活服务探针（`tests/live_render_probe.js`，P6-6 加）**
 

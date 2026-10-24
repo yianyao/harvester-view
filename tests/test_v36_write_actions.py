@@ -502,7 +502,10 @@ class WriteHttpTest(_Fixture):
         # → 17（P6-9 attrib_verdict：归因台判定槽落账 attribations 台账，可逆）
         # → 19（P10 cards_new + kb_publish：用户 2026-10-24 裁决，
         #    处理单/分诊里"只能复制"的两条写命令接进页面，均可逆）
-        self.assertEqual(len(b), 19)
+        # → 20（P11 chain_publish：链长文发布进知识正本，两道校验门
+        #    （chain-validate + chain-audit）全过才写，可逆；同轮新增的
+        #    chain_build / artifacts_flow 是 A 档只读，不计入本数）
+        self.assertEqual(len(b), 20)
         for a in b:
             self.assertIn(a["risk"], ("reversible", "destructive"))
 

@@ -16,7 +16,8 @@
   "attrib_meta": "attrib_meta.db（归因裁决台账：人裁过的候选不再列出，v0.79 P6）",
   "repo_files": "主库仓内工作文件（建议池 agents_suggestions.md / 蒸馏包 docs/distill_prompts/*.md；覆盖前自动备份，不碰库与 AGENTS.md）",
   "cards_root": "卡片库根目录（knowledge/cards：新增脚手架 md，不覆盖既有卡；v0.80 P10）",
-  "kb_mirror": "WorkBuddy 知识库镜像位（~/.workbuddy/knowledge：只从正本单向喂，永不删除镜像里多出来的文件；v0.80 P10）"
+  "kb_mirror": "WorkBuddy 知识库镜像位（~/.workbuddy/knowledge：只从正本单向喂，永不删除镜像里多出来的文件；v0.80 P10）",
+  "knowledge_chain": "知识正本 knowledge/topics/（chain 长文：只接受过结构校验与引文逐字门的草稿，逐字节搬入、不二次加工；P11）"
  },
  "cards": [
   {
@@ -132,6 +133,12 @@
    "est_sec": null
   },
   {
+   "action_id": "artifacts_flow",
+   "tier": "A",
+   "cmd": null,
+   "est_sec": null
+  },
+  {
    "action_id": "attrib",
    "tier": "A",
    "cmd": "attrib",
@@ -153,6 +160,12 @@
    "action_id": "chain_audit",
    "tier": "A",
    "cmd": "chain-audit",
+   "est_sec": null
+  },
+  {
+   "action_id": "chain_build",
+   "tier": "A",
+   "cmd": "chain-build",
    "est_sec": null
   },
   {
@@ -252,6 +265,12 @@
    "est_sec": null
   },
   {
+   "action_id": "report_harness",
+   "tier": "A",
+   "cmd": "report-harness",
+   "est_sec": null
+  },
+  {
    "action_id": "report_skill",
    "tier": "A",
    "cmd": "report-skill",
@@ -279,6 +298,12 @@
    "action_id": "search",
    "tier": "A",
    "cmd": "search",
+   "est_sec": null
+  },
+  {
+   "action_id": "skill_matrix",
+   "tier": "A",
+   "cmd": null,
    "est_sec": null
   },
   {
@@ -671,6 +696,60 @@
    ],
    "no_params_reason": "",
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  },
+  {
+   "action_id": "chain_publish",
+   "tier": "B",
+   "cmd": "chain-publish",
+   "subaction": null,
+   "risk": "reversible",
+   "target": "knowledge_chain",
+   "summary": "把链草稿校验后发布进知识正本（主题 {id}）",
+   "detail": "链路：A 档 chain_build 出创作包 → Agent 按包 §5 写草稿到草稿位（exports/chains/<id>.md，路径服务端定，页面不传）→ 本动作过两道门：chain-validate（结构 + 锚点可回溯）与 chain-audit（引文逐字门）。两道全过才把草稿**逐字节**复制到 knowledge/topics/chain-<主题名>.md。缺省预演；目标已存在时必须显式勾「覆盖」。这是「知识正本只接受过校验的写入」的执行点（2026-10-24 用户裁决）。",
+   "params": [
+    {
+     "name": "id",
+     "dest": "id_",
+     "arg": "--id",
+     "kind": "str",
+     "src": "topics_api",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "主题 id（要发布哪条链）"
+    },
+    {
+     "name": "force",
+     "dest": "force",
+     "arg": "--force",
+     "kind": "switch",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": false,
+     "note": null,
+     "label": "目标已存在时覆盖（默认拦下）"
+    },
+    {
+     "name": "allow_audit",
+     "dest": "allow_audit",
+     "arg": "--allow-audit",
+     "kind": "switch",
+     "src": "none",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": false,
+     "note": null,
+     "label": "审计告警仍发布（慎用）"
+    }
+   ],
+   "no_params_reason": "",
+   "writes": "knowledge_chain（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
   {
@@ -1337,9 +1416,9 @@
  ],
  "counts": {
   "cards": 13,
-  "read_actions": 39,
-  "write_actions": 19,
-  "write_reversible": 16,
+  "read_actions": 43,
+  "write_actions": 20,
+  "write_reversible": 17,
   "write_destructive": 3
  }
 }

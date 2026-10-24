@@ -37,11 +37,19 @@ class TestP53EmptyStates(unittest.TestCase):
         self.src = IDX.read_text(encoding="utf-8")
 
     def test_chain_404_empty_state_go_cmd(self):
-        """chain 404 空态 → 引导「去命令台」（选参数→执行），不引导复制命令。"""
-        s = slice_around(self.src, "该主题尚无 chain 长文")
-        self.assertTrue(s, "锚点丢失：chain 404 空态文案不存在")
-        self.assertIn("去命令台", s, "空态应引导「去命令台」（选参数→执行）")
-        self.assertIn("topic pack", s, "点出动作名（A 档动作 topic pack）")
+        """chain 404 空态 → 给**可点的入口**（P11 起是「生成链创作包」按钮）。
+
+        原始判据（P5-3）：空态永远指向"能就地做的事"，不许只让用户复制命令。
+        P11 前那个入口是「去命令台」（topic pack）；用户 2026-10-24 说
+        「要补一个生成链的命令给我，更干脆的是我能直接就看到链」之后，
+        入口换成 chain_build 一键出包 + 发布指引——**判据不变，落点更近**。
+        所以这里断的是：有按钮 id、有"校验并发布"、且不引导复制命令。
+        """
+        s = slice_around(self.src, "btn-chain-empty-build", span=8)
+        self.assertTrue(s, "锚点丢失：空态按钮 btn-chain-empty-build 不存在")
+        self.assertIn("尚无 chain 长文", s, "按钮必须长在 chain 空态里")
+        self.assertIn("链创作包", s, "空态要点出这是「链创作包」这条路")
+        self.assertIn("校验并发布", s, "空态要说明写完怎么落地（两道门）")
         self.assertNotIn("复制命令", s, "空态残留「复制命令」引导")
 
     def test_timeline_hint_go_cmd(self):

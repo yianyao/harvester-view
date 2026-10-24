@@ -57,10 +57,15 @@ const api = async () => global.__apiStub();
 
 for (const [n, sig] of [
   ["pTag", "kind"], ["freshKey", "fp"],
+  /* v0.81 P1-4：renderFreshBar 现在读库龄（fpAgeDays/ageHuman），被提取的
+     函数依赖必须同步进清单——否则门会 ReferenceError（老坑，见 MEMORY）。 */
+  ["fpAgeDays", "fp"], ["ageHuman", "d"],
   ["renderFreshBar", ""], ["pollFreshBar", ""],
 ]) {
   eval(extract(n, sig));
 }
+/* STALE_AGE_DAYS 是页面常量（不在任何函数体内），门里需同值声明 */
+const STALE_AGE_DAYS = 7;
 
 let failed = 0;
 function check(label, cond, why) {

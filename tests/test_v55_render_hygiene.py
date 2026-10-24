@@ -199,8 +199,10 @@ class TestCommandHoverTitle(unittest.TestCase):
                          "（漏一个就退回各写各的）")
         self.assertEqual(self.html.count("先在左侧选一个主题"), 0)
         realm = re.findall(r"先选主题：([^\"']+)", self.html)
-        self.assertEqual(len(realm), 4, f"四处选主题提示应各说各的：{realm}")
-        self.assertEqual(len(set(realm)), 4, f"选主题提示重复：{realm}")
+        # P11：主题页补了「生成链」「产物流」两个派生视图，各要一句
+        # 不同的"选完能看什么"，故 4 → 6。判据不变：条数对得上、且互不重复。
+        self.assertEqual(len(realm), 6, f"六处选主题提示应各说各的：{realm}")
+        self.assertEqual(len(set(realm)), 6, f"选主题提示重复：{realm}")
         bench = re.findall(r'title:"(把[^"]*写进建议池[^"]*)"', self.html)
         self.assertEqual(len(bench), 3, f"三处起草班规提示：{bench}")
         self.assertEqual(len(set(bench)), 3, f"起草班规提示重复：{bench}")

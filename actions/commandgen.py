@@ -105,6 +105,10 @@ COMMAND_CARD: dict[str, str] = {
     "draft": "export", "export-analysis": "export",
     "report-tools": "tools", "report-traces": "tools",
     "report-errors": "errors", "report-chains": "errors",
+    # v0.81 P1-2 Harness 体检：每数据源一行画像（harness 感知底座）——
+    # 与 report-chains 同归「错误验尸」卡？不：它数的是 harness 健康度，
+    # 归「浏览检索」卡（看各数据源在不在干活、错误率异常）
+    "report-harness": "browse",
     # P6 归因层（v0.79，用户 2026-10-22 批准后端改动）：attrib 只读 harvester.db
     # → 归「错误分析」卡（它就是错误分析的延伸：把计数变成根因候选）；
     # attrib-review 写 attrib_meta.db 台账 → 同卡，档位 B（与 cards review 同模式）
@@ -127,6 +131,9 @@ COMMAND_CARD: dict[str, str] = {
     "suggest-agents": "ledger", "suggest-status": "ledger",
     "ledger-sync": "ledger", "harvest-eval": "ledger",
     "topic": "topic", "chain-validate": "topic", "chain-audit": "topic",
+    # P11 链创作包与发布（用户 2026-10-24）：build=A 档只读出包，
+    # publish=B 档两道校验门后落正本——都归「主题」动词卡。
+    "chain-build": "topic", "chain-publish": "topic",
     "artifacts": "artifacts",
     "cards": "kb", "cards validate": "kb", "cards new": "kb",
     # v0.74 卡片复核台账（上游）：人裁过的警告不再显示——写 cards_meta.db → B
@@ -173,6 +180,7 @@ PURPOSE: dict[str, str] = {
     "report-traces": "按 trace 口径再看一遍工具统计",
     "report-errors": "错误三分类与失败翼（G2）",
     "report-chains": "工具链失败模式：长回合/连击/循环/空转",
+    "report-harness": "每个数据源（harness 身份）的体检画像",
     "report-daily": "四队列 + 三段报告的每日速览",
     "report-skill": "单个 skill 的行为画像（G4）",
     "report-skill-join": "chain 锚点与 skill 调用点交叉",
@@ -186,6 +194,8 @@ PURPOSE: dict[str, str] = {
     "topic": "主题注册表：list/add/merge/md/…",
     "chain-validate": "校验 chain 结构：frontmatter/阶段/锚点",
     "chain-audit": "审计 chain 的引文与锚点（可落裁决）",
+    "chain-build": "出链创作包（生成演进链的第一步）",
+    "chain-publish": "校验通过才把链发布进知识正本（B 档）",
     "suggest-agents": "生成 AGENTS.md 候选条目",
     "suggest-status": "把建议状态落库（B 档）",
     "ledger-sync": "人账与库内建议对账",
@@ -231,6 +241,10 @@ TIER_OVERRIDE: dict[str, str] = {
     "cards index-md": "A",
     # v0.66 kb-publish：写镜像位文件（仓外写）→ B；幂等、不删镜像文件
     "kb-publish": "B",
+    # P11 链发布：写**知识正本** knowledge/topics/ → B（两段提交 + 台账；
+    # 只接受过 chain-validate + chain-audit 两道门的草稿）。配套的
+    # `chain-build` 只读产出创作包（不落盘）→ A，走末尾缺省，无需覆写。
+    "chain-publish": "B",
     # 长驻/需人亲手登录 → C（永不执行）
     "mcp-serve": "C", "api-serve": "C",
     # v0.49 会话抑制：查抑制表是只读 → A；其余三个写库/删副本 → B
@@ -358,6 +372,10 @@ SRC: dict[str, str] = {
     # 就等于给"顺手指向真库"留后门；接受客户端传值同样不行）
     "temp_base": "server",
     # —— 服务端已定（页面不暴露）——
+    # P11 链草稿位：`chain-publish --draft` 由服务端按主题 id 定
+    # （exports/chains/<id>.md）；让页面传路径 = 给"从任意文件发布进
+    # 知识正本"留后门。
+    "draft": "server",
     "root": "server",
     "db": "server",
     "inbox": "server",
@@ -373,6 +391,7 @@ SRC: dict[str, str] = {
     "plan": "none",
     "apply": "none",
     "force": "none",
+    "allow_audit": "none",
     "vacuum": "none",
     "prune_keywords": "none",
     "no_prune_keywords": "none",

@@ -357,6 +357,67 @@ def _action_dualtrack(cfg: Config, params: dict) -> dict:
     return dualtrack.build(cfg, topic_id, level, tl)
 
 
+def _action_artifacts_flow(cfg: Config, params: dict) -> dict:
+    """A 档：主题产物流（P11）。
+
+    为什么单列：产物轨原来只作为双轨的下轨出现，看产物得先等 90 秒的
+    timeline + 打磨带计算。产物轨本身只有一条 SQL（`_artifacts_track`），
+    与双轨共用同一函数，数字必然一致（一处实现两出口）。
+    """
+    from . import dualtrack
+    topic_id = str(params.get("id") or "").strip()
+    if not topic_id:
+        raise _BadRequest("缺主题 id——回主题页选一个主题")
+    if cfg.topics_meta is None:
+        raise RuntimeError("未配置 topics_meta（起服时加 --topics-meta）")
+    return dualtrack.artifacts_flow(cfg, topic_id)
+
+
+def _action_chain_build(cfg: Config, params: dict) -> dict:
+    """A 档：链创作包（P11，用户裁决「命令出包 + Agent 写 + 校验落盘」）。
+
+    只读产出**素材 + 格式契约**，返回文本给页面，**不落盘、不代笔**：
+    链长文要求「思想/技法/观念的演变和转折」，聚合器算不出来；机器写的
+    叙事会往知识正本里灌幻觉。包是确定性的（不取时钟、不用随机）。
+    写正本走 B 档 `chain_publish`（两道校验门 + 台账）。
+    """
+    from . import ensure_harvester_importable
+    err = ensure_harvester_importable()
+    if err:
+        raise ImportError(err)
+    from harvester import chainbuild as CB
+    topic_id = str(params.get("id") or "").strip()
+    if not topic_id:
+        raise _BadRequest("缺主题 id——回主题页选一个主题")
+    if cfg.topics_meta is None:
+        raise RuntimeError("未配置 topics_meta（起服时加 --topics-meta）")
+    max_chars = params.get("max_chars")
+    try:
+        d = CB.build(Path(cfg.db), Path(cfg.topics_meta), topic_id,
+                     max_chars=(int(max_chars) if max_chars else None))
+    except ValueError as exc:
+        raise _BadRequest(str(exc))
+    text = CB.render(d)
+    from . import writeactions
+    draft = writeactions.chain_draft_path(cfg, topic_id)
+    return {
+        "view_actions_api": 1,
+        "topic_id": topic_id,
+        "topic": d["topic"],
+        "counts": d["counts"],
+        "budget": d["budget"],
+        "prompt_version": d["prompt_version"],
+        "chars": len(text),
+        "pack": text,
+        "draft_path": str(draft),
+        "next_steps": [
+            "把下面这份包整段交给 Agent（或点「复制创作包」）",
+            "Agent 按包 §5 写 chain 长文，先落到草稿位：%s" % draft,
+            "草稿写完点「校验并发布」，两道门过了才进 knowledge/topics/",
+        ],
+    }
+
+
 def _action_topic_brief(cfg: Config, params: dict) -> dict:
     """A 档：主题研读面（v0.76 V3）。确定性聚合层——构成/活跃/高频问题/
     错误模式/skill 行为/重复会话/健康 + 已发布 chain 的结论与未决。
@@ -371,6 +432,16 @@ def _action_topic_brief(cfg: Config, params: dict) -> dict:
         raise RuntimeError("未配置 topics_meta（起服时加 --topics-meta）")
     tl = topic_timeline(cfg, topic_id, level, None)
     return topicbrief.build(cfg, topic_id, level, tl)
+
+
+def _action_skill_matrix(cfg: Config, params: dict) -> dict:
+    """A 档：skill 治理档案（v0.81 P1-3 / 《优化方案》C1，cmd=None 视图侧
+    聚合）。每个 skill 一行：G4 画像 + 失败 + 服务的主题 + 关联错误 top1
+    + 消歧状态。进程内对有 chain 的主题逐个调 skilljoin.build_cross
+    （复用上游同一 join 口径，不另写一套），按 skill 聚合——**本页聚合，
+    非上游口径**（页头明示）。只读，不写任何库与文件。"""
+    from . import skillmatrix
+    return skillmatrix.build_matrix(cfg.db, cfg.topics_meta, cfg.chain_root)
 
 
 def _action_kgraph(cfg: Config, params: dict) -> dict:
@@ -654,6 +725,14 @@ def _action_report_chains(cfg: Config, params: dict) -> dict:
         argv += ["--since", str(params["since"])]
     if params.get("top") is not None:
         argv += ["--top", str(int(params["top"]))]
+    return _cli_report(argv)
+
+
+def _action_report_harness(cfg: Config, params: dict) -> dict:
+    """A 档：Harness 体检报告（`report-harness`，v0.81 P1-2）。"""
+    argv = ["report-harness", "--db", str(cfg.db)]
+    if params.get("since") is not None:
+        argv += ["--since", str(params["since"])]
     return _cli_report(argv)
 
 
@@ -1026,6 +1105,32 @@ ACTIONS: dict[str, dict] = {
         "writes": "",
         "handler": _action_dualtrack,
     },
+    "artifacts_flow": {
+        "tier": "A",
+        "label": "主题产物流（产物版本序列）",
+        "desc": "只下轨：成员会话的 Write/Edit 产物版本序列（哪个文件、写了几版、"
+                "每版前后长度与预览），带覆盖度自陈（仅 dsh 源）。"
+                "与双轨下轨同一函数，秒开，不跑讨论流/打磨带。",
+        "params": {"id": {"type": "topic_id", "src": "topics_api",
+                           "default": None, "label": "主题 id"}},
+        "est_sec": 3,
+        "reversible": "幂等（只读 artifacts_meta，产物返回页面不落盘）",
+        "writes": "",
+        "handler": _action_artifacts_flow,
+    },
+    "chain_build": {
+        "tier": "A",
+        "label": "链创作包（生成演进链的起点）",
+        "desc": "确定性产出「素材 + 格式契约」：判据头 + 主题画像 + 按月分桶的"
+                "锚点候选 + chain 格式契约 + 写作指令 + 校验命令。"
+                "**不代笔**——演变与转折要 Agent 写；写正本走「校验并发布」。",
+        "params": {"id": {"type": "topic_id", "src": "topics_api",
+                           "default": None, "label": "主题 id"}},
+        "est_sec": 20,
+        "reversible": "幂等（只读索引库与主题库，包返回页面不落盘）",
+        "writes": "",
+        "handler": _action_chain_build,
+    },
     "topic_brief": {
         "tier": "A",
         "label": "主题研读面（聚合分析）",
@@ -1045,8 +1150,7 @@ ACTIONS: dict[str, dict] = {
     },
     "kgraph": {
         "tier": "A",
-        "label": "知识图谱（大类总览+搜索子图）",
-        "desc": "默认=大类总览（主题/卡片，显隐前端）；q 参数=搜索模式："
+        "label": "知识图谱（大类总览+搜索子图）",        "desc": "默认=大类总览（主题/卡片，显隐前端）；q 参数=搜索模式："
                 "正文 FTS（messages 索引，检索框同判据）命中会话+其邻域"
                 "子图。只取用户先发起；机械聚类一簇一个代表；五类边来自"
                 "既有真源，零语义臆造。只读，不落盘。",
@@ -1059,6 +1163,20 @@ ACTIONS: dict[str, dict] = {
         "reversible": "幂等（只读三库与卡片目录，产物返回页面不落盘）",
         "writes": "",
         "handler": _action_kgraph,
+    },
+    "skill_matrix": {
+        "tier": "A",
+        "label": "skill 治理档案（聚合）",
+        "desc": "每个 skill 一行：G4 画像（调用/会话/成功/失败）+ 服务的"
+                "主题（skilljoin 交叉的本页聚合）+ 关联错误 top1 + 消歧"
+                "状态（名解析不出 / 跨 harness 同名）。v0.81 P1-3，与"
+                "《优化方案》C1 同一件事；页面明示「本页聚合，非上游"
+                "口径」。只读，不落盘。",
+        "params": {},
+        "est_sec": 20,
+        "reversible": "幂等（只读三库与 chain 文件，产物返回页面不落盘）",
+        "writes": "",
+        "handler": _action_skill_matrix,
     },
     # ---- v0.63 白名单补全（用户 2026-10-14「还有哪些没加的？都加上」）----
     # 覆盖 commands.json 里**全部剩余 A 档命令**；执行一律走进程内真 CLI
@@ -1245,6 +1363,19 @@ ACTIONS: dict[str, dict] = {
         "reversible": "幂等（只读库）",
         "writes": "",
         "handler": _action_report_chains,
+    },
+    "report_harness": {
+        "tier": "A",
+        "label": "Harness 体检",
+        "desc": "每个数据源（=Agent Harness 身份）一行画像：会话/消息/步骤/"
+                "失败率/代表工具/代表 skill/最近活跃（report-harness，v0.81）。"
+                "失败率分母 = result 相步骤数；无遥测源显示「—」而非 0%。",
+        "params": {"since": {"type": "days", "src": "chips", "default": None,
+                             "label": "时间窗"}},
+        "est_sec": 5,
+        "reversible": "幂等（只读库）",
+        "writes": "",
+        "handler": _action_report_harness,
     },
     "attrib": {
         "tier": "A",

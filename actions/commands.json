@@ -303,7 +303,7 @@
      "choices": null,
      "src": "server",
      "negates": null,
-     "help": "topic-chain 长文目录（可选；默认 knowledge/topics，项目正本）",
+     "help": "topic-chain 长文目录（可选；缺省=<db 同目录>/knowledge/topics，随项目走不随 cwd）",
      "note": null
     },
     {
@@ -322,12 +322,24 @@
      "name": "--reviews-meta",
      "dest": "reviews_meta",
      "kind": "str",
-     "default": "cards_meta.db",
+     "default": null,
      "required": false,
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": "卡片复核台账 meta 库（/api/cards 据此隐去已裁决警告；库不存在=零感知。人裁过的不许再烦人）",
+     "help": "卡片复核台账 meta 库（/api/cards 据此隐去已裁决警告；缺省=<db 同目录>/cards_meta.db；库不存在=零感知。人裁过的不许再烦人）",
+     "note": null
+    },
+    {
+     "name": "--traces-root",
+     "dest": "traces_root",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "OTel trace 目录（可选；启用 /api/reports/traces，缺省=~/.workbuddy/traces）",
      "note": null
     },
     {
@@ -340,6 +352,18 @@
      "src": "none",
      "negates": null,
      "help": "日报目录（可选；启用 /api/report-daily 端点，缺省=仓根 docs/reports；文件名白名单 daily-YYYY-MM-DD.md）",
+     "note": null
+    },
+    {
+     "name": "--corpus-watermark",
+     "dest": "corpus_watermark",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "开启库龄判定（/api/meta 的库快照带真 stale：语料比入库水位新 ⇒ True）。默认关——要 stat 一遍语料盘；不开时 stale 恒 null = **没判**，不是新鲜",
      "note": null
     }
    ],
@@ -1150,6 +1174,196 @@
    "subactions": null,
    "help": null,
    "purpose": "审计 chain 的引文与锚点（可落裁决）",
+   "nested": false
+  },
+  {
+   "cmd": "chain-build",
+   "card_id": "topic",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--id",
+     "dest": "id_",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "topics_api",
+     "negates": null,
+     "help": "主题 id",
+     "note": null
+    },
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "主题 meta 库路径（默认 topics_meta.db）",
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径（只读，取成员首轮原话与轮数）",
+     "note": null
+    },
+    {
+     "name": "--max-chars",
+     "dest": "max_chars",
+     "kind": "int",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "创作包字符预算（默认 72000；超出只砍锚点并报数）",
+     "note": "覆盖该档默认字符预算（不填=用档位预算）"
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "包输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--json",
+     "dest": "json",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "机读出口（chain-build/1）：schema + fingerprint + 包数据",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "purpose": "出链创作包（生成演进链的第一步）",
+   "nested": false
+  },
+  {
+   "cmd": "chain-publish",
+   "card_id": "topic",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--id",
+     "dest": "id_",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "topics_api",
+     "negates": null,
+     "help": "主题 id（草稿位按它定位：exports/chains/<id>.md）",
+     "note": null
+    },
+    {
+     "name": "--draft",
+     "dest": "draft",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "草稿路径（缺省 exports/chains/<id>.md——与 VIEW「生成链创作包」给 Agent 的落点一致）",
+     "note": null
+    },
+    {
+     "name": "--chain-root",
+     "dest": "chain_root",
+     "kind": "str",
+     "default": "knowledge/topics",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "知识正本目录（默认 knowledge/topics）",
+     "note": null
+    },
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "主题 meta 库路径（默认 topics_meta.db）",
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径（只读，锚点回溯与引文核对）",
+     "note": null
+    },
+    {
+     "name": "--apply",
+     "dest": "apply",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "真写入正本（缺省只预演：报会落到哪、过没过）",
+     "note": null
+    },
+    {
+     "name": "--force",
+     "dest": "force",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "目标文件已存在时覆盖（缺省拦下）",
+     "note": null
+    },
+    {
+     "name": "--allow-audit",
+     "dest": "allow_audit",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "允许 chain-audit 未过仍发布（只降级为警告；引文逐字门不合格时慎用）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "purpose": "校验通过才把链发布进知识正本（B 档）",
    "nested": false
   },
   {
@@ -3054,6 +3268,65 @@
    "subactions": null,
    "help": null,
    "purpose": "错误三分类与失败翼（G2）",
+   "nested": false
+  },
+  {
+   "cmd": "report-harness",
+   "card_id": "browse",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    },
+    {
+     "name": "--since",
+     "dest": "since",
+     "kind": "float",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "只统计最近 N 天（按会话更新时间粗算）",
+     "note": "只统计最近 N 天（按 steps.ts，近似口径）"
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "报告输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--json",
+     "dest": "json",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "机读出口（report-harness/1）：schema + db_fingerprint + data（与文本同一个聚合函数）；'-'=stdout，缺省仍出文本",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "purpose": "每个数据源（harness 身份）的体检画像",
    "nested": false
   },
   {

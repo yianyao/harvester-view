@@ -221,3 +221,27 @@ def build(cfg, topic_id: str, level: str, timeline_dict: dict) -> dict:
             "nags_groups_all": nag["account"]["n_groups"],
         },
     }
+
+
+def artifacts_flow(cfg, topic_id: str) -> dict:
+    """产物流（P11）——只下轨，不跑讨论流/打磨带，秒开。
+
+    为什么单开一个出口：双轨的 90s 几乎全花在 timeline（逐会话查 FTS）
+    与打磨带/反转点（逐轮取原文）上，产物轨**本身只有一条 SQL**。
+    用户 2026-10-24：「产出物的分析还是啥，也不见了」——它原来只作为
+    双轨的下轨存在，想看产物得先等 90 秒的一场大计算。
+
+    与 `build()` 用的是**同一个** `_artifacts_track`，所以两处数字必然一致
+    （一处实现两出口，不另写口径）。
+    """
+    from harvester.topics import show_topic
+    topic = show_topic(cfg.topics_meta, topic_id)
+    sids = [m["sid"] for m in topic["members"]]
+    art = _artifacts_track(cfg, sids)
+    return {
+        "view_actions_api": 1,
+        "topic_id": topic_id,
+        "topic": {"id": topic["id"], "name": topic["name"]},
+        "members": len(sids),
+        "artifacts": art,
+    }

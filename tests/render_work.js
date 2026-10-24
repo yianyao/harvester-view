@@ -69,11 +69,18 @@ function loadCmdData() { return Promise.resolve(null); }
 
 for (const [n, sig] of [
   ["cmdKey", "c"], ["renderWorkHead", "d"], ["workRows", "d"],
-  ["renderWorkPkg", "d"],
-  ["renderWorkItems", "d"], ["openInCmd", "actionId,params"],
+  ["renderWorkPkg", "d,notes"],
+  ["renderWorkItems", "d,notes"], ["openInCmd", "actionId,params"],
   /* 2026-10-15：命令悬停说明（处理单两处命令框都要有 title）+ 仓根提示 */
   ["stripMd", "s"], ["cmdNameOf", "cli"], ["argsHelp", "c"],
   ["cmdHoverTitle", "row"], ["displayPath", "p"],
+  /* P10（用户 2026-10-24 第 2 条：能执行的命令别只给复制）：
+     命令 → 动作的反查、参数拾取、统一按钮组、提示去重，都是渲染行为，
+     必须真跑（只断言源码里有函数名会被"改成不调用"骗过）。 */
+  ["cmdActionMap", ""], ["actionForCommand", "cmd"],
+  ["execAidFor", "c"], ["paramsFromCli", "c,spec"],
+  ["cmdBtnHtml", "c,label"], ["hoistNotes", "items"],
+  ["notesHtml", "notes,title"], ["bindCmdButtons", "root"],
 ]) {
   eval(extract(n, sig));
 }
@@ -173,8 +180,9 @@ check("命令包显示条数", pkg.includes("（" + rows.length + " 条命令"))
 check("命令行文本逐条渲染（可复制粘贴）",
   pkg.includes(esc(WI.package[0].cli)) &&
   pkg.includes(esc(WI.items[0].commands[0].cli)));
-check("写明诚实边界：执行只在冻结白名单内 + B 档两段提交（v0.62 用户修订红线）",
-  pkg.includes("冻结白名单") && pkg.includes("先预演、你确认、才写"));
+check("写明诚实边界：能就地跑的只有注册表里那条，B 档先预演、你确认才写（P10 改大白话）",
+  pkg.includes("可在本页就地执行") && pkg.includes("先预演、你确认后才写"),
+  "没有这条，用户会以为点一下就写库");
 check("有 action_id 的命令给「在命令台打开」按钮",
   pkg.includes("data-wact=\"suggest_status\""));
 check("纯 CLI 命令不给假的执行按钮",
@@ -198,7 +206,6 @@ renderWorkItems(WI);
 const wiItems = $("work-items").innerHTML;
 check("明细区命令框同样带悬停说明与复制按钮（不是只有命令包有）",
   wiItems.includes("class='wi-cmd' title=") &&
-  wiItems.includes("在命令台打开」就地执行") &&
   wiItems.includes("data-clicopy="));
 check("头部真源行带白话解释（机器键是给人对账用的，不是谜语）",
   head.includes("真源 ") && head.includes("跨页对账"));
@@ -278,6 +285,87 @@ check("闭环健康段用同一个渲染器（group=ring 也认）",
 renderWorkItems(RING);
 check("闭环健康段的明细同样列出记录",
   $("work-items").innerHTML.includes("与上面的数字同源"));
+
+/* ⑤b P10：能执行的命令必须给「在命令台执行」，并把命令行里的参数拾过去
+   （用户 2026-10-24 第 2 条：处理单/蒸馏队列的命令还是只能复制）。
+   反查靠**动作注册表**（cmdActionMap 读 state.act.actions），不在前端另写映射。 */
+state.act.actions.push(
+  { action_id: "report_skill", cmd: "report-skill", tier: "A",
+    summary: "单个 skill 的行为画像",
+    params: { skill: { type: "str", label: "skill" },
+              min_calls: { type: "int", label: "最少调用" } } },
+  { action_id: "cards_validate", cmd: "cards validate", tier: "A",
+    summary: "校验卡片目录", params: {} });
+check("execAidFor：命令名即动作（report-skill）",
+  execAidFor({ cli: "python -m harvester report-skill --skill foo" }) ===
+  "report_skill");
+check("execAidFor：命令名带子动作（cards validate）",
+  execAidFor({ cli: "python -m harvester cards validate --root X" }) ===
+  "cards_validate");
+check("execAidFor：注册表里没有的就返回 null（不许编动作）",
+  execAidFor({ cli: "python -m harvester cards new --sid s1" }) === null);
+check("paramsFromCli：拾 --skill 值",
+  paramsFromCli({ cli: "python -m harvester report-skill --skill foo" },
+    actionSpec("report_skill")).skill === "foo");
+check("paramsFromCli：只认该动作声明的参数（--db 之类不塞进去）",
+  paramsFromCli({ cli: "python -m harvester report-skill --skill foo --db x.db" },
+    actionSpec("report_skill")).db === undefined);
+check("paramsFromCli：int 参数转成数字（--min-calls 5 → 5，不是 \"5\"）",
+  paramsFromCli({ cli: "python -m harvester report-skill --min-calls 5" },
+    actionSpec("report_skill")).min_calls === 5);
+check("paramsFromCli：命令行没写的参数不硬塞（保持缺省）",
+  paramsFromCli({ cli: "python -m harvester report-skill --skill foo" },
+    actionSpec("report_skill")).min_calls === undefined);
+const btnExec = cmdBtnHtml({ cli: "python -m harvester report-skill --skill foo" });
+check("cmdBtnHtml：能执行 → 既有「在命令台执行」也有「复制」",
+  btnExec.includes("data-wact=\"report_skill\"") &&
+  btnExec.includes("在命令台执行") && btnExec.includes("data-clicopy="));
+check("cmdBtnHtml：执行按钮带上了参数（不带参数=跑另一条命令）",
+  btnExec.includes("&quot;skill&quot;") || btnExec.includes("skill"));
+check("cmdBtnHtml：不能执行的只给复制（不放假按钮）",
+  (() => { const h = cmdBtnHtml(
+    { cli: "python -m harvester cards new --sid s1" });
+    return !h.includes("data-wact=") && h.includes("data-clicopy="); })());
+
+/* ⑤c P10 第 4 条：同一句话在多条明细上重复 → 只显示一次（高亮块），
+   条目里只留自己的话。判据机械：完全相同 ≥2 条才算重复。 */
+const SHARED = "这段说明对每一条都适用。";
+const H = hoistNotes([
+  { item_id: "a", detail: SHARED, suggestion: "a 自己的建议" },
+  { item_id: "b", detail: SHARED, suggestion: "b 自己的建议" },
+  { item_id: "c", detail: "只出现一次的话", suggestion: "" },
+]);
+check("hoistNotes：重复句提到面板级、条目里清空",
+  H.notes.length === 1 && H.notes[0].text === SHARED && H.notes[0].count === 2 &&
+  H.items.slice(0, 2).every(i => i.detail === ""));
+check("hoistNotes：只出现一次的句子留在原位（那是这条自己的话）",
+  H.items[2].detail === "只出现一次的话" &&
+  !H.notes.some(n => n.text === "只出现一次的话"));
+check("hoistNotes：不吞条目自己的建议（a/b 各自不同都还在）",
+  H.items[0].suggestion === "a 自己的建议" &&
+  H.items[1].suggestion === "b 自己的建议");
+const nh = notesHtml(H.notes);
+check("notesHtml：高亮块 + 写明适用几条",
+  nh.includes("work-notes") && nh.includes(SHARED) && nh.includes("适用 2 条"));
+/* 真跑渲染：重复句在整页只出现一次，且出现在面板级提示块里 */
+const WI2 = JSON.parse(JSON.stringify(WI));
+WI2.items[0].detail = SHARED;
+WI2.items[1].detail = SHARED;
+const HJ = hoistNotes(WI2.items);
+renderWorkItems(WI2, HJ);
+const page2 = $("work-items").innerHTML;
+check("处理单渲染：重复句在页面上只出现一次",
+  (page2.split(SHARED).length - 1) === 1,
+  "重复 N 遍正是用户 2026-10-24 第 4 条要治的病");
+check("处理单渲染：提示块在条目之前（先读规则再读条目）",
+  page2.indexOf("work-notes") >= 0 &&
+  page2.indexOf("work-notes") < page2.indexOf(WI2.items[0].title));
+
+/* ⑤d 第 5 条：整批命令包要能一眼区分（高亮块 + 「整批」字样） */
+renderWorkPkg(WI, []);
+const pkg2 = $("work-pkg").innerHTML;
+check("处理命令包整块高亮（work-batch）并标明整批",
+  pkg2.includes("work-batch") && pkg2.includes("整批批处理"));
 
 /* ⑤ openInCmd：真跑「跳到命令台并按 action_id 预填参数」 */
 (async () => {

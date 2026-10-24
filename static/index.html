@@ -165,7 +165,7 @@ h3.sec{font-size:14px;margin:18px 0 6px}
   margin-bottom:6px}
 #job-out{max-height:none;overflow:visible}
 #cmd-ledger-box{margin-top:10px;border-top:1px solid var(--line);padding-top:6px}
-#cmd-ledger-box>summary,#cmd-howto>summary{cursor:pointer;color:var(--ink2);
+#cmd-ledger-box>summary{cursor:pointer;color:var(--ink2);
   font-size:12px;padding:3px 0}
 /* 窄屏（<1100px）：结果与参数改上下堆叠，结果仍在前 */
 @media (max-width:1100px){
@@ -418,6 +418,18 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
   cursor:crosshair}
 #kg-brush-rect{position:absolute;display:none;z-index:6;pointer-events:none;
   border:1px dashed #4fb0ff;background:rgba(79,176,255,.12)}
+/* P10（用户 2026-10-24 第 4/5 条）：同一句提示只写一次并高亮；整批命令包
+ * 与逐条命令区分开（左侧色条 + 标题带「整批」）。 */
+.work-notes{border:1px solid var(--accent);border-left:4px solid var(--accent);
+  background:var(--bg);border-radius:8px;padding:8px 10px;margin:8px 0;
+  font-size:12.5px}
+.work-notes .nt{font-weight:600;color:var(--accent);margin-bottom:4px}
+.work-notes ul{margin:0;padding-left:18px}
+.work-notes li{margin:4px 0;color:var(--ink2);line-height:1.6}
+.work-notes .cnt{opacity:.75;margin-left:4px}
+.work-batch{border:1px solid var(--accent);border-left:4px solid var(--accent);
+  border-radius:8px;background:var(--bg);padding:6px 10px;margin:10px 0}
+.work-batch>summary{color:var(--accent);font-weight:600;cursor:pointer}
 </style>
 </head>
 <body>
@@ -545,9 +557,9 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
       <button id="btn-batch-json" class="xbtn" disabled
         title="勾选多个会话后，导出机器可读 JSON：错误按归一模式跨会话去重聚合，可直接交给 Agent 分析">导出所选机器可读 JSON</button>
       <button id="btn-sel-topic" class="xbtn" disabled
-        title="把勾选的会话挂进某个主题的成员清单（写主题台账；B 档两段提交：预演→你确认才写）。目标主题在命令台从清单里选，不用手抄 id">勾选 → 并入主题</button>
+        title="把勾选的会话挂进某个主题的成员清单（写主题台账；会写库，先预演→你确认才写）。目标主题在命令台从清单里选，不用手抄 id">勾选 → 并入主题</button>
       <button id="btn-sel-topic-new" class="xbtn" disabled
-        title="用勾选的会话新建主题：先把主题名注册进台账（B 档两段提交），注册完再用「并入主题」把会话挂进去">勾选 → 注册新主题</button>
+        title="用勾选的会话新建主题：先把主题名注册进台账（会写库，先预演→你确认才写），注册完再用「并入主题」把会话挂进去">勾选 → 注册新主题</button>
       <span class="sub2" id="selinfo"></span>
     </div>
   </div>
@@ -577,7 +589,7 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
     <button id="kg-full" title="隐藏顶栏，图谱占满窗口；再点恢复">全屏</button>
     <span class="sub2" id="kg-bar"></span>
   </div>
-  <div class="sub2" style="margin:6px 2px" id="kg-legend">黑底机械关系图（不是语义图谱）——默认只显示大类；<b>点主题大节点=展开该主题成员子图</b>；搜索框输关键字→只看正文命中子图｜<b style="color:#6ea8ff">●</b>主题　<b style="color:#b48aff">●</b>卡片　<b style="color:#4fd1a5">●</b>关键词　<b style="color:#4fb0ff">●</b>会话<details style="display:inline;margin-left:4px"><summary style="cursor:pointer;display:inline">判据与边类型说明</summary><div style="margin:6px 0;line-height:1.7"><b>会话层</b>：<b>只画用户先发起</b>（首条消息 role='user'）；正文 FTS（messages 索引，检索框同判据）命中会话及其直接邻域；相近聚成一簇<b>只显示代表</b> (+N)，<b>代表点击直达原文</b>；判据=<b>Jaccard</b>≥0.45、bigram 包含率≥0.6、共享定稿词｜<b>边</b>：—成员 —锚点 —归属 —关键词 —<b>标题含词</b> —<b>共享关键词</b>/—<b>关键词辐射</b>（主题连线=P7-② 双判据：共享≥2 个定稿关键词，或 A 的定稿词正文 FTS 命中 B 成员≥3 条；被≥6 主题共用/辐射的泛词不参与，防连锁成团；纯关键词表×FTS 索引×成员表机械对账）｜<b>黑底</b>固定配色；自动枢纽=标题高频片段 df≥8 机械提取，只辐射不归簇；主题连线是数据表机械对账，不是语义相似（真语义待 M2/M4）；会话间无相似度边（聚类只是聚合展示）｜搜索态主题需≥2 个成员命中才显示（弱命中主题隐藏并记账）；点主题走成员子图 ∪ FTS 不受此限｜滚轮缩放 · 拖拽平移 · 悬停亮邻居 · 点卡片过滤邻域 · 点关键词灌进检索 · 框选只看框内子图 · 双击复位</div></details></div>
+  <div class="sub2" style="margin:6px 2px" id="kg-legend">黑底机械关系图（不是语义图谱）——默认只显示大类；<b>点主题大节点=展开该主题成员子图</b>；搜索框输关键字→只看正文命中子图｜<b style="color:#6ea8ff">●</b>主题　<b style="color:#b48aff">●</b>卡片　<b style="color:#4fd1a5">●</b>关键词　<b style="color:#4fb0ff">●</b>会话<details style="display:inline;margin-left:4px"><summary style="cursor:pointer;display:inline">这张图怎么画出来的（点开看细节）</summary><div style="margin:6px 0;line-height:1.7"><b>会话层</b>：<b>只画用户先发起</b>（首条消息 role='user'）；正文 FTS（messages 索引，检索框同判据）命中会话及其直接邻域；相近聚成一簇<b>只显示代表</b> (+N)，<b>代表点击直达原文</b>；判据=<b>Jaccard</b>≥0.45、bigram 包含率≥0.6、共享定稿词｜<b>边</b>：—成员 —锚点 —归属 —关键词 —<b>标题含词</b> —<b>共享关键词</b>/—<b>关键词辐射</b>（主题连线=P7-② 双判据：共享≥2 个定稿关键词，或 A 的定稿词正文 FTS 命中 B 成员≥3 条；被≥6 主题共用/辐射的泛词不参与，防连锁成团；纯关键词表×FTS 索引×成员表机械对账）｜<b>黑底</b>固定配色；自动枢纽=标题高频片段 df≥8 机械提取，只辐射不归簇；主题连线是数据表机械对账，不是语义相似（真语义待 M2/M4）；会话间无相似度边（聚类只是聚合展示）｜搜索态主题需≥2 个成员命中才显示（弱命中主题隐藏并记账）；点主题走成员子图 ∪ FTS 不受此限｜滚轮缩放 · 拖拽平移 · 悬停亮邻居 · 点卡片过滤邻域 · 点关键词灌进检索 · 框选只看框内子图 · 双击复位</div></details></div>
   <div id="kg-out">
     <div id="kg-msg"></div>
     <div id="kg-chart" style="display:none"></div>
@@ -609,7 +621,7 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
 <!-- ============ Tab: 归因台（P6-9） ============
      候选与判定槽同屏：左边是机器出的**候选**（会错），右边是人写的**裁决**
      （只进 attribations 台账）。判据头（等级 + 覆盖度）由后端算，页面只显示；
-     落账走 B 档两段提交（预演 → 确认），绝不在这里造第二条写路径。 -->
+     落账走 B 档（会写库：预演 → 确认才写），绝不在这里造第二条写路径。 -->
 <section class="tab" id="tab-attrib" style="display:none">
   <div class="toolbar">
     <label>窗口（天）<input type="number" id="atr-days" value="30" min="0"
@@ -745,21 +757,6 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
   <details id="cmd-ledger-box">
     <summary>动作台账（写库留痕）</summary>
     <div id="ledger-out"><div class="empty">加载中…</div></div>
-  </details>
-  <details id="cmd-howto" class="panel-intro">
-    <summary>怎么读这个命令台</summary>
-    <div class="sub2">
-      <b>命令 vs 写动作</b>：命令 = 照命令行干活的工具（A 档可在本页直接跑）；
-      写动作 = 会改库的操作——先「预演」给你看将要写什么，你确认才真的写，
-      预演本身一个字都不写。<br>
-      <b>档位</b>：A 只读直接执行｜B 写 meta/采集库（两段提交）｜C 只生成命令，永不执行。<br>
-      <b>复制后怎么跑</b>：开一个终端（PowerShell），先 <code>cd</code> 到本仓根
-      （命令里的 <code>--db</code> 等相对路径都按这个目录解析），再粘贴回车。<br>
-      <b>路径类参数</b>（<code>--root</code> 等）由服务端起服时确定、命令台不暴露——
-      免得把库指错。<br>
-      <b>结果怎么读</b>：左侧主区 = 这次执行的事实（状态/退出码/条数）+ 机械分析；
-      「打包给 LLM」把结果装成结构化 JSON 交模型分析（本页不调模型）。
-    </div>
   </details>
 </section>
 
@@ -1015,7 +1012,7 @@ function bindCardAnchors(root){
 }
 /* v0.76 V6 直给：警告行 [接受] / 本体 [接受整卡] → card_review 预演。
    warn 传完整警告文本（后端按子串匹配，完整串=精确那一行）；
-   落账走 B 档两段提交，直给的只是填参——确认仍由人在预演框里做。
+   落账走 B 档（会写库，先预演、你确认才写），直给的只是填参——确认仍由人在预演框里做。
    绑定点是 renderCards 输出（#rep-out）——不是 #job-out（V7 的
    审计 [接受] 才在那里）。 */
 function bindCardDirect(root){
@@ -1110,6 +1107,12 @@ function switchTab(name){
     b.classList.toggle("on",b.dataset.tab===name);
   for(const sec of document.querySelectorAll("section.tab"))
     sec.style.display=sec.id==="tab-"+name?"":"none";
+  /* P10 第 7 条：图谱页从隐藏变可见后画布尺寸才正确，必须重排一次
+     （否则节点按隐藏时的 0 宽布局，全挤在左边）。 */
+  if(name==="kgraph")setTimeout(()=>{
+    if(kgChart){kgResize();}
+    else if(state.loaded.kgraph&&kgData)kgRender();
+  },0);
   if(!state.loaded[name]){
     state.loaded[name]=true;
     if(name==="home") loadOverview().catch(()=>{});
@@ -1351,10 +1354,37 @@ async function kgWaitJob(jid){
 function kgEnsureChart(){
   if(kgChart)return kgChart;
   if(typeof echarts==="undefined")return null;
-  kgChart=echarts.init($("kg-chart"),null,{renderer:"canvas"});
+  /* P10（用户 2026-10-24 第 7 条：图谱又被挤到左边）：力导向布局按**初始化时
+     画布尺寸**铺点，容器若还是 0 宽/隐藏态，之后 CSS 变宽也不会重排——
+     节点就全堆在左边。这里两道保险：初始化前要求容器已有宽度（没有就先
+     不建，等可见再说），建完立刻按真实尺寸 resize 一次。 */
+  const box=$("kg-chart");
+  if(!box||box.clientWidth<40)return null;
+  kgChart=echarts.init(box,null,{renderer:"canvas"});
   kgChart.on("click",kgCanvasClick);
   kgChart.on("dblclick",()=>kgFitView());
+  kgWatchResize();
+  kgResize();
   return kgChart;
+}
+/* 画布尺寸与容器不一致时对齐（resize 会按新宽高重排力导向布局的边界）。 */
+function kgResize(){
+  if(!kgChart)return false;
+  const box=$("kg-chart");
+  if(!box||box.clientWidth<40||box.clientHeight<40)return false;
+  if(kgChart.getWidth()===box.clientWidth&&
+     kgChart.getHeight()===box.clientHeight)return false;
+  kgChart.resize();
+  return true;
+}
+/* 容器尺寸变化的兜底（切页签/全屏/窗口变宽都走这里，不靠人记得调 resize）。 */
+function kgWatchResize(){
+  if(kgChart.__hvWatched)return;
+  kgChart.__hvWatched=true;
+  if(typeof ResizeObserver==="undefined")return;
+  const ro=new ResizeObserver(()=>{kgResize();});
+  ro.observe($("kg-chart"));
+  kgChart.__hvRO=ro;
 }
 function renderKgraph(d){
   const hints=d.hints||[], nodes=d.nodes||[];
@@ -1459,6 +1489,7 @@ function kgOption(){
 }
 function kgRender(){
   if(!kgData||!kgChart)return;
+  kgResize();   /* 先把画布对齐容器，再铺点（否则布局按旧尺寸算，右侧留白） */
   kgChart.setOption(kgOption(),{notMerge:true});
   kgBar();
 }
@@ -1624,7 +1655,7 @@ async function openSession(sid){
     "<button class='xbtn' id='btn-sess-export' "+
     "title='拉取全部回合全文并导出 Markdown（回合多时较慢，纯浏览器本地完成）'>导出 md</button>"+
     "<button class='xbtn' id='btn-sess-suppress' "+
-    "title='把这条会话从仓内副本里移出（删库内三张表——会话/消息/工具步——的行，加 exports 下的副本文件）；不删采集源。走命令台的两段提交：先预演看清将删什么，再确认才写。'>删除（抑制）</button>"+
+    "title='把这条会话从仓内副本里移出（删库内三张表——会话/消息/工具步——的行，加 exports 下的副本文件）；不删采集源。到命令台先预演看清将删什么，再确认才写。'>删除（抑制）</button>"+
     "<button class='xbtn' id='btn-sess-topic' "+
     "title='把当前会话并入某个主题（P5-② 检索动线收口：读完直接挂进主题，不用回列表重新勾选）。A 档动作，装到命令台确认执行。'>并入主题</button></h2>"+
     "<div class='sub'>"+esc(m.source||"")+" · "+esc(m.model||"（未知）")+
@@ -1641,7 +1672,7 @@ async function openSession(sid){
   $("btn-sess-export").onclick=()=>exportSessionMd(sid)
     .catch(e=>showBanner("err","导出失败："+e.message));
   /* v0.49 会话抑制：**不新造写路径**——把动作与 sid 装到命令台，走现成的
-     B 档两段提交（预演 → 你确认 → 才写）+ 台账（含 destructive 删除前快照）。 */
+     B 档（会写库：预演 → 你确认 → 才写）+ 台账（含 destructive 删除前快照）。 */
   $("btn-sess-suppress").onclick=()=>{
     openInCmd("session_suppress",{sids:sid,reason:""}).catch(()=>{});
   };
@@ -1875,7 +1906,8 @@ function renderRepConcl(kind,d){
         {text:worst?("最该先看："+esc(worst.tool)+"（失败 "+worst.error+
           "｜放弃 "+(worst.given_up||0)+"）——高放弃+高失败=用户路径被硬挡。")
           :"窗口内没有工具失败。",ok:!worst}],
-      sub:"机械事实：由 /api/reports/tools 现算；「最该先看」=放弃数优先、"+
+      sub:"下面这些数字是现场算出来的（/api/reports/tools），不是缓存；"+
+      "「最该先看」=放弃数优先、"+
         "失败数次之的第一名。",
       actions:[{id:"root",label:"看根因",title:"跳到本页根因明细"},
         {id:"bench",label:"起草班规",title:"把这条工具失败写进建议池（agents 报告）"},
@@ -1894,7 +1926,7 @@ function renderRepConcl(kind,d){
         "，涉及 "+(m.sessions||0)+" 个会话。"},
         {text:top?("结构上「"+clsLabel(top[0])+"」最多（"+top[1]+" 条）。")
           :"窗口内没有错误。",ok:!n}],
-      sub:"机械事实：由 /api/reports/errors 现算；类别口径见「怎么读」。",
+      sub:"数字是现场算出来的（/api/reports/errors）；类别怎么分见右上「怎么读」。",
       actions:[{id:"root",label:"看根因",title:"跳到本页模式明细"},
         {id:"bench",label:"起草班规",title:"把这条错误模式写进建议池（agents 报告）"},
         {id:"cmd",label:"在命令台打开",title:"把 report-errors 装到命令台就地执行（A 档只读，结果与本页同源；窗口在命令台参数里调）"}]});
@@ -1911,7 +1943,7 @@ function renderRepConcl(kind,d){
         "（未解决错误 "+unres+" 处）、已自愈 "+watch+"。"},
         {text:todo?"待修清单排在最前，逐条带证据锚点；裁决后用 suggest-status 落账。"
           :"没有待修条目，建议池干净。",ok:!todo}],
-      sub:"机械事实：由 /api/reports/agents 现算；「自愈」=同一模式后来没再失败。",
+      sub:"数字是现场算出来的（/api/reports/agents）；「自愈」=同一模式后来没再失败。",
       actions:[{id:"root",label:"看根因",title:"跳到待修清单"},
         {id:"bench",label:"起草班规",title:"规则句即草稿，复制后人工并入配置"},
         {id:"cmd",label:"在命令台重算建议条目",title:"把 suggest-agents 装到命令台（B 档：先预演要写什么，你确认后才重算并写入建议条目）"}]});
@@ -1933,7 +1965,7 @@ function renderRepConcl(kind,d){
         {text:worst?("最该先看："+esc(worst.skill)+"（失败 "+worst.err+
           "｜无结果 "+(worst.no_result||0)+"）——高失败=常被误用或环境不配合。")
           :"窗口内没有 skill 失败。",ok:!worst}],
-      sub:"机械事实：由 /api/reports/skills 现算；「最该先看」=失败数最高者。",
+      sub:"数字是现场算出来的（/api/reports/skills）；「最该先看」=失败次数最多的那个。",
       actions:[{id:"root",label:"看明细",title:"跳到本页 skill 明细表"},
         {id:"bench",label:"起草班规",title:"把这个 skill 的失败写进建议池（agents 报告）"},
         {id:"cmd",label:"在命令台打开",title:"把 report-skill 装到命令台就地执行（A 档只读，结果与本页同源）"}]});
@@ -1952,7 +1984,7 @@ function renderRepConcl(kind,d){
           "错误>警告>通过，修卡别只看警告。")
           :(s.warn||0)?("没有错误级问题；"+s.warn+" 张警告卡可顺手复核。")
           :"全部通过，卡片库干净。",ok:!(s.error||0)}],
-      sub:"机械事实：校验徽章由主库校验器现算；本体（结论/证据/锚点）来自本地只读服务。",
+      sub:"校验徽章由主库校验器现场算；卡片本体（结论/证据/锚点）来自本地只读服务。",
       actions:[{id:"root",label:"看异常卡",title:"跳到问题卡片列表"}]});
     handlers={root:()=>$("rep-out").scrollIntoView({behavior:"smooth"})};
   }
@@ -1970,7 +2002,7 @@ function triageConcl(d){
       "、skill 候选 "+sk+"、高信号会话 "+hs+"。"},
       {text:np?("优先做 pitfall 卡："+esc(first.pattern)+"（"+first.count+
         " 次）。"):"无首次出现的错误 pattern，观察旧坑与 skill 链即可。",ok:!np}],
-    sub:"机械事实：由 /api/triage 现算；机器只排队，判断与 evidence 由人补全。"});
+    sub:"数字是现场算出来的（/api/triage）；机器只排队，判断和证据由你补。"});
 }
 async function fetchCardsBodies(){
   const res=await fetch(ACT_BASE+"/view/cards");
@@ -2050,12 +2082,9 @@ async function _renderTriage(out,t0){
     "</td><td class='num'>"+x.count+"</td><td class='t-date'>"+
     esc(x.first_seen)+"</td><td>"+
     x.samples.map(s=>anchor(s.sid,s.seq,s.error)).join("<br>")+
-    "</td><td><button class='xbtn' data-cmd=\""+
-    esc("python -m harvester cards new --sid "+
+    "</td><td>"+cmdBtnHtml({cli:"python -m harvester cards new --sid "+
         (x.samples&&x.samples.length?x.samples[0].sid:"<sid>")+
-        " --type pitfall")+
-    "\" title='复制命令行（粘贴到终端运行；开终端 cd 到 session-harvester 目录再粘贴，--db 等相对路径按该目录解析）'>复制命令</button>"+
-    "</td></tr>").join("")+"</tbody></table>")
+        " --type pitfall"})+"</td></tr>").join("")+"</tbody></table>")
     :"<div class='empty'>窗口内无首次出现的错误 pattern</div>";
   html+="<h3 class='sec'>B. 旧坑重现（检查旧卡/建议池是否要更新）</h3>";
   html+=d.old_patterns.length?("<table><thead><tr><th>模式</th><th>类别</th>"+
@@ -2074,10 +2103,8 @@ async function _renderTriage(out,t0){
     "</td><td>"+esc(s.sources.join("/"))+"</td><td class='sub2'>"+
     esc(s.chain.join(" → ")||"（链为空）")+"</td><td>"+
     (s.sample?anchor(s.sample.sid,s.sample.seq,""):"—")+
-    "</td><td><button class='xbtn' data-cmd=\""+
-    esc("python -m harvester report-skill --skill "+s.skill)+
-    "\" title='复制到剪贴板，请自行开终端粘贴执行（本视图绝不执行命令）'>深挖命令</button>"+
-    "</td></tr>").join("")+"</tbody></table>")
+    "</td><td>"+cmdBtnHtml({cli:"python -m harvester report-skill --skill "+
+        s.skill},"在命令台执行")+"</td></tr>").join("")+"</tbody></table>")
     :"<div class='empty'>窗口内无 skill 调用</div>";
   html+="<h3 class='sec'>D. 高信号会话 Top（泛读排期用）</h3>";
   html+=d.hot_sessions.length?("<table><thead><tr><th class='num'>分</th>"+
@@ -2088,15 +2115,14 @@ async function _renderTriage(out,t0){
     "</td><td>"+esc(h.title||"")+"</td><td class='num'>"+h.msgs+
     "</td><td class='num'>"+h.steps+"</td></tr>").join("")+
     "</tbody></table>"):"<div class='empty'>无会话</div>";
-  html+="<p class='sub2'>纪律提醒：本队列是建议池，不是成品——机器只排队，"+
+  html+="<p class='sub2'>说明：这个队列只是「该做什么」的候选，不是成品——机器只排队，"+
     "判断与 evidence 由人补全（锚点可点击直通原会话）。</p>";
   state.triLast=d;
   out.innerHTML=html;
   bindAnchors(out);
   for(const tr of out.querySelectorAll("tr[data-hsid]"))
     tr.onclick=()=>gotoAnchor(tr.dataset.hsid,0,"");
-  for(const b of out.querySelectorAll("button[data-cmd]"))
-    b.onclick=()=>copyText(b.dataset.cmd,b);
+  bindCmdButtons(out);
   $("tri-meta").textContent+="｜生成于 "+
     new Date().toLocaleTimeString("zh-CN",{hour12:false})+
     "（"+((Date.now()-t0)/1000).toFixed(1)+"s）";
@@ -2105,7 +2131,7 @@ async function _renderTriage(out,t0){
 /* ---------- Tab: 归因台（P6-9）----------
    三层分离（SOP A1）在页面上的落法：
    · 事实/候选侧：`attrib` 的机读出口（`data`），逐模式给 why/fix/置信 + 锚点；
-   · 裁决侧：判定槽是**空表**，人填 verdict/note 才落账（B 档两段提交）；
+   · 裁决侧：判定槽是**空表**，人填 verdict/note 才落账（B 档：会写库，预演 → 确认才写）；
    · 判据头（等级 + 覆盖度）**由后端算**，页面只显示，绝不自己拼数字或改等级。 */
 const ATR_VERDICTS=[["accepted","接受（归因对）"],
   ["rejected","驳回（归因错）"],["revise","要改（方向对，why/fix 需改）"]];
@@ -2634,7 +2660,7 @@ function renderErrors(d,out){
        对账扫的就是 `class='pill known'` 的那批文本，等级徽标混进去会被判成
        "页面编造了规则号"。给自己加个 `rvlvl` 标记，既保留样式又不污染那道对账。 */
     html+="<p class='sub2'><span class='pill rvlvl "+(ok?"known":"unknown")+"'>"+
-      esc("本面等级 "+rv.level+"（"+(rv.label||"")+"）")+"</span> "+
+      esc("这一项的可评审等级 "+rv.level+"（"+(rv.label||"")+"）")+"</span> "+
       (ok
         ? (rv.can_verdict?"可评审、可裁决":"可评审但不可裁决（缺台账回填通道）")
         : "<b>不可评审</b>：R1 及以下不标「可评审」——这种数据给再强的模型也评不出根因（设计 §3.1）")+
@@ -2866,7 +2892,7 @@ function renderCards(d,out){
     c.errors.map(e=>"<span class='pill err'>错误</span> "+esc(e)).join("<br>")+
     (c.errors.length&&c.warnings.length?"<br>":"")+
     /* v0.76 V6：警告行带 [接受]——点击装填 card_review 并自动预演，
-       落账走 B 档两段提交（与 V7 锚点直给同模式）。 */
+       落账走 B 档（会写库：预演 → 你确认才写；与 V7 锚点直给同模式）。 */
     c.warnings.map(w=>"<span class='pill known'>警告</span> "+esc(w)+
       " <button class='xbtn' data-cracc='"+esc(w)+"' data-crfile='"+
       esc(c.path)+"'>接受</button>")
@@ -3493,7 +3519,7 @@ function renderDualtrack(d,out){
       "</pre></div></div></details>").join(""))
     :"<div class='empty'>无反转点候选</div>";
   /* 反复叮嘱候选（P4-1 nags，过滤版口径）：候选只列不裁决；
-     「登记零散」复用 sessions_noise（P5-⑧，B 档两段提交，预演可见） */
+     「登记零散」复用 sessions_noise（P5-⑧，B 档：会写库，预演可见） */
   h+="<h4 class='sec'>反复叮嘱候选 "+nags_g.length+
     "（全库 "+esc(String(nag_a.n_groups||0))+"）</h4>";
   h+="<div class='sub2'>"+esc(nag.honest||"")+"</div>";
@@ -3885,8 +3911,8 @@ function renderCmdActions(){
   const cmds=cmdCommands().filter(x=>x.card_id===state.cmdCard);
   const wr=writeActionsForCard(state.cmdCard);
   /* P9（用户 2026-10-23 第 1 条）：这一段原来有 3 句"命令=…写动作=…A 档…"，
-     到处重复。现在只留**事实**一行（卡名/条数/写动作数），
-     解释统一收进面板底部「怎么读这个命令台」。 */
+     到处重复。现在只留**事实**一行（卡名/条数/写动作数）；
+     解释只在上方「怎么读」那一处（P10 2026-10-24：底部那份已删）。 */
   $("cmd-head").innerHTML="动词卡「"+esc((state.act.commands.cards||[])
     .find(c=>c.card_id===state.cmdCard)?.label||state.cmdCard)+"」　"+
     "<span class='sub2'>"+cmds.length+" 条命令"+
@@ -4040,7 +4066,7 @@ function renderCmdParams(){
       cur.subactions.map(s=>"<option value=\""+esc(s.name)+"\""+
         (state.cmdParams.cmd===s.name?" selected":"")+">"+esc(s.name)+
         "（"+esc(s.tier)+" 档）</option>").join("")+"</select>"+
-      "<span class='sub2'>A 档子动作可在本页直接执行；B 档走两段提交。</span></div>";
+      "<span class='sub2'>A 档子动作在本页直接执行；B 档会写库，先预演、你确认才写。</span></div>";
   }
   /* v0.90c 用户批注「能否直接填满所有参数，直接执行就可以了！要不然
    * 真的记不住」：参数预填——用户已输入 > 注册表 default > example，
@@ -4158,7 +4184,7 @@ function updateCmdPreview(){
       $("btn-cmd-run").textContent="预演（先看清楚，再确认才写）";
       $("cmd-est").textContent="动 "+(wspec.target||"meta 库")+" 的记录｜"+
         (wspec.risk==="destructive"?"破坏性：会丢信息":"可逆：写错可改回")+
-        "｜两段提交 + 台账留痕";
+        "｜先预演、你确认才写，写完全程留痕";
     }
     banner.innerHTML="<div class='cmd-cli' title=\""+
       esc("写动作不显示命令行预览（写动作的参数名与命令行参数不同名）。"+
@@ -4194,13 +4220,13 @@ function updateCmdPreview(){
     "<span class='sub2' title=\""+esc("开一个终端（PowerShell），先 cd 到 "+
       (displayPath(state.repoRoot)||"上游 session-harvester 目录")+
       "，再粘贴回车——命令行里的 --db 等相对路径都按这个目录解析"+
-      "（完整说明见底部「怎么读这个命令台」）")+"\">粘贴到仓根终端运行</span>";
+      "（完整说明见右上「怎么读」）")+"\">粘贴到仓根终端运行</span>";
   bar.style.display="";
   if(act&&act.tier==="B"&&!writeDisabled()){
     $("btn-cmd-run").disabled=false;
     $("btn-cmd-run").textContent="预演（先看清楚，再确认才写）";
     $("cmd-est").textContent="动 "+(act.target||"meta 库")+" 的记录｜"+
-      (act.reversible||"")+"｜两段提交 + 台账留痕";
+      (act.reversible||"")+"｜先预演、你确认才写，写完全程留痕";
   }else if(act&&act.tier==="B"){
     $("btn-cmd-run").disabled=true;
     $("btn-cmd-run").textContent="版本不匹配：B 档已禁用";
@@ -4219,7 +4245,7 @@ function updateCmdPreview(){
     const why=c.tier==="C"
       ? "C 档：要占端口常驻／要人亲手登录——只生成命令（红线 3）"
       : (c.tier==="B"
-         ? "B 档：会写库，需两段提交确认（预演 → 你确认 → 才写）"
+         ? "B 档：会写库，先预演看要写什么，你确认后才写"
          : "A 档，但动作面的白名单里还没有这条（现有 "+
            Object.keys(A_ACTIONS()).length+" 个）");
     $("cmd-est").textContent=why+"｜请用上方「复制」拿命令到仓根终端执行";
@@ -4330,6 +4356,115 @@ function cmdHoverTitle(row){
   const h=argsHelp(c);
   if(h)parts.push(h);
   return parts.join(" —— ");
+}
+
+/* P10（用户 2026-10-24 第 2 条：能直接执行的命令，别只给复制）：
+   给一条命令文本反查它的动作 id——**唯一真相是服务端动作注册表**，
+   这里不复制第二张映射表（加了动作页面自动能跑）。
+   命令形态两种：`harvester report-skill --skill x`（命令即动作）、
+   `harvester cards validate`（命令名里带子动作，注册表 cmd 就是
+   "cards validate"），所以先试「名 + 第一段参数」，再试「名」。 */
+function execAidFor(c){
+  if(!c)return null;
+  if(c.action_id)return String(c.action_id);
+  const cli=String(c.cli||"");
+  const m=cli.match(/python -m harvester (\S+)/);
+  if(!m)return null;
+  const name=m[1];
+  const after=cli.slice(m.index+m[0].length).trim();
+  const sub=(after.split(/\s+/)[0]||"").replace(/^[-]+/,"");
+  const keys=[];
+  if(sub&&!/^--/.test(sub))keys.push(name+" "+sub);
+  keys.push(name);
+  for(const k of keys){
+    const aid=actionForCommand(k);
+    if(aid)return String(aid);
+  }
+  return null;
+}
+/* 把命令行里的 `--flag 值` 拾成动作参数（只认该动作**声明的参数名**，
+   多余的一概不塞——参数名空间以注册表为准，命令台不会收未知键）。
+   这是"点一下就把这条命令原样跑起来"的关键：不带参数执行等于跑了另一条
+   命令（如 report-skill 不带 --skill = 全量画像）。 */
+function paramsFromCli(c,spec){
+  const out=Object.assign({},(c&&c.params)||{});
+  const cli=String((c&&c.cli)||"");
+  const ps=(spec&&spec.params)||{};
+  for(const k of Object.keys(ps)){
+    if(out[k]!==undefined)continue;
+    const re=new RegExp("--"+k.replace(/_/g,"[-_]")+"[ =](\\S+)");
+    const m=cli.match(re);
+    if(!m)continue;
+    let v=m[1].replace(/^['\"]|['\"]$/g,"");
+    const ty=String((ps[k]||{}).type||"");
+    if(ty==="int"||ty==="days")v=Number(v);
+    out[k]=v;
+  }
+  return out;
+}
+/* 一条命令统一出按钮组：能执行 → 「在命令台执行」（拾好参数），
+   不能执行 → 只给「复制」。所有页面都走这一个函数，避免"某个页面还只能复制"。 */
+function cmdBtnHtml(c,label){
+  const cli=String((c&&c.cli)||"");
+  const aid=execAidFor(c);
+  let h="";
+  if(aid){
+    const spec=actionSpec(aid);
+    const ps=paramsFromCli(c,spec);
+    const tier=spec?String(spec.tier||""):"";
+    h+="<button class='xbtn' data-wact=\""+esc(aid)+"\" data-wparams=\""+
+      esc(JSON.stringify(ps))+"\" title=\""+esc(tier
+        ?("去命令台执行这一条（"+tier+" 档："+
+           (tier==="A"?"只读，直接跑":"先预演、你确认才写")+"），参数已带上")
+        :"去命令台执行这一条（参数已带上）")+"\">"+
+      esc(label||"在命令台执行")+"</button> ";
+  }
+  if(cli){
+    h+="<button class='xbtn' data-clicopy=\""+esc(cli)+"\" title='"+
+      "复制命令行（粘贴到终端运行；先 cd 到 session-harvester 目录）'>复制</button>";
+  }
+  return h;
+}
+/* 同一句说明在多条明细上重复 → 提到面板级只显示一次（用户 2026-10-24 第 4 条）。
+   判据**机械可判**：完全相同的一句（≥2 条）才算重复；只出现一次的话一律留在
+   条目里（那才是这条自己的话，不能被合走）。返回 {items, notes}，
+   notes 里带 count（适用于几条），页面只渲染一遍。 */
+function hoistNotes(items){
+  const freq={},first={};
+  for(const it of items||[]){
+    for(const k of ["detail","suggestion"]){
+      const v=String(it[k]||"");
+      if(!v)continue;
+      freq[v]=(freq[v]||0)+1;
+      if(!(v in first))first[v]=k;
+    }
+  }
+  const notes=[],seen={};
+  const out=(items||[]).map(it=>{
+    const cp=Object.assign({},it);
+    for(const k of ["detail","suggestion"]){
+      const v=String(it[k]||"");
+      if(v&&freq[v]>=2){
+        if(!seen[v]){
+          seen[v]=1;
+          notes.push({kind:k,text:v,count:freq[v]});
+        }
+        cp[k]="";
+      }
+    }
+    return cp;
+  });
+  return {items:out,notes:notes};
+}
+/* 面板级提示块：这类"纪律/怎么做"的话本来就与条目无关，显示一次 + 高亮，
+   比在每条下面重复 N 遍有用（原样式只有灰字，读起来像噪音）。 */
+function notesHtml(notes,title){
+  if(!notes||!notes.length)return "";
+  return "<div class='work-notes'><div class='nt'>"+
+    esc(title||"这些提示对下面每一条都适用（只写一次）")+"</div><ul>"+
+    notes.map(n=>"<li>"+esc(n.text)+
+      (n.count>1?"<span class='cnt'>（适用 "+n.count+" 条）</span>":"")+
+      "</li>").join("")+"</ul></div>";
 }
 
 async function runCmdAction(){
@@ -4450,7 +4585,7 @@ async function confirmWrite(){
     showBanner("err","执行被拒："+r.__err);
     box.innerHTML=errorBox("执行被拒："+r.__err)+
       (retry?"<div class='sub2'>需要重新预演（参数或库已变）——"+
-        "点「预演」重新走一遍两段提交</div>":"");
+        "点「预演」重新看一遍要写什么，再确认\"</div>":"");
     return;
   }
   box.innerHTML="<div class='sub2'>已写：run_id="+esc(r.run_id||"")+
@@ -4663,7 +4798,7 @@ function jobResultHtml(job){
         (aa.suspicious.length?
           "<button class='xbtn' data-caacc='__all__' data-cafile='"+
           esc(aa.file||"")+"'>全部接受（落账时按届时可疑集取键）</button>":"")+
-        "<div class='sub2'>[接受] 走 B 档两段提交：预演列键 → 你确认才写 "+
+        "<div class='sub2'>[接受] 会写库：先预演列键 → 你确认才写 "+
         "topics_meta.db（audit_review 表）。</div>";
     }
   }
@@ -5199,12 +5334,16 @@ async function loadWork(target){
     return;
   }
   state.work=d;
+  /* 第 4 条先把「重复的同一句话」挑出来：条目里剥掉、面板顶写一次。
+     判据是纯函数 hoistNotes（node 门直接跑它）。 */
+  const hoisted=hoistNotes((d.items||[]).map(it=>Object.assign({},it,{
+    commands:(it.commands||[]).slice()})));
   renderWorkHead(d);
-  renderWorkPkg(d);
-  renderWorkItems(d);
+  renderWorkPkg(d,hoisted.notes);
+  renderWorkItems(d,hoisted);
   $("work-foot").innerHTML="数据库指纹："+
     esc(JSON.stringify((d.db_fingerprint||{}).sessions||"—"))+" 会话　"+
-    "（本页明细与工作台数字同源：/api/workitems，非缓存）";
+    "（这页是现算的，不是缓存；和工作台点进来的数字同一本账）";
   if(glossary.loaded)applyTermTooltips(head);
 }
 function renderWorkHead(d){
@@ -5215,11 +5354,11 @@ function renderWorkHead(d){
   const by=(d.reconcile||[]).map(r=>r.metric+"="+r.by).join("；");
   $("work-head").innerHTML=
     "<div class='wi-head'><div class='wt'>"+esc(d.label)+
-    "　<span class='sub2'>"+esc(grp)+(d.where?"　落点："+esc(d.where):"")+
+    "　<span class='sub2'>"+esc(grp)+(d.where?"　详情在："+esc(d.where):"")+
     "</span></div>"+
     "<div style='margin:5px 0'><span class='wn'>"+d.count+"</span>"+
     "<span class='sub2'>"+esc(d.unit||"")+"</span>　"+
-    "<span class='sub2'>责任方："+esc(d.owner||"—")+"</span></div>"+
+    "<span class='sub2'>谁来做："+esc(d.owner||"—")+"</span></div>"+
     (ms?"<div class='wi-facts'>"+ms+"</div>":"")+
     "<div class='wd'>口径："+esc(d.definition||"")+"</div>"+
     "<div class='qs' title=\""+
@@ -5267,46 +5406,54 @@ function workRows(d){
   }
   return rows;
 }
-function renderWorkPkg(d){
+function renderWorkPkg(d,notes){
   const box=$("work-pkg"),rows=workRows(d);
   if(!rows.length){
-    box.innerHTML="<details><summary>处理命令包</summary>"+
+    box.innerHTML="<details class='work-batch'><summary>处理命令包</summary>"+
       "<div class='sub2'>这批没有可打包的命令（多为已完成的项或纯聚合数）。</div>"+
       "</details>";
     return;
   }
   const shown=rows.slice(0,60);
   const dup=rows.reduce((a,r)=>a+(r.same>1?r.same-1:0),0);
-  let h="<details open><summary>处理命令包（"+rows.length+" 条命令"+
-    (dup?("；已把 "+dup+" 条完全相同的合并——一条命令覆盖整批的，跑一次即可"):"")+
-    "</summary>";
-  h+="<p class='sub2'>纪律：执行只发生在冻结白名单内。命令行可复制到仓根（"+
-     esc(displayPath(state.repoRoot||d.repo_root)||
-       "上游 session-harvester 目录")+"）的终端核对后执行；"+
-     "带「在命令台打开」的可就地执行——B 档两段提交："+
-     "先预演、你确认、才写。</p>"+
-     "<div class='wi-tools'><button class='xbtn' id='work-copy'>"+
-     "复制全部命令</button></div>";
+  /* 同一条命令说明在多条上重复 → 提到块顶写一次（第 4 条）；行里只留
+     "这条命令自己"的话。命令行的 note 重复是**同一个动作**被多条明细引用，
+     合并后信息不丢：上面写一次，下面每行仍能看出它是什么命令。 */
+  const noteFreq={};
+  for(const r of shown)if(r.note)noteFreq[r.note]=(noteFreq[r.note]||0)+1;
+  const cmdNotes=[];
   for(const r of shown){
+    if(r.note&&noteFreq[r.note]>=2&&!cmdNotes.some(x=>x.text===r.note))
+      cmdNotes.push({text:r.note,count:noteFreq[r.note]});
+  }
+  const execN=shown.filter(r=>execAidFor(r)).length;
+  let h="<details open class='work-batch'><summary>处理命令包（"+
+    rows.length+" 条命令；整批批处理，跑一次就覆盖全批"+
+    (dup?("；已把 "+dup+" 条完全相同的合并"):"")+
+    "）</summary>";
+  h+="<p class='sub2'>这些命令可在本页就地执行（"+
+    (execN?("其中 "+execN+" 条能直接跑，"):"")+
+    "B 档写动作会先预演、你确认后才写）；也可以复制到 "+
+    esc(displayPath(state.repoRoot||d.repo_root)||"上游 session-harvester 目录")+
+    " 仓根的终端里跑。</p>"+
+    notesHtml(cmdNotes,"命令包说明（对这些命令都适用，只写一次）")+
+    "<div class='wi-tools'><button class='xbtn' id='work-copy'>"+
+    "复制全部命令</button></div>";
+  for(const r of shown){
+    const ownNote=(r.note&&noteFreq[r.note]<2)?("<div class='wd'>"+esc(r.note)+"</div>"):"";
     h+="<div class='wi-item'><h4>"+esc(r.label||"命令")+
       (r.tier?" <span class='tierbadge "+esc(r.tier)+"'>"+esc(r.tier)+" 档</span>":"")+
-      (r.action_id?" <span class='sub2'>可在命令台执行</span>":"")+"</h4>"+
+      (execAidFor(r)?" <span class='sub2'>可在这页执行</span>":"")+"</h4>"+
       (r.srcs&&r.srcs.length>1
         ?("<div class='wd'>针对：整批通用（覆盖 "+r.srcs.length+
           " 条明细： "+esc(r.srcs.slice(0,3).join("、")+
           (r.srcs.length>3?" 等":""))+"）</div>")
         :(r.src?"<div class='wd'>针对："+esc(r.src)+"</div>":""))+
       (r.shared_note?"<div class='wd'><b>"+esc(r.shared_note)+"</b></div>":"")+
-      (r.note?"<div class='wd'>"+esc(r.note)+"</div>":"")+
+      ownNote+
       "<div class='wi-cmd' title=\""+esc(cmdHoverTitle(r))+"\">"+
-      esc(r.cli||"（服务端未给命令行文本）")+
-      (r.cli?" <button class='xbtn' data-clicopy=\""+esc(r.cli)+
-        "\" title='复制命令行（粘贴到终端运行；开终端 cd 到 session-harvester 目录再粘贴，--db 等相对路径按该目录解析）'>复制"+
-        "</button>":"")+"</div>"+
-      (r.action_id?("<button class='xbtn' data-wact=\""+esc(r.action_id)+
-        "\" data-wparams=\""+esc(JSON.stringify(r.params))+
-        "\">在命令台打开</button>"):"")+
-      "</div>";
+      esc(r.cli||"（服务端未给命令行文本）")+"</div>"+
+      "<div class='wi-tools'>"+cmdBtnHtml(r)+"</div></div>";
   }
   if(rows.length>shown.length)
     h+="<div class='sub2'>另有 "+(rows.length-shown.length)+
@@ -5314,13 +5461,20 @@ function renderWorkPkg(d){
   box.innerHTML=h+"</details>";
   const cb=$("work-copy");
   if(cb)cb.onclick=()=>copyText(rows.map(r=>r.cli||"").filter(Boolean).join("\n"),cb);
-  for(const b of box.querySelectorAll("[data-clicopy]"))
+  bindCmdButtons(box);
+}
+/* 命令按钮的统一接线（复制 / 去命令台执行）——一个地方绑，别在每个渲染
+   函数里各写一遍（漏一处就是"这页怎么只能复制"）。 */
+function bindCmdButtons(root){
+  if(!root)return;
+  for(const b of root.querySelectorAll("[data-clicopy]"))
     b.onclick=()=>copyText(b.dataset.clicopy,b);
-  for(const b of box.querySelectorAll("[data-wact]"))
+  for(const b of root.querySelectorAll("[data-wact]"))
     b.onclick=()=>{openInCmd(b.dataset.wact,JSON.parse(b.dataset.wparams||"{}"));};
 }
-function renderWorkItems(d){
-  const box=$("work-items"),items=d.items||[];
+
+function renderWorkItems(d,notes){
+  const box=$("work-items"),items=(notes?notes.items:d.items)||[];
   if(!items.length){
     box.innerHTML="<h3 class='sec'>待处理记录</h3><div class='empty'>"+
       (d.count===0?"这一队是空的——当前没有需要处理的记录。"
@@ -5328,11 +5482,10 @@ function renderWorkItems(d){
     return;
   }
   let h="<h3 class='sec'>待处理记录（"+items.length+" 条，与上面的数字同源";
-  /* v0.72：已处置（done/rejected）条目灰显+徽章——数字不会因处置变少，
-     但视觉上必须能一眼分办哪些已经办完。 */
   const dispN=items.filter(i=>i.disposition==="done"||i.disposition==="rejected").length;
   if(dispN)h+="——其中 "+dispN+" 条已处置过，灰显区分";
   h+="）</h3>";
+  h+=notesHtml(notes&&notes.notes,"这些说明对下面每条都适用（已从条目里提出来，只写一次）");
   /* 整批通用命令（workRows 去重判定 same>1 的）：明细行不再重复贴同一条命令，
      改成一句提示——用户批注「完全一样的命令需要反反复复执行?」：不需要。 */
   const seen={},sharedKeys=new Set();
@@ -5347,13 +5500,8 @@ function renderWorkItems(d){
       (sharedKeys.has(cmdKey(c))
         ?"<div class='wd sub2'>ⓘ 这条命令整批通用（在上方命令包里，跑一次即覆盖全部明细），不逐条重复。</div>"
         :"<div class='wi-cmd' title=\""+esc(cmdHoverTitle(c))+"\">"+
-         esc(c.cli||"")+
-         (c.cli?" <button class='xbtn' data-clicopy=\""+esc(c.cli)+
-           "\" title='复制命令行（粘贴到终端运行；开终端 cd 到 session-harvester 目录再粘贴，--db 等相对路径按该目录解析）'>复制"+
-           "</button>":"")+"</div>")+
-      (c.action_id?("<button class='xbtn' data-wact=\""+esc(c.action_id)+
-        "\" data-wparams='"+esc(JSON.stringify(c.params||{}))+
-        "'>在命令台打开（已预填）</button>"):"")).join("");
+         esc(c.cli||"")+"</div>"+
+         "<div class='wi-tools'>"+cmdBtnHtml(c)+"</div>")).join("");
     const dispLabel={done:"已处置",partial:"处置一半",rejected:"已驳回"}[it.disposition];
     const dispCls=(it.disposition&&it.disposition!=="open")?" "+it.disposition:"";
     return "<div class='wi-item "+esc(it.level||"")+dispCls+"'>"+
@@ -5369,10 +5517,7 @@ function renderWorkItems(d){
   }).join("");
   box.innerHTML=h;
   bindAnchors(box);
-  for(const b of box.querySelectorAll("[data-clicopy]"))
-    b.onclick=()=>copyText(b.dataset.clicopy,b);
-  for(const b of box.querySelectorAll("[data-wact]"))
-    b.onclick=()=>{openInCmd(b.dataset.wact,JSON.parse(b.dataset.wparams||"{}"));};
+  bindCmdButtons(box);
 }
 /* 处理单 → 命令台：把 action_id 与参数带过去（用户点一下就到位，不用手抄 key）。
    注意**不能**先置 state.loaded.cmd：那是 switchTab 的加载守卫（SOP §5 第 1 条）。
@@ -5424,7 +5569,7 @@ async function openInCmd(actionId,params){
 
 /* ---------- 会话抑制（v0.49；用户批准清单 ①–⑦，⑧ 不做）----------
    纪律两条：
-   ① **不新造写路径**：删除/恢复都只是把动作装到命令台，走现成的 B 档两段提交
+   ① **不新造写路径**：删除/恢复都只是把动作装到命令台，走现成的 B 档（会写库，先预演、你确认才写）
       （预演 → 你确认 → 才写）+ 台账（destructive 带删除前快照）；
    ② 「已抑制」清单**一次取全量**（`/api/suppressed`），**不做客户端分页筛选**——
       在只有一页的表格上做筛选，看起来像"全部就这些"，那是 §七 20 那类静默骗人。

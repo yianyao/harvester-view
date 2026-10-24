@@ -454,13 +454,12 @@ def _distill_items(g) -> list[dict]:
                    ("疑似已有卡", "是" if p.get("known_card") else "否")],
             anchor=_anchor(first and first.get("sid"), first and first.get("seq"),
                            first and first.get("error")),
-            detail="这个坑最近反复出现，但建议池里还没有对应条目——"
-                   "也就是还没登记过怎么处置它。",
-            suggestion="两条路都已备好，点下面命令包里的「在命令台打开」即可："
-                       "① 「生成班规候选」把它起草成给 AI 的规则条目（预演确认后"
-                       "写建议池文件，再人工定稿）；② 「生成蒸馏包」从出坑的这次"
-                       "会话导出打包材料，交给 AI 写知识卡片。工具只出草稿，"
-                       "不会自动改你的规则文件（AGENTS.md）。",
+            detail="这个坑最近反复出现，建议池里还没有对应条目"
+                   "（没登记过怎么处置它）。",
+            suggestion="两条路都备好了：① 起草成给 AI 的规则——先预演，"
+                       "确认后才写建议池文件，再人工定稿；② 把出坑那次的会话"
+                       "打包，交给 AI 写知识卡片。工具只出草稿，"
+                       "不会改你的 AGENTS.md。",
             commands=_draft_command(first),
             owner="Agent（起草）+ 人（定稿）"))
     return items
@@ -471,8 +470,8 @@ def _draft_command(sample) -> list[dict]:
         return []
     return [_cmd(
         "打包这一条的会话原文（蒸馏包）",
-        "B 档动作：点了在命令台预填好 sid，先预演、确认才写；"
-        "产物是自包含 md（会话原文+卡片规范+指令），直接喂 Agent 就能起草。",
+        "点了会在命令台预填好 sid；先预演看要写什么，确认后才写。"
+        "产物是一份 Markdown（会话原文+卡片规范+指令），直接交给 AI 就能起草。",
         cli=_cli(["draft", "--sid", _q(sample["sid"]), "--type", "pitfall"]),
         action_id="draft_pack",
         params={"sid": sample["sid"], "type": "pitfall"}, tier="B")]
@@ -865,7 +864,7 @@ def _targets_all(g) -> list[dict]:
                        "一条模式只做一次，别批量生成一堆没人看的卡片。",
          "package": [c for c in [
              _cmd("按模板出建议池候选（人工再审）",
-                  "B 档动作：点了在命令台预填好，先预演看清将写什么，确认才写。"
+                  "点了会预填参数；先预演看要写什么，确认后才写。"
                   "只产候选、只写建议池文件，不改 AGENTS.md。",
                   cli=coverage_cli,
                   action_id="suggest_agents",

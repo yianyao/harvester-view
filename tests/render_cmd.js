@@ -628,8 +628,11 @@ check("P9-③ 动词卡全表默认收起 + 记住展开状态",
   html.includes('localStorage.getItem("hv_cmd_rail")'));
 check("P9-③ 动作台账折到底部（details）",
   /<details id="cmd-ledger-box">/.test(html));
-check("P9-① 长解释收进「怎么读」（主体只留事实一行）",
-  html.includes("怎么读这个命令台") &&
+check("P9-①/P10 长解释只在「怎么读」一处（主体只留事实一行，底部那份已删）",
+  html.includes('panelIntro("cmd")') &&
+  html.includes("怎么读") &&
+  !html.includes("怎么读这个命令台") &&
+  !html.includes('id="cmd-howto"') &&
   !html.includes("这张卡上有 ") &&
   !html.includes("复制后这样跑：开一个终端"));
 check("P9-⑤ 归因台类别显示规则类，并标出与模式类不一致",

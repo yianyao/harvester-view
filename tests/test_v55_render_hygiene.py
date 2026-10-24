@@ -206,6 +206,60 @@ class TestCommandHoverTitle(unittest.TestCase):
         self.assertIn("按 Agent（数据源）看错误三分类", self.html)
 
 
+class TestP10DuplicateHintsAndCommandButtons(unittest.TestCase):
+    """P10（用户 2026-10-24 第 1/2/4/5 条）：
+    ① 同一段「怎么读」只允许一处 —— 命令台左下的那一份必须删掉，
+       它独有的三段要搬进右上（glossary 的 cmd.intro），删了不丢信息；
+    ② 能执行的命令必须走统一按钮组（不许某个页面还只给复制）；
+    ③ 「整批命令包」要与逐条命令视觉可分；
+    ④ 面板级提示只有一处渲染函数（多个页面各拼一遍就是新的重复源）。
+    """
+
+    def setUp(self):
+        self.html = INDEX.read_text(encoding="utf-8")
+        self.gloss = json.loads(
+            (VIEW_ROOT / "static" / "glossary.json").read_text(encoding="utf-8"))
+
+    def test_bottom_howto_block_removed(self):
+        self.assertNotIn('id="cmd-howto"', self.html,
+                         "左下重复的「怎么读这个命令台」必须删掉（右上已有一份）")
+        self.assertNotIn("怎么读这个命令台", self.html)
+        self.assertNotIn("#cmd-howto", self.html)
+
+    def test_howto_content_moved_not_lost(self):
+        cmd = [p for p in self.gloss["panels"] if p["panel"] == "cmd"][0]
+        intro = cmd["intro"]
+        for need in ("A 档", "B 档", "C 档", "--root", "cd ",
+                     "打包给 LLM"):
+            self.assertIn(need, intro,
+                          f"删掉的说明里「{need}」没搬进右上 cmd.intro")
+
+    def test_all_command_rows_use_one_button_helper(self):
+        self.assertIn("function cmdBtnHtml(", self.html)
+        self.assertIn("function execAidFor(", self.html)
+        self.assertIn("function bindCmdButtons(", self.html)
+        # 处理单命令包 / 明细 / 蒸馏队列两处表格都必须用它（漏一处就退回"只能复制"）
+        self.assertGreaterEqual(self.html.count("cmdBtnHtml("), 4,
+                                "四个调用点：命令包、明细、分诊 A 区、分诊 C 区")
+        # 旧的内联复制按钮（data-cmd + 手写 title）不许再出现
+        self.assertNotIn("button[data-cmd]", self.html)
+
+    def test_exec_lookup_does_not_hardcode_second_map(self):
+        # 反查必须读动作注册表（state.act.actions），不许在前端复制映射表
+        body = self.html[self.html.index("function execAidFor("):]
+        body = body[:body.index("\nfunction ", 10)]
+        self.assertIn("actionForCommand(", body)
+        self.assertNotIn('"report_skill"', body)
+        self.assertNotIn('"cards_validate"', body)
+
+    def test_notes_rendered_by_single_helper(self):
+        self.assertEqual(self.html.count("function notesHtml("), 1)
+        self.assertEqual(self.html.count("function hoistNotes("), 1)
+        self.assertIn("class='work-notes'", self.html)
+        self.assertIn("work-batch", self.html)
+        self.assertIn("整批批处理", self.html)
+
+
 class TestActionIdFormsResolved(unittest.TestCase):
     """双形态选中解析：runCmdAction 不许再报「没有已实现的动作」。"""
 
@@ -284,12 +338,16 @@ class TestEnvprobeAndCopyButtons(unittest.TestCase):
     def test_copy_buttons_present(self):
         # 命令台预览行 + 处理单两处命令框都要有一键复制
         self.assertIn("btn-cmd-copy", self.html)
-        self.assertGreaterEqual(self.html.count("data-clicopy="), 2)
+        self.assertGreaterEqual(self.html.count("data-clicopy="), 1)
         # v0.90b 用户批注「这是啥意思？」：粘贴位置说明必须说人话——
-        # 操作步骤（开终端 → cd 到哪 → 粘贴回车）+为什么（相对路径基准）；
-        # 「仓根的终端」「到仓根目录的终端里粘贴执行」类黑话禁止回归
-        self.assertGreaterEqual(self.html.count("粘贴到终端运行"), 4)
-        self.assertGreaterEqual(self.html.count("cd 到 session-harvester"), 3)
+        # 操作步骤（开终端 → cd 到哪 → 粘贴回车）+为什么（相对路径基准）。
+        # P10（2026-10-24 第 2/6 条）后这条说明**只剩单一出口**（cmdBtnHtml /
+        # 命令台预览按钮），所以改成"钉住那几处、别再各写各的"，
+        # 而不是按出现次数下限（次数多恰恰是重复的病）。
+        self.assertIn("粘贴到终端运行", self.html)
+        self.assertIn("cd 到 session-harvester", self.html)
+        self.assertLessEqual(self.html.count("粘贴到终端运行"), 3,
+                            "复制说明只该在少数出口写；多处各写一遍就是重复")
         self.assertNotIn("到仓根目录的终端里粘贴执行", self.html)
         self.assertNotIn("粘贴位置：仓根", self.html)
 
@@ -373,8 +431,13 @@ class TestSessionsTopicMergeGate(unittest.TestCase):
     def test_merge_buttons_present_with_two_phase_note(self):
         for bid in ("btn-sel-topic", "btn-sel-topic-new"):
             self.assertIn('id="%s"' % bid, self.html)
-        self.assertIn("两段提交", self.html.split('id="btn-sel-topic"')[1][:400],
-                      "入口按钮必须交代写主题台账走两段提交")
+        # P10（2026-10-24 第 6 条）："两段提交"这个自造词已换成动作顺序；
+        # 判据不变——入口按钮必须交代"会写库、先预演、你确认才写"。
+        slice_ = self.html.split('id="btn-sel-topic"')[1][:400]
+        self.assertIn("先预演", slice_,
+                      "入口按钮必须交代写主题台账前先预演")
+        self.assertIn("你确认才写", slice_,
+                      "入口按钮必须交代预演后由人确认才写")
 
     def test_merge_buttons_wire_open_in_cmd(self):
         self.assertIn('openInCmd("topic_add"', self.html)

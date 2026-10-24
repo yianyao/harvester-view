@@ -85,15 +85,20 @@ function mkEl(id) {
 const els = {};
 function $(id) { if (!els[id]) els[id] = mkEl("#" + id); return els[id]; }
 
-/* echarts 桩：记录 setOption/on/resize */
+/* echarts 桩：记录 setOption/on/resize（getWidth/getHeight 是 P10 加的真接口：
+   kgResize 靠它们判断"画布尺寸与容器是否一致"，桩里必须像真的一样给数）。 */
 function mkFakeChart() {
   const calls = [];
   const chart = {
     _calls: calls,
     _on: {},
+    _w: 900,
+    _h: 620,
     on(ev, fn) { chart._on[ev] = fn; },
     setOption(opt, opts) { calls.push({ opt, opts }); },
-    resize() { chart.resized = true; },
+    resize() { chart.resized = (chart.resized || 0) + 1; },
+    getWidth() { return chart._w; },
+    getHeight() { return chart._h; },
   };
   return chart;
 }
@@ -104,7 +109,8 @@ const FN_SRC = [
   extract("kgBar", ""), extract("kgOption", ""),
   extract("kgRender", ""), extract("kgFitView", ""),
   extract("kgCanvasClick", "p"), extract("kgOpenSession", "sid"),
-  extract("kgEnsureChart", ""), extract("renderKgraph", "d"),
+  extract("kgEnsureChart", ""), extract("kgResize", ""),
+  extract("kgWatchResize", ""), extract("renderKgraph", "d"),
   extract("loadKgraph", ""), extract("kgWaitJob", "jid"),
   extract("kgNodePixels", ""), extract("kgBrushPick", "x0,y0,x1,y1"),
   extract("kgBrushApply", "sel"),
@@ -131,7 +137,8 @@ function mkScope(env) {
     "  set kgBrushSel(v){kgBrushSel=v;},\n" +
     "  get kgWeakTopics(){return kgWeakTopics;},\n" +
     "  kgVisible,kgAdjBuild,kgBar,kgOption,kgRender,kgFitView,\n" +
-    "  kgCanvasClick,kgOpenSession,kgEnsureChart,renderKgraph,loadKgraph,\n" +
+    "  kgCanvasClick,kgOpenSession,kgEnsureChart,kgResize,kgWatchResize,\n" +
+    "  renderKgraph,loadKgraph,\n" +
     "  kgWaitJob,kgNodePixels,kgBrushPick,kgBrushApply};");
   return factory(env.$, env.esc, env.errorBox, env.actJson, env.actApi,
     env.switchTab, env.openSession, env.jumpCloudWord,
@@ -444,6 +451,35 @@ scope.renderKgraph(DATA);
   chart._calls.length = 0;
   scope.kgFitView();
   check("复位重跑力导向（setOption+1）", chart._calls.length === 1);
+}
+
+/* ⑥b P10（用户 2026-10-24 第 7 条：图谱又全被挤到左边）——
+   根因是"画布尺寸与容器不一致时照样铺点"：隐藏/0 宽时 init，之后变宽也不重排。
+   两条门：① 容器还没有宽度时**不许建实例**（返回 null，走既有的 fail loud 路）；
+   ② 渲染/切页前先把画布对齐容器（resize 真被调用）。 */
+{
+  const box = els["kg-chart"];
+  const savedW = box.clientWidth, savedH = box.clientHeight;
+  const scope3 = mkScope({
+    $: $, esc: esc, errorBox: s => "<div class='err'>" + s + "</div>",
+    actJson: async () => ({}), actApi: async () => ({}),
+    switchTab: () => {}, openSession: () => Promise.resolve(),
+    jumpCloudWord: () => {},
+    KG_KIND_COLOR, KG_KIND_SIZE, KG_KIND_NAME, KG_EDGE_LABEL,
+  });
+  box.clientWidth = 0; box.clientHeight = 0;
+  check("P10 图谱：容器 0 宽时不建实例（不许按 0×0 布局）",
+    scope3.kgEnsureChart() === null);
+  box.clientWidth = 1200; box.clientHeight = 620;
+  const c2 = mkFakeChart();
+  c2._w = 300; c2._h = 200;          /* 旧画布尺寸 ≠ 容器 */
+  scope3.kgChart = c2;
+  check("P10 图谱：尺寸不一致时对齐容器（挤左边就是没对齐）",
+    scope3.kgResize() === true && c2.resized === 1);
+  c2._w = 1200; c2._h = 620;         /* 真 echarts resize 后自报新尺寸 */
+  check("P10 图谱：尺寸已一致时不重复 resize（省一次重排）",
+    scope3.kgResize() === false && c2.resized === 1);
+  box.clientWidth = savedW; box.clientHeight = savedH;
 }
 
 /* ⑦ 动作失败不静默（loadKgraph 管线） */

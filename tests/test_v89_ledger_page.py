@@ -119,7 +119,7 @@ class ActionRunTest(unittest.TestCase):
 
     def test_ledger_handler_returns_plain_structure(self):
         d = AS.ACTIONS["artifact_ledger"]["handler"](self.cfg, {"limit": 3})
-        self.assertEqual(d["schema"], "artifact_ledger/1")
+        self.assertEqual(d["schema"], "artifact_ledger/2")
         self.assertIsNone(d.get("exit_code"),
                           "cmd=None 的动作没有 CLI 退出码；出现它是包装层串了")
         self.assertLessEqual(len(d["rows"]), 3)
@@ -135,7 +135,7 @@ class ActionRunTest(unittest.TestCase):
             con.close()
         d = AS.ACTIONS["review_pack"]["handler"](
             self.cfg, {"sid": sid, "file_path": fp})
-        self.assertEqual(d["schema"], "review_pack/1")
+        self.assertEqual(d["schema"], "review_pack/2")
         self.assertTrue(d["versions"])
         self.assertIsNone(d.get("exit_code"))
 

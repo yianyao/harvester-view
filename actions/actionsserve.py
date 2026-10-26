@@ -480,7 +480,8 @@ def _action_artifact_ledger(cfg: Config, params: dict) -> dict:
     """
     from . import artledger
     return artledger.build(
-        cfg, limit=_num(params.get("limit")) or 200,
+        cfg, group=str(params.get("group") or "topic"),
+        limit=_num(params.get("limit")) or 200,
         sort=str(params.get("sort") or "versions"),
         sid=str(params.get("sid") or "").strip())
 
@@ -493,6 +494,15 @@ def _action_review_pack(cfg: Config, params: dict) -> dict:
     结论回填走 `cards new`（B 档两段提交），本动作不造任何写路径。
     """
     from . import reviewpack
+    tid = str(params.get("topic_id") or "").strip()
+    # `mode` 没给时按参数推断：给了 topic_id 就是主题包，否则单文件包。
+    # 为什么不让前端必传 mode：命令台手跑时少记一个参数就少一处出错。
+    mode = str(params.get("mode") or "").strip().lower()
+    if not mode:
+        # 给了 sid 就是要单个文件/会话的包，否则按主题打包（默认口径）
+        mode = "file" if params.get("sid") else "topic"
+    if mode == "topic":
+        return reviewpack.build_topic(cfg, topic_id=tid)
     return reviewpack.build(cfg,
                             sid=str(params.get("sid") or "").strip(),
                             file_path=str(params.get("file_path") or "").strip())
@@ -1246,12 +1256,19 @@ ACTIONS: dict[str, dict] = {
     },
     "artifact_ledger": {
         "tier": "A",
-        "label": "产物台账（全库：写过哪些文件、改了几版、属于哪个主题）",
-        "desc": "全库翻一遍 AI 写/改过哪些文件：每个「会话 × 文件」一行，带版数、"
-                "首末时间、改动字数，并反查它落在哪个主题里。页头带覆盖度"
+        "label": "产物台账（按主题/会话分批：写过哪些文件、改了几版）",
+        "desc": "全库翻一遍 AI 写/改过哪些文件：**默认按主题分批**（一个主题"
+                "一行：会话/文件/版数/核心产物/一次过/主目录），也能切成"
+                "「按会话」或「按文件」。核心产物 = 同一会话里同一个文件改过"
+                "≥3 版（反复磨的那些）；其余只计数——一个主题几百个文件时，"
+                "这是唯一读得动的口径。页头带覆盖度"
                 "（只接 dsh 一个源，已登记 N / 全会话 M），**本面不代表全库**。"
                 "只读，不落盘，不代跑提取。",
-        "params": {"limit": {"type": "int", "src": "chips", "default": 200,
+        "params": {"group": {"type": "enum", "required": False, "default": "topic",
+                             "choices": ["topic", "session", "file"],
+                             "label": "按什么单位读（topic=一个主题一行 / "
+                                      "session=一个会话一行 / file=一个文件一行）"},
+                   "limit": {"type": "int", "src": "chips", "default": 200,
                              "label": "最多几行"},
                    "sort": {"type": "text", "src": "chips",
                             "default": "versions",
@@ -1267,15 +1284,24 @@ ACTIONS: dict[str, dict] = {
     },
     "review_pack": {
         "tier": "A",
-        "label": "评审包（一个文件为什么被改成这样）",
+        "label": "评审包（一个主题 / 一个文件为什么被改成这样）",
         "desc": "把「为什么改成这样」的材料打成一个包：版本序列 + 改动前后的"
                 "打磨/反转候选 + 本会话踩过的错 + 相关历史卡 + 锚点清单，整段"
-                "可复制交给任何 Agent 评。**时间相邻不是因果、过程指标不是"
+                "可复制交给任何 Agent 评。**默认按主题打包**（一个主题几百个"
+                "文件时只摊开反复改过的核心产物，其余只计数）。**时间相邻不是因果、过程指标不是"
                 "质量分**，包里明写。结论回填走 `cards new`（两段提交）。",
-        "params": {"sid": {"type": "sid", "src": "sessions_api",
-                           "default": None, "label": "会话 id"},
+        "params": {"mode": {"type": "enum", "required": False,
+                            "choices": ["topic", "file"], "default": "topic",
+                            "label": "包的种类（topic=一个主题/一批产物；"
+                                     "file=单个文件）"},
+                   "topic_id": {"type": "text", "required": False,
+                                "label": "主题 id（mode=topic；留空 = 未归主题那批）"},
+                   "sid": {"type": "sid", "src": "sessions_api",
+                           "default": None, "required": False,
+                           "label": "会话 id（mode=file）"},
                    "file_path": {"type": "text", "required": False,
-                                 "label": "文件路径（可空：空则自动挑改得最多的）"}},
+                                 "label": "文件路径（mode=file；可空：空则自动挑"
+                                          "改得最多的）"}},
         "est_sec": 4,
         "reversible": "幂等（只读四本账与卡片目录，产物返回页面不落盘）",
         "writes": "",

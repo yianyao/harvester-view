@@ -73,6 +73,7 @@ WHERE_REPORTS_SKILL = "报告页 → Skill 行为画像（同源可对账）"
 WHERE_TRIAGE = "蒸馏队列页（同源可对账）"
 WHERE_TOPICS = "主题页（同源可对账）"
 WHERE_CARDS = "卡片页 → 卡片校验（同源可对账）"
+WHERE_REPORTS_LEDGER = "报告页 → 产物台账（同源可对账）"
 
 
 # ---------------------------------------------------------------- 小工具
@@ -573,6 +574,106 @@ def _verify_commands(g) -> list[dict]:
                   "--min-total", "10"]))]
 
 
+def _bare_sid(x: str) -> str:
+    """去掉源前缀（第一个冒号前那段），只剥这一层——与 reviewpack 同一判据。"""
+    t = str(x or "")
+    return t.split(":", 1)[1] if ":" in t else t
+
+
+def _artifact_batches(g) -> list[dict]:
+    """待评审的产物批次（D3′，2026-10-26）。
+
+    判据两条，缺一不可：
+    ① 这批（一个主题 / 未归主题那批）里有**核心产物**——同一会话里同一个
+       文件被写/改 ≥3 版（反复磨过的那些）；
+    ② **没有任何一张卡的锚点指向这批的会话**——改了多版却从没沉淀成卡，
+       正是「值得拿出来评一次」的那批。
+
+    为什么这么定：产物台账只回答「改了多少」，回答不了「该不该管」。把
+    「反复改」与「从没沉淀」交叉起来，才是决策层要的那一批；只看版数会把
+    批量生成的模板文件也算进来。
+    """
+    cfg = g["cfg"]
+    meta = getattr(cfg, "artifacts_meta", None)
+    if not meta or not Path(meta).is_file():
+        return []
+    from . import artledger as _al
+    pairs = _al._pairs(meta)
+    rows, _empty = _al.group_topics(pairs, getattr(cfg, "topics_meta", None))
+    card_sids = set()
+    for c in (g.get("cards") or {}).get("cards") or []:
+        for a in c.get("anchors") or []:
+            if isinstance(a, dict) and a.get("sid"):
+                card_sids.add(_bare_sid(a["sid"]))
+    out = []
+    for r in rows:
+        core = r["buckets"]["core"]["pairs"]
+        if not core:
+            continue
+        sids = r.get("sids") or []
+        if any(_bare_sid(x) in card_sids for x in sids):
+            continue
+        top = "、".join("%s（%d 版）" % (d["dir"], d["versions"])
+                       for d in (r.get("top_dirs") or [])[:3])
+        out.append(_item(
+            "artifact:" + (r["topic_id"] or "unfiled"), r["topic_name"],
+            metrics={"count": core, "core": core, "versions": r["versions"]},
+            facts=[("核心产物", "%d 条（改过 3 版以上的文件）" % core),
+                   ("其余文件", "%d 个（1–2 版）" % r["buckets"]["once"]["pairs"]),
+                   ("会话", "%d 个" % r["sessions"]),
+                   ("主目录", top or "—")],
+            detail="按主题分批后，这批有 %d 条核心产物，但没有一张卡的锚点指向"
+                   "这批的会话——改了多版却从没沉淀。" % core,
+            suggestion="点「打主题评审包」：只摊开核心产物与跨会话错误，"
+                       "评完的结论回填 `cards new`（两段提交）。"
+                       "**一次只评一批**，别把整个主题一次倒进来。",
+            commands=[_cmd("打主题评审包（只读）",
+                           "把这个主题的产物按会话分批、只摊开核心产物；"
+                           "包是只读的，结论回填另走 cards new。",
+                           action_id="review_pack",
+                           params={"mode": "topic",
+                                   "topic_id": r["topic_id"] or ""},
+                           tier="A")],
+            level="warn", owner="人 + Agent"))
+    return out
+
+
+def _nags_items(g) -> list[dict]:
+    """反复叮嘱候选组（D3′）：同一句意思的问话在多个会话里反复出现。
+
+    口径来自 `actions/analysis/nags.py` 的冻结实现——本模块**不复刻阈值**，
+    只把结果包成 target 明细。
+    """
+    cfg = g["cfg"]
+    if not cfg.db or not Path(cfg.db).is_file():
+        return []
+    from . import actionsserve as _as
+    from .analysis import nags
+    con = _as.open_ro(cfg.db)
+    try:
+        res = nags.collect(con)
+    finally:
+        con.close()
+    out = []
+    for i, grp in enumerate(res.get("groups") or []):
+        sm = grp.get("sample") or {}
+        prev = str(sm.get("preview") or "")
+        out.append(_item(
+            "nags:%d" % i, (prev[:40] + "…") if len(prev) > 40 else prev,
+            metrics={"count": int(grp.get("n") or 0),
+                     "sessions": len(grp.get("sids") or [])},
+            facts=[("出现次数", "%d 次" % int(grp.get("n") or 0)),
+                   ("涉及会话", "%d 个" % len(grp.get("sids") or [])),
+                   ("首次", (sm.get("ts") or "—")[:19]),
+                   ("锚点", "messages.rowid=%s" % sm.get("rowid"))],
+            detail="同一句意思的问话在多个会话里反复出现（相似归并后的一组）。",
+            suggestion="这类是「过了就忘、要反复提醒」的素材：要么做成卡"
+                       "（把该记住的写进正文+triggers），要么写进班规。"
+                       "**别只收藏这段问话**——它本身不是知识。",
+            level="warn", owner="人 + Agent"))
+    return out
+
+
 def _pattern_items(g) -> list[dict]:
     items = []
     for p in g["errs_rep"].get("patterns") or []:
@@ -875,6 +976,30 @@ def _targets_all(g) -> list[dict]:
          "metrics": [_metric("patterns", "新错误模式", "items", unit="个"),
                      _metric("hits", "出现次数合计", "sum", "count", unit="次")],
          "primary": "patterns", "items": distill},
+        {"target_id": "queue:artifact", "group": "queue", "queue_id": "artifact",
+         "label": "待评审产物", "question": "哪批东西改了很多版、却没沉淀成卡？",
+         "unit": "批",
+         "source": "artledger.group_topics × cards.anchors",
+         "definition": "按主题分批后，同时满足两条的批数：① 有**核心产物**"
+                       "（同一会话里同一个文件改过 3 版以上）；② **没有一张卡**"
+                       "的锚点指向这批的会话。只数有产物的主题——没有产物的"
+                       "主题在台账里根本看不见（源里只有截断预览的源提不出产物），"
+                       "不在这里冒充 0。",
+         "where": WHERE_REPORTS_LEDGER, "owner": "人 + Agent",
+         "suggestion": "这些批是「改了很多版却从没变成知识」的：点命令包里"
+                       "「打主题评审包」，只摊开核心产物；评完结论回填 "
+                       "`cards new`。一次评一批，别整个主题一次倒进来。",
+         "package": [c for c in [_cmd(
+             "先看台账（按主题分批）",
+             "同一份数据的分批视图：会话/文件/版数/核心产物/一次过/主目录。",
+             action_id="artifact_ledger", params={"group": "topic"},
+             tier="A")] if c],
+         "metrics": [_metric("batches", "待评审批次数", "items", unit="批"),
+                     _metric("core", "核心产物条数合计", "sum", "core",
+                             unit="条"),
+                     _metric("versions", "写入记录合计", "sum", "versions",
+                             unit="版")],
+         "primary": "batches", "items": _artifact_batches(g)},
         {"target_id": "queue:verify", "group": "queue", "queue_id": "verify",
          "label": "待验证", "question": "采纳的班规真的有效吗？", "unit": "条",
          "source": "harvesteval.run_eval.counts[不下结论]",
@@ -909,6 +1034,20 @@ def _targets_all(g) -> list[dict]:
              "重跑分诊队列", "本队列的数据源。", cli=triage_cli)] if c],
          "metrics": [_metric("patterns", "旧坑重现模式数", "items")],
          "primary": "patterns", "items": oldpat},
+        {"target_id": "queue:distill.nags", "group": "detail",
+         "queue_id": "distill", "label": "反复叮嘱候选组", "unit": "组",
+         "source": "actions/analysis/nags.collect().groups",
+         "definition": "同一句意思的问话在**多个会话**里各出现一次以上的组数"
+                       "（相似归并后）。这是「过了就忘、要反复提醒」的素材——"
+                       "它本身不是知识，要靠人决定做成卡还是写成班规。"
+                       "口径由 `analysis/nags.py` 冻结实现给，本页不复刻阈值。",
+         "where": WHERE_TRIAGE, "owner": "人 + Agent",
+         "suggestion": "挑出现次数高、涉及会话多的先看；每组都带一条样例原文"
+                       "（messages.rowid 可回原文）。做完卡/班规这组就该消失。",
+         "package": [],
+         "metrics": [_metric("groups", "候选组数", "items", unit="组"),
+                     _metric("hits", "出现次数合计", "sum", "count", unit="次")],
+         "primary": "groups", "items": _nags_items(g)},
         {"target_id": "queue:distill.cards", "group": "detail",
          "queue_id": "distill", "label": "待做卡片", "unit": "张",
          "source": "目录扫描 cards_pending/*.md",
@@ -1101,6 +1240,8 @@ KINDS: dict[str, str] = {
     "queue:decide.done": sev.KIND_STOCK,      # 已裁决 = 已完成
     "queue:distill.old": sev.KIND_ACTION,     # 旧坑重现
     "queue:distill.cards": sev.KIND_ACTION,   # 待做卡片
+    "queue:distill.nags": sev.KIND_ACTION,   # 反复叮嘱（待沉淀成卡/班规）
+    "queue:artifact": sev.KIND_ACTION,       # 待评审产物批次
     "queue:verify.evaluable": sev.KIND_ACTION,  # 可评估（能做效果对比）
     "queue:verify.unchanged": sev.KIND_ACTION,  # 无变化（建议退休）
     # ---- 错误环 ----
@@ -1154,6 +1295,7 @@ DETAIL_MAP = {
     ],
     "distill": [
         ("旧坑重现", "queue:distill.old", "patterns"),
+        ("反复叮嘱候选组", "queue:distill.nags", "groups"),
         ("skill 行为链", "ring:skill.1", "skills"),
         ("待做卡片", "queue:distill.cards", "cards"),
     ],

@@ -34,7 +34,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA = "review_pack/1"
+SCHEMA = "review_pack/2"
 
 #: 版本预览单侧长度（与 dualtrack 的 ART_PREVIEW 同口径，看全文去 artifacts show）
 ART_PREVIEW = 300
@@ -284,7 +284,7 @@ def build(cfg, *, sid: str, file_path: str = "", version_cap: int = VERSION_CAP,
     if not sid:
         raise ValueError("缺会话 id（--sid）——从产物台账点一行进来，或手填 sid")
     meta = Path(cfg.artifacts_meta) if cfg.artifacts_meta else None
-    base = {"view_actions_api": 1, "schema": SCHEMA, "sid": sid,
+    base = {"view_actions_api": 1, "schema": SCHEMA, "kind": "file", "sid": sid,
             "file_path": file_path or "",
             "definitions": DEFINITIONS, "sources": SOURCES,
             "honest": list(HONEST), "steps": list(STEPS)}
@@ -459,6 +459,409 @@ def render_md(p: dict) -> str:
                             else "—"))
     lines += ["", "## 5 锚点清单（复核时按这里回原文）", "",
               "| 类型 | 指向 | 备注 |", "|---|---|---|"]
+    for a in p.get("anchors") or []:
+        lines.append("| %s | %s | %s |" % (a["kind"], a["ref"], a["note"]))
+    lines += ["", "## 6 怎么用（三步）", ""]
+    for s in p.get("steps") or []:
+        lines.append("- %s" % s)
+    lines += ["", "## 每个数字怎么算的", "", "| 数字 | 口径 | 来源 |", "|---|---|---|"]
+    defs, srcs = p.get("definitions") or {}, p.get("sources") or {}
+    for k in defs:
+        lines.append("| %s | %s | %s |" % (k, defs[k], srcs.get(k, "—")))
+    lines += ["", "## 别把这个包读过头", ""]
+    for x in p.get("honest") or []:
+        lines.append("- %s" % x)
+    lines.append("")
+    return "\n".join(lines)
+
+
+# ================================================================ 主题评审包
+#
+# 用户 2026-10-26 的第二问：「**一个主题千百个文件，打成个评审包能看出啥
+# 东西来？**」——单文件包回答的是「这个文件为什么改成这样」，但一个主题下
+# 几百个文件，逐个点开等于没有台账。
+#
+# 所以补一层**主题包**：一个主题（或「未归主题」）一个包，包里先按会话分成
+# 几批（一次会话 = 一次工作），再只把**核心产物**（同会话里改过 ≥3 版的）
+# 摊开，其余（1–2 版，包括成百上千个一次过的文件）只给计数、目录分布和
+# 文件名样例。这样「一个主题千百个文件」压成「几批 + 十几个真在磨的文件」。
+
+#: 主题包最多摊开几个核心产物（其余只计数）
+CORE_CAP = 10
+#: 主题包最多用几个核心产物的正文做卡片弱命中池（多了没意义，只烧时间）
+TEXT_POOL = 12
+
+
+def _topic_pick(cfg, topic_id: str) -> tuple[str, str, list[str]]:
+    """`topic_id` → (id, 显示名, 成员会话)。`unfiled` 表示「未归主题的那批」。"""
+    from . import artledger as _al
+    tid = (topic_id or "").strip()
+    tlist = _al._topic_list(cfg.topics_meta)
+    if tid in ("", "unfiled", "_unfiled"):
+        meta = Path(cfg.artifacts_meta) if cfg.artifacts_meta else None
+        if meta is None or not meta.is_file():
+            return "unfiled", "（未归主题）", []
+        tidx = _al._topic_index(cfg.topics_meta)
+        filed = {sid for sid, ts in tidx.items() if ts}
+        sids = sorted({p["sid"] for p in _al._pairs(meta)
+                       if p["sid"] not in filed})
+        return "unfiled", "（未归主题）", sids
+    by_id = {t["id"]: t for t in tlist}
+    t = by_id.get(tid)
+    if t is None:   # 也接受名字（人可能手填）
+        t = next((x for x in tlist if x["name"] == tid), None)
+    if t is None:
+        raise ValueError("没有这个主题：%s（从产物台账点一行进来，或填主题 id）"
+                         % topic_id)
+    return t["id"], t["name"], list(t["sids"])
+
+
+def _errors_multi(cfg, sids: set[str]) -> dict[str, list[dict]]:
+    """一次全库 collect，再按会话分组（逐会话各 collect 一遍是同一份数据算 N 次）。"""
+    from harvester.errstats import collect_errors_from_db
+    con = _ro(cfg.db)
+    try:
+        errs, _meta = collect_errors_from_db(Path(cfg.db), con=con)
+    finally:
+        con.close()
+    out: dict[str, list[dict]] = {}
+    for e in errs:
+        if e["sid"] in sids:
+            out.setdefault(e["sid"], []).append(e)
+    return out
+
+
+def _candidates_multi(cfg, sids: set[str]) -> dict:
+    """打磨/反转候选（冻结实现，一次 collect，再按会话集合过滤）。"""
+    from .analysis import revisions
+    con = _ro(cfg.db)
+    try:
+        rev = revisions.collect(con)
+        band = [p for p in rev["band"] if p["sid"] in sids]
+        hits = [h for h in rev["turn_hits"] if h["sid"] in sids]
+        need = {p["rowid_a"] for p in band} | {p["rowid_b"] for p in band}
+        need |= {h["rowid"] for h in hits}
+        tsmap = _ts_of(con, need)
+    finally:
+        con.close()
+    for p in band:
+        p["ts"] = tsmap.get(p["rowid_b"]) or tsmap.get(p["rowid_a"]) or ""
+    for h in hits:
+        h["ts"] = tsmap.get(h["rowid"]) or ""
+    return {"account": rev["account"], "thresholds": rev["thresholds"],
+            "band": band, "turn_hits": hits}
+
+
+def _last_texts(meta: Path, keys: set[tuple[str, str]]) -> dict[tuple, str]:
+    """每个 (sid, 文件) 的**最后一版**正文（只给弱命中当比对池，不展示）。"""
+    if not keys:
+        return {}
+    con = _ro(meta)
+    try:
+        rows = list(con.execute(
+            "SELECT a.sid AS sid, COALESCE(a.file_path,'（未知文件）') AS fp, "
+            "       a.new_text AS t FROM artifacts a JOIN ("
+            "  SELECT sid, COALESCE(file_path,'（未知文件）') AS fp, MAX(seq) AS m "
+            "  FROM artifacts GROUP BY 1, 2) b "
+            "  ON a.sid=b.sid AND COALESCE(a.file_path,'（未知文件）')=b.fp "
+            " AND a.seq=b.m"))
+    finally:
+        con.close()
+    out = {}
+    for r in rows:
+        k = (r["sid"], r["fp"])
+        if k in keys:
+            out[k] = r["t"] or ""
+    return out
+
+
+def _cards_multi(cfg, sids: set[str],
+                 pool_texts: list[str]) -> list[dict]:
+    """卡片命中（跨会话版）：强 = 锚点指向本主题任一成员会话；弱 = triggers 命中。"""
+    from cardlib import scan_cards
+    root = Path(cfg.cards_root) if cfg.cards_root else None
+    if root is None or not root.is_dir():
+        return []
+    pool_low = " ".join(pool_texts).lower()
+    out = []
+    for c in scan_cards(root):
+        trig = c.get("triggers") if isinstance(c.get("triggers"), list) else []
+        hit = []
+        for t in trig:
+            w = t if isinstance(t, str) else str((t or {}).get("raw") or "")
+            w = w.strip()
+            if len(w) >= 2 and w.lower() in pool_low:
+                hit.append(w)
+        anchors = c.get("anchors") if isinstance(c.get("anchors"), list) else []
+        mine = [a for a in anchors if isinstance(a, dict)
+                and any(_same_session(a.get("sid"), s) for s in sids)]
+        if mine:
+            why = ("强命中：这张卡的锚点指向本主题的 %d 个会话（%s）"
+                   % (len(mine), "、".join(str(a.get("sid") or "")[-24:]
+                                         for a in mine[:2])))
+        elif hit:
+            why = ("弱命中：triggers 里 " + "、".join("「%s」" % w
+                                                    for w in hit[:4])
+                   + " 出现在核心产物的路径或最后一版内容里")
+        else:
+            continue
+        out.append({"path": c.get("path") or "", "title": c.get("title") or "",
+                    "type": c.get("type") or "", "confidence": c.get("confidence"),
+                    "why": why, "strong": bool(mine), "anchors": anchors[:3]})
+    out.sort(key=lambda c: (not c["strong"], -(c["confidence"] or 0)))
+    return out[:CARD_CAP]
+
+
+TOPIC_DEFINITIONS = {
+    "sessions": "本主题里在台账有写记录的会话数（主题成员 ∩ 台账）",
+    "files": "本主题的产物文件路径数（不做路径归一）",
+    "versions": "写入记录条数（每次写/改算一版）",
+    "core_pairs": "核心产物条数：同一会话里同一文件改过 ≥3 版",
+    "bulk_files": "其余文件数（1–2 版）：本包**只计数不展开**的那批",
+    "batches": "把本主题的产物按会话分成的批数（一次会话 = 一次工作）",
+    "core_files": "本包实际摊开的核心产物条数（最多 %d 条）" % CORE_CAP,
+}
+
+TOPIC_SOURCES = {
+    "sessions": "artifacts_meta.db · artifacts.sid ∩ topics_meta.members",
+    "files": "artifacts_meta.db · artifacts.file_path",
+    "versions": "artifacts_meta.db · artifacts 行数",
+    "core_pairs": "现算：按 (sid, file_path) 分组数行数 ≥3",
+    "bulk_files": "现算：pairs − core_pairs 的去重文件数",
+    "batches": "现算：按 sid 分组",
+    "core_files": "现算：核心产物按版数降序取前 %d 条" % CORE_CAP,
+}
+
+TOPIC_HONEST = [
+    "**这个包只摊开「核心产物」。**一个主题几百个文件里，绝大多数只被写过"
+    "一次（批量生成、搬目录、改配置）——把它们逐个摊开，版本序列只有一行，"
+    "看不出任何东西。所以本包只展开改过 ≥3 版的那些，其余只给个数与目录分布。",
+    "**同一个文件可能在两个会话里各算一条。**`handoff/会话交接.md` 这类文件"
+    "在两次工作里都改过，就是两条——那是两次不同的工作，不合并成一条。",
+    "**分批不是质量分级。**一次过不等于做得差；「改过 10 版」也不等于改得好，"
+    "只说明来回磨得多。",
+    "**时间上紧挨着不是因果。**包里的「落在第几版之前」只表示先后顺序。",
+    "**主题没产物 ≠ 主题没工作。**有些主题的会话是豆包/元宝/千问来的，"
+    "源里只有截断预览，提不出完整写入内容——台账根本看不到它们。",
+]
+
+
+def build_topic(cfg, *, topic_id: str = "", file_cap: int = CORE_CAP) -> dict:
+    """主题评审包数据面（A 档只读）。`topic_id` 空 = 「未归主题」那一批。"""
+    from . import artledger as _al
+    tid, name, sids = _topic_pick(cfg, topic_id)
+    meta = Path(cfg.artifacts_meta) if cfg.artifacts_meta else None
+    base = {"view_actions_api": 1, "schema": SCHEMA, "kind": "topic",
+            "topic": {"id": tid, "name": name, "members": len(sids)},
+            "definitions": TOPIC_DEFINITIONS, "sources": TOPIC_SOURCES,
+            "honest": list(TOPIC_HONEST), "steps": list(STEPS),
+            "batches_label": _al.BATCH_LABEL}
+    if meta is None or not meta.is_file():
+        base.update({"configured": False, "batches": [], "core_files": [],
+                     "bulk": {"files": 0, "versions": 0, "top_dirs": [],
+                              "sample": []},
+                     "errors": {"total": 0, "groups": []}, "cards": [],
+                     "revisions": {"band": [], "turn_hits": []},
+                     "anchors": [], "md": "",
+                     "hint": "产物台账没接上（起服没给 --artifacts-meta）。"
+                             "先在终端跑 `python -m harvester artifacts extract "
+                             "--sid <会话 id>` 登记，再起服带上 --artifacts-meta。"})
+        return base
+    sid_set = set(sids)
+    pairs = [p for p in _al._pairs(meta)
+             if p["sid"] in sid_set] if sid_set else []
+    if not pairs:
+        base.update({"configured": True, "batches": [], "core_files": [],
+                     "bulk": {"files": 0, "versions": 0, "top_dirs": [],
+                              "sample": []},
+                     "errors": {"total": 0, "groups": []}, "cards": [],
+                     "revisions": {"band": [], "turn_hits": []},
+                     "anchors": [], "md": "",
+                     "hint": "这个主题在台账里一条产物都没有——"
+                             "成员会话没接入产物提取，或确实没写过文件。"})
+        return base
+
+    agg = _al._agg(pairs)
+    # 用**按文件合并**后的核心产物：同一文件在两个会话里各改一遍时只算一条
+    # （实测 `会话交接-2026-10-04.md` 在两个会话里各 63 版），否则表里同一行
+    # 出现两遍，看着像 bug。
+    core_all = agg["core_files"]
+    core = core_all[:file_cap]
+    # 「其余」= **核心文件之外**的全部 pair。按文件路径互斥（不是按 pair 的
+    # 版数）：否则稿.md 在 A 会话 3 版、B 会话 1 版时，B 那条既算进核心文件
+    # 的 4 版里、又被算进「其余」一次——同一版记两处。
+    core_paths = {c["file_path"] for c in core_all}
+    bulk_pairs = [p for p in pairs if p["file_path"] not in core_paths]
+    bulk_files = {p["file_path"] for p in bulk_pairs}
+
+    errs_by_sid = _errors_multi(cfg, sid_set) if Path(cfg.db).is_file() else {}
+    cand = (_candidates_multi(cfg, sid_set) if Path(cfg.db).is_file()
+            else {"band": [], "turn_hits": [], "account": {}, "thresholds": {}})
+
+    by_sid: dict[str, list[dict]] = {}
+    for p in pairs:
+        by_sid.setdefault(p["sid"], []).append(p)
+    batches = []
+    for sid, sub in sorted(by_sid.items(), key=lambda kv: -len(kv[1])):
+        a = _al._agg(sub)
+        errs = errs_by_sid.get(sid) or []
+        batches.append({
+            "sid": sid, "short": _al._sid_tail(sid),
+            "files": a["files"], "versions": a["versions"],
+            "core": len(a["core"]), "once": a["buckets"]["once"]["pairs"],
+            "changed_chars": a["changed_chars"],
+            "first_ts": a["first_ts"], "last_ts": a["last_ts"],
+            "errors": {"total": len(errs), "groups": _err_groups(errs)[:5]},
+            "band_pairs": len([b for b in cand["band"] if b["sid"] == sid]),
+            "turn_words": len([h for h in cand["turn_hits"]
+                               if h["sid"] == sid]),
+        })
+
+    keys = {(sid, c["file_path"]) for c in core[:TEXT_POOL]
+            for sid in c["sessions"]}
+    texts = _last_texts(meta, keys)
+    pool = [c["file_path"] for c in core] + [
+        _cut(t, 2000) for t in texts.values()]
+    cards = _cards_multi(cfg, sid_set, pool) if cfg.cards_root else []
+
+    all_errs = [e for v in errs_by_sid.values() for e in v]
+    err_groups = _err_groups(all_errs)
+    anchors = []
+    for c in core[:file_cap]:
+        anchors.append({"kind": "产物",
+                        "ref": "%s（%d 个会话）"
+                               % (c["file_path"], len(c["sessions"])),
+                        "note": "%d 版，改动 %d 字，末次 %s"
+                                % (c["n_versions"], c["changed_chars"],
+                                   (c["last_ts"] or "—")[:19])})
+    for g in err_groups[:6]:
+        anchors.append({"kind": "错误步",
+                        "ref": "steps.seq=%d（%s）" % (g["first"]["seq"],
+                                                      g["first"]["tool"]),
+                        "note": "归一模式 %s ×%d" % (g["pattern"], g["n"])})
+    for b in cand["band"][:TURN_CAP]:
+        anchors.append({"kind": "打磨候选", "ref": "messages.rowid=%d / %d"
+                        % (b["rowid_a"], b["rowid_b"]),
+                        "note": "相似度 %.3f（%s）" % (b["jaccard"],
+                                                     (b["ts"] or "—")[:19])})
+    for h in cand["turn_hits"][:TURN_CAP]:
+        anchors.append({"kind": "反转候选", "ref": "messages.rowid=%d" % h["rowid"],
+                        "note": "轮次开头「%s」（%s）" % (h["word"],
+                                                        (h["ts"] or "—")[:19])})
+    for c in cards:
+        anchors.append({"kind": "卡片", "ref": c["path"], "note": c["why"]})
+
+    base.update({
+        "configured": True,
+        "coverage": (lambda: __import__("harvester.artifacts", fromlist=["x"])
+                     .coverage(cfg.db, cfg.artifacts_meta))(),
+        "target": {"sessions": agg["sessions"], "files": agg["files"],
+                   "pairs": agg["pairs"], "versions": agg["versions"],
+                   "changed_chars": agg["changed_chars"],
+                   "core_pairs": len(core_all),
+                   "bulk_files": len(bulk_files),
+                   "batches": len(batches)},
+        "buckets": agg["buckets"],
+        "core_files": [{"file_path": c["file_path"],
+                        "file_short": c["file_short"],
+                        "n_versions": c["n_versions"],
+                        "changed_chars": c["changed_chars"],
+                        "n_sessions": len(c["sessions"]),
+                        "short": "、".join(_al._sid_tail(x) for x in
+                                           c["sessions"][:3]),
+                        "first_ts": c["first_ts"], "last_ts": c["last_ts"]}
+                       for c in core],
+        "core_total": len(core_all),
+        "bulk": {"files": len(bulk_files),
+                 "pairs": len(bulk_pairs),
+                 "versions": sum(p["n_versions"] for p in bulk_pairs),
+                 "top_dirs": agg["top_dirs"],
+                 "sample": sorted(bulk_files)[:12]},
+        "batches": batches,
+        "errors": {"total": len(all_errs), "groups": err_groups},
+        "revisions": {"thresholds": cand.get("thresholds") or {},
+                      "band": cand["band"][:TURN_CAP],
+                      "turn_hits": cand["turn_hits"][:TURN_CAP]},
+        "cards": cards,
+        "anchors": anchors,
+        "hint": "",
+    })
+    base["md"] = render_topic_md(base)
+    return base
+
+
+def render_topic_md(p: dict) -> str:
+    """主题包人读版：整段复制交给任何 Agent（或自己读）。"""
+    t = p.get("target") or {}
+    tp = p.get("topic") or {}
+    bulk = p.get("bulk") or {}
+    lines = [
+        "# 评审包（主题）：%s" % tp.get("name"),
+        "",
+        "- 主题 id：`%s`｜成员会话 %s 个（其中 %s 个在台账有写入记录）"
+        % (tp.get("id"), tp.get("members"), t.get("sessions", 0)),
+        "- 产物：%s 个文件 / %s 版 / 改动 %s 字"
+        % (t.get("files", 0), t.get("versions", 0), t.get("changed_chars", 0)),
+        "- 分 %s 批（一次会话 = 一次工作）｜核心产物 %s 条（改过 ≥3 版）｜"
+        "其余 %s 个文件只计数" % (t.get("batches", 0), t.get("core_pairs", 0),
+                                t.get("bulk_files", 0)),
+        "",
+        "> 为什么只摊开核心产物：这个主题几百个文件里绝大多数只被写过一次"
+        "（批量生成/搬目录/改配置），摊开也只是一行版本序列。核心 = 反复磨的"
+        "那些，才是「为什么改成这样」有得看的部分。",
+        "",
+        "## 0 分批概览",
+        "",
+        "| 会话 | 文件 | 版数 | 核心 | 一次过 | 错误步 | 打磨候选 | 首→末 |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for b in p.get("batches") or []:
+        lines.append("| %s | %d | %d | %d | %d | %d | %d | %s → %s |"
+                     % (b["short"], b["files"], b["versions"], b["core"],
+                        b["once"], b["errors"]["total"], b["band_pairs"],
+                        (b["first_ts"] or "—")[:10],
+                        (b["last_ts"] or "—")[:10]))
+    lines += ["", "## 1 核心产物（按版数；同一文件在几个会话里改过算一条）", "",
+              "| 版数 | 文件 | 改动字数 | 会话 | 首→末 |",
+              "|---|---|---|---|---|"]
+    for c in p.get("core_files") or []:
+        lines.append("| %d | %s | %d | %d 个（%s） | %s → %s |"
+                     % (c["n_versions"], c["file_short"], c["changed_chars"],
+                        c.get("n_sessions", 1), c.get("short", ""),
+                        (c["first_ts"] or "—")[:10],
+                        (c["last_ts"] or "—")[:10]))
+    if p.get("core_total", 0) > len(p.get("core_files") or []):
+        lines.append("")
+        lines.append("（核心产物共 %s 条，本包只摊开前 %d 条；其余同样算法）"
+                     % (p.get("core_total"), len(p.get("core_files") or [])))
+    lines += ["", "## 2 其余（1–2 版，只计数不展开）", "",
+              "- %s 个文件 / %s 版（占本主题版数的大头，通常是一次过的批量改动）"
+              % (bulk.get("files", 0), bulk.get("versions", 0))]
+    if bulk.get("top_dirs"):
+        lines.append("- 主目录：" + "、".join(
+            "%s（%d 版）" % (d["dir"], d["versions"])
+            for d in bulk["top_dirs"][:5]))
+    if bulk.get("sample"):
+        lines.append("- 样例：" + "、".join("`%s`" % x for x in bulk["sample"][:8]))
+    eg = (p.get("errors") or {}).get("groups") or []
+    lines += ["", "## 3 这个主题踩过的错（跨会话按归一模式聚）", ""]
+    if not eg:
+        lines.append("（本主题成员会话没有错误步——不是「做得对」，只是「没报错」）")
+    else:
+        lines += ["| 组 | 类别 | 归一模式 | 首条原文 |", "|---|---|---|---|"]
+        for g in eg:
+            lines.append("| ×%d | %s | %s | %s |"
+                         % (g["n"], g["class"], g["pattern"],
+                            (g["first"]["text"] or "").replace("\n", " ")[:110]))
+    lines += ["", "## 4 相关历史卡", ""]
+    if not p.get("cards"):
+        lines.append("（没有卡命中。triggers 是人工登记的现象词——"
+                     "`cards new` 建卡时把 triggers 填上，下次才可能命中）")
+    else:
+        lines += ["| 卡 | 为什么出现在这里 |", "|---|---|"]
+        for c in p["cards"]:
+            lines.append("| %s | %s |" % (c["title"] or c["path"], c["why"]))
+    lines += ["", "## 5 锚点清单", "", "| 类型 | 指向 | 备注 |", "|---|---|---|"]
     for a in p.get("anchors") or []:
         lines.append("| %s | %s | %s |" % (a["kind"], a["ref"], a["note"]))
     lines += ["", "## 6 怎么用（三步）", ""]

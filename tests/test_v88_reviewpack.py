@@ -296,7 +296,7 @@ class RealPackTest(unittest.TestCase):
                         topics_meta=UP / "topics_meta.db",
                         artifacts_meta=meta)
         d = RP.build(cfg, sid=sid, file_path=fp)
-        self.assertEqual(d["schema"], "review_pack/1")
+        self.assertEqual(d["schema"], "review_pack/2")
         self.assertTrue(d["configured"])
         self.assertTrue(d["versions"], "真库上版本序列不该空")
         self.assertGreater(d["target"]["n_versions"], 0)

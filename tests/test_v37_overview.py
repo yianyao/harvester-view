@@ -65,12 +65,12 @@ class OverviewTest(unittest.TestCase):
     def tearDownClass(cls):
         cls._td.cleanup()
 
-    # -- ① 四件套齐全 --
+    # -- ① 队列卡齐全（D3′ 把 artifact 加进来，四张变五张）--
 
-    def test_queues_have_four_required_fields(self):
+    def test_queues_are_the_registered_cards_and_have_required_fields(self):
         qs = self.ov["queues"]
         self.assertEqual([q["queue_id"] for q in qs],
-                         ["decide", "repair", "distill", "verify"])
+                         ["decide", "repair", "distill", "verify", "artifact"])
         for q in qs:
             self.assertIsInstance(q["count"], int)
             self.assertGreaterEqual(q["count"], 0)
@@ -233,7 +233,11 @@ class OverviewHttpTest(unittest.TestCase):
             self.assertEqual(r.status, 200)
             import json
             d = json.loads(r.read().decode("utf-8"))
-        self.assertEqual(len(d["queues"]), 4)
+        # 队列卡数跟着 QUEUE_TARGETS 走（D3′ 2026-10-26 加 queue:artifact，
+        # 四张变五张）。这里钉「与注册表同数」而不是钉死 4——加卡是设计变更，
+        # 加卡却忘了进 overview 才是缺陷。
+        self.assertEqual(len(d["queues"]), len(OV.QUEUE_TARGETS))
+        self.assertEqual(len(d["queues"]), 5)
         self.assertEqual(len(d["rings"]), 3)
         self.assertIn("view_actions_api", d)
         self.assertIn("hint", d)

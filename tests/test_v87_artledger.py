@@ -285,7 +285,7 @@ class RealLedgerTest(unittest.TestCase):
                         artifacts_meta=UP / "artifacts_meta.db",
                         suggestions_meta=UP / "suggestions_meta.db")
         d = artledger.build(cfg, limit=5)
-        self.assertEqual(d["schema"], "artifact_ledger/1")
+        self.assertEqual(d["schema"], "artifact_ledger/2")
         self.assertTrue(d["configured"])
         self.assertGreater(d["rows_total"], 0, "真台账一条都没有？")
         self.assertGreater(d["totals"]["versions"], 0)

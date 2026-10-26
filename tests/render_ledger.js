@@ -53,6 +53,14 @@ function copyText(text, btn) { copied = { text, btn }; }
 
 eval(extract("renderLedger", "d,out"));
 eval(extract("renderReviewPack", "d,box"));
+eval(extract("renderTopicPack", "d,box"));
+
+/* 页面里的视角清单是模块级 const，提取函数时不会一起带出来。
+   注意 `eval("const X=...")` 的 const 只活在 eval 自己的作用域里，出了
+   这句就 ReferenceError——必须显式挂到 globalThis（render_brief.js 踩过）。 */
+const _lv = html.match(/const LEDGER_VIEWS\s*=\s*(\[[^;]*\]);/);
+if (!_lv) throw new Error("extract fail: LEDGER_VIEWS");
+globalThis.LEDGER_VIEWS = eval("(" + _lv[1] + ")");
 
 let failed = 0;
 function check(label, cond, why) {
@@ -62,8 +70,9 @@ function check(label, cond, why) {
 
 /* ---- 台账真形载荷（真库形状 + HTML 试金石） ---- */
 const LEDGER = {
-  schema: "artifact_ledger/1",
+  schema: "artifact_ledger/2",
   configured: true,
+  group: "file",
   coverage: {
     sources: ["dsh"],
     line_text: "- 覆盖度：仅 dsh 源（artifacts.py:8 自陈），已登记 8 / 总会话 "
@@ -93,7 +102,7 @@ const LEDGER = {
 };
 
 const PACK = {
-  schema: "review_pack/1",
+  schema: "review_pack/2",
   configured: true,
   sid: "dsh:a",
   file_path: "D:\\g\\<img onerror=x>稿.md",
@@ -161,10 +170,11 @@ const PACK = {
     covZone.includes("已登记 8 / 总会话 1776") && !covZone.includes("**"));
   check("覆盖度排在台账表之前",
     h.indexOf("已登记 8 / 总会话 1776") < h.indexOf("<table>"));
-  check("六个账目都报出来",
+  check("账目都报出来（含核心/其余两项）",
     h.includes("有写记录的会话 8") && h.includes("文件路径 738") &&
     h.includes("会话×文件 1105") && h.includes("能反查到主题的 1028") &&
-    h.includes("写入记录 2109 条"));
+    h.includes("写入记录 2109 条") && h.includes("核心产物（改过 3 版以上）") &&
+    h.includes("其余 "));
   check("文件路径 esc（<img onerror> 不落地）",
     h.includes("&lt;img onerror=x&gt;") && !h.includes("<img onerror"));
   check("工具名为空时明说「工具名未登记」", h.includes("工具名未登记"));
@@ -172,8 +182,8 @@ const PACK = {
     h.includes("<span class='sub2'>—</span>"));
   check("截断时报总数（共 1105 行）",
     h.includes("只列了前 2 行 / 共 1105 行"));
-  check("「打评审包」按钮带 sid 与文件路径",
-    h.includes("打评审包") && h.includes("data-rp-sid"));
+  check("「打文件评审包」按钮带 sid 与文件路径",
+    h.includes("打文件评审包") && h.includes("data-rp-sid"));
   check("按钮已接线（onclick 是函数）",
     typeof out._qa["[data-rp-sid]"][0].onclick === "function");
   check("候选账目段在（打磨/反转/反复叮嘱）",
@@ -184,13 +194,142 @@ const PACK = {
     h.includes("artifacts_meta.db · artifacts 行数"));
   check("别把这面读过头逐条透出", h.includes("不是快照"));
 
+  /* ---------- 主题视角（默认口径，用户 2026-10-26 反馈的那条）---------- */
+  const TL = {
+    schema: "artifact_ledger/2", configured: true, group: "topic",
+    coverage: LEDGER.coverage,
+    totals: { sessions_registered: 8, files: 738, pairs: 1105,
+              pairs_in_topics: 1028, versions: 2109, changed_chars: 4310213,
+              core_pairs: 111, bulk_pairs: 994 },
+    rows: LEDGER.rows, rows_total: 1105, truncated: false,
+    groups: [{
+      kind: "topic", topic_id: "tp-1", topic_name: "主题甲 <img onerror=x>",
+      sessions: 6, files: 660, pairs: 1027, versions: 1644,
+      changed_chars: 4018535, sids: ["dsh:a", "dsh:b"],
+      buckets: { core: { pairs: 72, versions: 652 }, few: { pairs: 37 },
+                 once: { pairs: 918, versions: 918 } },
+      top_dirs: [{ dir: "git/specSkill/", files: 300, versions: 710 },
+                 { dir: "specSkill/skillverify/", files: 90, versions: 198 }],
+      first_ts: "2026-10-04 09:00:00", last_ts: "2026-10-16 18:00:00",
+      core_files: [{ file_path: "a.md", file_short: "a.md", n_versions: 129,
+                     changed_chars: 900, sessions: ["dsh:a", "dsh:b"],
+                     first_ts: "2026-10-04 09:00:00",
+                     last_ts: "2026-10-04 10:00:00" }],
+    }, {
+      kind: "unfiled", topic_id: "", topic_name: "（未归主题）", sessions: 1,
+      files: 77, pairs: 77, versions: 463, changed_chars: 260663,
+      sids: ["dsh:c"], note: "这些会话还没注册进任何主题……",
+      buckets: { core: { pairs: 39 }, few: { pairs: 0 }, once: { pairs: 38 } },
+      top_dirs: [{ dir: "tests/", files: 20, versions: 173 }],
+      first_ts: "2026-10-05 09:00:00", last_ts: "2026-10-08 09:00:00",
+      core_files: [],
+    }],
+    groups_total: 2,
+    empty_groups: [{ id: "tp-9", name: "空主题", members_registered: 0 }],
+    candidates: LEDGER.candidates, definitions: LEDGER.definitions,
+    sources: LEDGER.sources, honest: LEDGER.honest, hint: "",
+  };
+  const out2 = mkEl("#led2");
+  out2._qa["[data-tp-topic]"] = [
+    { dataset: { tpTopic: "tp-1", tpName: "主题甲" }, onclick: null },
+  ];
+  renderLedger(TL, out2);
+  const t2 = out2.innerHTML;
+  check("主题视角默认出「主题」表头（不是文件表）",
+    t2.includes("<th>主题</th>") && !t2.includes("<th>文件</th><th>主题</th>"));
+  check("主题视角不渲染文件行（rows 不进页面）",
+    !t2.includes("<img") && !t2.includes("<td title=\"D:"),
+    "主题视角只出分批行；文件行是 file 视角的事");
+  check("主题名里的 HTML 被 esc",
+    t2.includes("&lt;img onerror=x&gt;") && !t2.includes("<img onerror=x>"));
+  check("主题行四个数字都在（会话/文件/版数/核心）",
+    t2.includes(">6<") && t2.includes(">660<") && t2.includes(">1644<") &&
+    t2.includes(">72<"));
+  check("「打主题评审包」按钮带 topic_id",
+    t2.includes("打主题评审包") && t2.includes('data-tp-topic="tp-1"'));
+  check("按钮已接线（onclick 是函数）",
+    typeof out2._qa["[data-tp-topic]"][0].onclick === "function");
+  check("未归主题行标出来了", t2.includes("没注册进主题的会话"));
+  check("空主题折成一句（不占一行空表）",
+    t2.includes("另有 1 个主题") && t2.includes("空主题") &&
+    t2.includes("不代表这些主题没发生过工作"));
+  check("三个视角切换按钮都在，当前视角点亮",
+    t2.includes("data-ledger-group='topic'") &&
+    t2.includes("data-ledger-group='file'") &&
+    t2.includes("data-ledger-group='session'"));
+
   /* 未配置：只给 hint，不出表 */
-  renderLedger({ schema: "artifact_ledger/1", configured: false,
+  renderLedger({ schema: "artifact_ledger/2", configured: false,
                  coverage: LEDGER.coverage, totals: {}, rows: [],
                  hint: "先跑 python -m harvester artifacts extract --sid x" }, out);
   check("未配置时只显示 hint、不出表",
     out.innerHTML.includes("artifacts extract") &&
     !out.innerHTML.includes("<table>"));
+
+  /* ---------- 主题评审包 ---------- */
+  const TPACK = {
+    schema: "review_pack/2", kind: "topic", configured: true,
+    topic: { id: "tp-1", name: "主题甲", members: 191 },
+    target: { sessions: 6, files: 660, pairs: 1027, versions: 1644,
+              changed_chars: 4018535, core_pairs: 46, bulk_files: 622,
+              batches: 6 },
+    batches: [{ sid: "dsh:a", short: "…-a141", files: 401, versions: 641,
+                core: 25, once: 367, changed_chars: 100,
+                first_ts: "2026-10-04 09:00:00",
+                last_ts: "2026-10-05 09:00:00",
+                errors: { total: 22, groups: [] }, band_pairs: 1,
+                turn_words: 0 }],
+    core_files: [{ file_path: "D:////g////稿.md", file_short: "稿.md",
+                   n_versions: 129, changed_chars: 900, n_sessions: 2,
+                   short: "…-a141、…-9404",
+                   first_ts: "2026-10-04 09:00:00",
+                   last_ts: "2026-10-04 10:00:00" }],
+    core_total: 46,
+    bulk: { files: 622, pairs: 900, versions: 992,
+            top_dirs: [{ dir: "git/specSkill/", files: 300, versions: 710 }],
+            sample: ["<b>temp.py</b>"] },
+    errors: { total: 1, groups: [{ class: "tool_interface",
+      pattern: "FS_STALE_VERSION", n: 35,
+      first: { seq: 3, ts: "", tool: "Edit", text: "<i>x</i>", resolved: false } }] },
+    revisions: { thresholds: {}, band: [], turn_hits: [] },
+    cards: [], anchors: [], steps: ["① 生成包"],
+    definitions: { files: "文件数" }, sources: { files: "artifacts" },
+    honest: ["**这个包只摊开「核心产物」。**"], hint: "",
+    md: "# 评审包（主题）",
+  };
+  const box2 = mkEl("#rp-box2");
+  renderTopicPack(TPACK, box2);
+  const q = box2.innerHTML;
+  check("主题包标题带主题名与「主题」二字",
+    q.includes("评审包（主题）") && q.includes("主题甲"));
+  check("分批概览在（会话短名 + 文件/版数/核心）",
+    q.includes("…-a141") && q.includes(">401<") && q.includes(">641<"));
+  check("核心产物按文件一条（129 版）+ 标几个会话改过",
+    q.includes(">129<") && q.includes("2 个"));
+  check("「其余」只给计数不给文件行",
+    q.includes("622 个文件") && q.includes("只计数"));
+  check("其余样例里的 HTML 被 esc",
+    q.includes("&lt;b&gt;temp.py&lt;/b&gt;") && !q.includes("<b>temp.py</b>"));
+  check("核心产物超过摊开数时说清「只摊开前 N 条」",
+    q.includes("只摊开前 1 条"));
+  check("错误原文里的 HTML 被 esc",
+    q.includes("&lt;i&gt;x&lt;/i&gt;") && !q.includes("<i>x</i>"));
+  check("没卡片时说明 triggers 没填会漏",
+    q.includes("triggers") && q.includes("建卡与触发词"));
+  check("主题包复制按钮已接线", (() => {
+    const cb = box2.querySelector("#rp-copy");
+    if (typeof cb.onclick !== "function") return false;
+    cb.onclick();
+    return copied && copied.text === "# 评审包（主题）";
+  })());
+  /* 空主题包：只给 hint */
+  const box3 = mkEl("#rp-box3");
+  renderTopicPack({ schema: "review_pack/2", kind: "topic", configured: true,
+                    topic: { id: "tp-9", name: "空主题" }, target: {},
+                    hint: "这个主题在台账里一条产物都没有" }, box3);
+  check("空主题包只给 hint、不出表",
+    box3.innerHTML.includes("一条产物都没有") &&
+    !box3.innerHTML.includes("<table>"));
 
   /* ---------- 评审包 ---------- */
   const box = mkEl("#rp-box");

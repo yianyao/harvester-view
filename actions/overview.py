@@ -39,7 +39,7 @@ VIEW_OVERVIEW_API = 2
 
 #: 队列卡片的 target（顺序即页面顺序）。
 QUEUE_TARGETS = ("queue:decide", "queue:repair", "queue:distill",
-                 "queue:verify")
+                 "queue:verify", "queue:artifact")
 
 #: 每根环：id / 标题 / 口径 / 该环的段（**段就是 target**，故每段都可点、带建议）。
 #: 段的顺序就是页面顺序，与 workitems 里的 target_id 一一对应；改一处必须改两处，

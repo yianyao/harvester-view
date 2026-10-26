@@ -31,7 +31,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-SCHEMA = "artifact_ledger/1"
+SCHEMA = "artifact_ledger/2"
 
 #: 一次最多回多少行台账（页面上限；总数另给，不截断总数）
 MAX_ROWS = 500
@@ -52,6 +52,12 @@ DEFINITIONS = {
     "band": "打磨候选对数：同一会话相邻两轮问话相似度落 0.80–0.90（H40 冻结口径）",
     "turn_hits": "反转词命中轮数（只认轮次开头的「不对/算了/推翻…」）",
     "nags_groups": "反复叮嘱候选组数（过滤版口径，nags.py 冻结常量）",
+    "core_pairs": "「核心产物」条数：同一会话里同一个文件被写/改 ≥3 版"
+                  "（反复磨的那些）",
+    "bulk_pairs": "其余条数（1–2 版）：包括一次过的批量文件与只动了两下的文件",
+    "bucket_pairs": "某一批的「会话×文件」条数与版数（core / few / once 三类）",
+    "top_dirs": "目录聚类：取文件路径的最后 2 段（如 `actions/analysis/`），"
+                "只在斜杠上切，不做别的归一",
 }
 
 SOURCES = {
@@ -66,6 +72,10 @@ SOURCES = {
     "band": "actions/analysis/revisions.py · collect()（同一实现，不复刻阈值）",
     "turn_hits": "actions/analysis/revisions.py · collect()",
     "nags_groups": "actions/analysis/nags.py · collect()",
+    "core_pairs": "现算：按 (sid, file_path) 分组数行数，≥3 计核心",
+    "bulk_pairs": "现算：pairs − core_pairs",
+    "bucket_pairs": "现算：与 core_pairs 同一判据分组",
+    "top_dirs": "现算：artifacts.file_path 末尾两段",
 }
 
 HONEST = [
@@ -77,6 +87,11 @@ HONEST = [
     "本项目不做路径归一——归一必须猜「相对谁」，猜错比不归一更坏。",
     "「工具」一列实测为空（dsh 源的提取记录没落上工具名）。空就显示空，"
     "不拿 Write/Edit 去补——那是猜。",
+    "**分批不是质量分级。**「一次过」不等于做得差——批量生成模板、搬目录、"
+    "改个配置本来就是一次过，只是这类文件摊开看版本序列没有信息量。"
+    "台账把它们归成一批给个数，评审包只展开「核心产物」。",
+    "**主题行相加 ≥ 全库。**一个会话被注册进两个主题时，两个主题行各计一次，"
+    "所以主题行的数字不能跨行相加去对全库总数；对全库请看上方账目。",
 ]
 
 HINT_UNCONFIGURED = (
@@ -208,11 +223,229 @@ def _uniques(pairs: list[dict], key: str) -> int:
     return len({p[key] for p in pairs})
 
 
-def build(cfg, *, limit: int = 200, sort: str = "versions",
-          sid: str = "") -> dict:
+# ---------------------------------------------------------------- 分批
+# 用户 2026-10-26 的原话：「**产物台账不应该是按主题，或者按最终产物分批汇总么？
+# 一个主题千百个文件，打成个评审包能看出啥东西来？**」
+#
+# 于是台账多一层视角：先按「主题」或「会话」汇总成**批**，再看批里哪些是
+# 真正被反复磨的产物。**分批不是质量分级**——一次过不等于做得差（批量生成
+# 模板、搬目录本来就是一次过），只是这类文件摊开看版本序列没有信息量。
+
+#: 版数达到这个数才算「核心产物」（真被反复改过的那些）
+REPEAT_MIN = 3
+
+#: 三个批次的标签（页面与 md 共用一套词，避免同一件事三种叫法）
+BATCH_LABEL = {
+    "core": "核心产物（改过 %d 版及以上）" % REPEAT_MIN,
+    "few": "少量改（2 版）",
+    "once": "一次过（1 版）",
+}
+
+
+def _sid_tail(sid: str, n: int = 28) -> str:
+    """会话的短名（给人看的）。
+
+    不能直接取末尾 18 字符：sid 末尾常是 `/session.v4.jsonl.zstd`，所有会话
+    都一样，截出来全是 `…sion.v4.jsonl.zstd`（第一版就这么踩的）。先退掉
+    这一层，再取上一段（`session-295f208c-…` / `339649db-…`）才有区分度。
+    """
+    t = str(sid or "")
+    parts = [x for x in t.replace("\\", "/").split("/") if x]
+    if len(parts) >= 2 and parts[-1].startswith("session.v"):
+        parts = parts[:-1]
+    cand = parts[-1] if parts else t
+    return cand if len(cand) <= n else "…" + cand[-n:]
+
+
+def _dir_of(p: str) -> str:
+    """路径 → 目录聚类键（**取最后 2 段**）。
+
+    为什么不取前 2 段：台账里的路径有绝对有相对（绝对路径前两段是
+    `C:/` 或 `Users/yianyao` 这类噪声），末尾两段才有语义（`tests/`、
+    `static/`、`actions/analysis/`）。只在斜杠上切，不做别的归一。
+    """
+    t = ("" if p is None else str(p)).replace("\\", "/").rstrip("/")
+    d = t.rsplit("/", 1)[0] if "/" in t else ""
+    parts = [x for x in d.split("/") if x and x not in (".", "..")]
+    if not parts:
+        return "（根目录）"
+    return "/".join(parts[-2:]) + "/"
+
+
+def _bucket_of(n_versions: int) -> str:
+    n = int(n_versions or 0)
+    if n >= REPEAT_MIN:
+        return "core"
+    return "few" if n == 2 else "once"
+
+
+def _agg(pairs: list[dict]) -> dict:
+    """一批 pairs → 聚合数字（主题行 / 会话行共用一套口径）。"""
+    buckets = {"core": [], "few": [], "once": []}
+    for p in pairs:
+        buckets[_bucket_of(p["n_versions"])].append(p)
+    dirs: dict[str, dict] = {}
+    for p in pairs:
+        k = _dir_of(p["file_path"])
+        d = dirs.setdefault(k, {"dir": k, "files": 0, "versions": 0})
+        d["files"] += 1
+        d["versions"] += int(p["n_versions"] or 0)
+    top_dirs = sorted(dirs.values(), key=lambda x: (-x["versions"], x["dir"]))[:5]
+    return {
+        "sessions": _uniques(pairs, "sid"),
+        "files": _uniques(pairs, "file_path"),
+        "pairs": len(pairs),
+        "versions": sum(int(p["n_versions"] or 0) for p in pairs),
+        "changed_chars": sum(int(p["changed_chars"] or 0) for p in pairs),
+        "buckets": {k: {"pairs": len(v),
+                        "versions": sum(int(x["n_versions"] or 0) for x in v)}
+                    for k, v in buckets.items()},
+        # 核心产物（pair 级，按版数降序）——明细用
+        "core": sorted(buckets["core"],
+                       key=lambda x: (-x["n_versions"], x["last_ts"])),
+        # 核心产物（**按文件路径合并**）——给人看的那张表。
+        # 为什么合并：同一个文件常在两个会话里各改一遍（一次工作被拆成两个
+        # 会话文件，实测 `会话交接-2026-10-04.md` 在两个会话里各 63 版），
+        # pair 级列出来就是同一行重复两遍，看着像 bug。合并后「一个文件 =
+        # 一行」，几个会话改过写在 `sessions` 里。
+        # 合并的输入是「本批里凡属于核心文件的所有 pair」——不是只合并核心
+        # 那几条。否则 s1 改 3 版、s2 改 1 版的同一个文件会算成 3 版，
+        # 而人问的是「这个文件一共改了几版」。
+        "core_files": _merge_by_file(
+            [p for p in pairs
+             if p["file_path"] in {x["file_path"] for x in buckets["core"]}]),
+        "top_dirs": top_dirs,
+        "first_ts": min((p["first_ts"] for p in pairs if p["first_ts"]),
+                        default=""),
+        "last_ts": max((p["last_ts"] for p in pairs if p["last_ts"]),
+                       default=""),
+    }
+
+
+def _merge_by_file(pairs: list[dict]) -> list[dict]:
+    """核心产物按 `file_path` 合并（版数/字数相加，会话去重列出）。"""
+    by: dict[str, dict] = {}
+    for p in pairs:
+        k = p["file_path"]
+        d = by.setdefault(k, {"file_path": k, "file_short": p["file_short"],
+                              "n_versions": 0, "changed_chars": 0,
+                              "sessions": [], "first_ts": "", "last_ts": ""})
+        d["n_versions"] += int(p["n_versions"] or 0)
+        d["changed_chars"] += int(p["changed_chars"] or 0)
+        if p["sid"] not in d["sessions"]:
+            d["sessions"].append(p["sid"])
+        if p["first_ts"] and (not d["first_ts"] or p["first_ts"] < d["first_ts"]):
+            d["first_ts"] = p["first_ts"]
+        if p["last_ts"] and p["last_ts"] > d["last_ts"]:
+            d["last_ts"] = p["last_ts"]
+    out = list(by.values())
+    out.sort(key=lambda x: (-x["n_versions"], -len(x["sessions"]), x["file_path"]))
+    return out
+
+
+def _topic_list(topics_meta) -> list[dict]:
+    """主题全集（**含没有产物的**）——主题行要能显示 0，不能被台账"筛掉"。"""
+    if not topics_meta or not Path(topics_meta).is_file():
+        return []
+    con = _ro(topics_meta)
+    try:
+        rows = list(con.execute(
+            "SELECT id, name, members FROM topics ORDER BY name"))
+    except sqlite3.Error:
+        return []
+    finally:
+        con.close()
+    out = []
+    for r in rows:
+        try:
+            mem = json.loads(r["members"] or "[]")
+        except (TypeError, ValueError):
+            mem = []
+        sids = [x.get("sid") if isinstance(x, dict) else x
+                for x in (mem if isinstance(mem, list) else [])]
+        out.append({"id": r["id"], "name": r["name"],
+                    "sids": [x for x in sids if isinstance(x, str) and x]})
+    return out
+
+
+def group_topics(pairs: list[dict], topics_meta) -> tuple[list[dict], list[dict]]:
+    """按主题分批（**一个会话注册进两个主题时两边各计一次**，见 HONEST）。
+
+    返回 `(有产物的主题行, 没有产物的主题)`——**第二批不是被筛掉了**，是被
+    折起来了：主题表 17 个里有 14 个在台账里一条产物都没有（那些主题的会话
+    没接入产物提取，或确实没写过文件），一行一个空行只会把真信号淹掉。
+    排序：核心产物多的在前。
+    """
+    by_sid: dict[str, list[dict]] = {}
+    for p in pairs:
+        by_sid.setdefault(p["sid"], []).append(p)
+    out = []
+    empty = []
+    used: set[str] = set()
+    for t in _topic_list(topics_meta):
+        sub = [p for sid in t["sids"] for p in by_sid.get(sid, [])]
+        if sub:
+            used.update(p["sid"] for p in sub)
+        else:
+            empty.append({"id": t["id"], "name": t["name"],
+                          "members_registered": len(t["sids"])})
+            continue
+        row = {"kind": "topic", "topic_id": t["id"], "topic_name": t["name"],
+               "members_registered": len(t["sids"])}
+        row.update(_agg(sub))
+        # 这一批实际有产物的会话 —— 决策层要拿它跟卡片锚点比对
+        # （`queue:artifact` 的判据②），不给就得让消费方重算一遍分组。
+        row["sids"] = sorted({p["sid"] for p in sub})
+        row["core"] = row["core"][:8]
+        row["core_files"] = row["core_files"][:8]
+        out.append(row)
+    # `used` 只用于判定「未归主题」——同一会话属于多个主题时仍是"归了"
+    rest = [p for p in pairs if p["sid"] not in used]
+    if rest:
+        row = {"kind": "unfiled", "topic_id": "", "topic_name": "（未归主题）",
+               "members_registered": _uniques(rest, "sid")}
+        row.update(_agg(rest))
+        row["sids"] = sorted({p["sid"] for p in rest})
+        row["core"] = row["core"][:8]
+        row["core_files"] = row["core_files"][:8]
+        row["note"] = ("这些会话还没注册进任何主题：台账看得见产物，"
+                       "但没法按主题读。想归类走「主题 → 注册新主题」。")
+        out.append(row)
+    out.sort(key=lambda r: (r["kind"] == "unfiled",
+                            -r["buckets"]["core"]["pairs"],
+                            -r["versions"]))
+    return out, empty
+
+
+def group_sessions(pairs: list[dict]) -> list[dict]:
+    """按会话分批（**一次会话 = 一次工作**，比"一个文件"更接近人记得的单位）。"""
+    by_sid: dict[str, list[dict]] = {}
+    for p in pairs:
+        by_sid.setdefault(p["sid"], []).append(p)
+    out = []
+    for sid, sub in by_sid.items():
+        row = {"kind": "session", "sid": sid, "short": _sid_tail(sid),
+               "topic_names": "、".join(sorted({t["name"] for p in sub
+                                                for t in p["topics"]}))}
+        row.update(_agg(sub))
+        row["core"] = row["core"][:5]
+        row["core_files"] = row["core_files"][:5]
+        out.append(row)
+    out.sort(key=lambda r: (-r["buckets"]["core"]["pairs"], -r["versions"]))
+    return out
+
+
+def build(cfg, *, group: str = "topic", limit: int = 200,
+          sort: str = "versions", sid: str = "") -> dict:
     """产物台账数据面（A 档只读）。
 
-    参数全部可选：`limit` 回多少行（默认 200，上限 MAX_ROWS）；
+    `group` 决定这一面按什么单位读（**默认按主题**——用户 2026-10-26：
+    「不应该是按主题、或者按最终产物分批汇总么」）：
+    - `topic`：一个主题一行（外加「未归主题」一行）；
+    - `session`：一个会话一行（一次工作一行）；
+    - `file`：「会话 × 文件」一行（看具体哪个文件改得最狠时才用）。
+
+    其余参数：`limit` 回多少行（默认 200，上限 MAX_ROWS）；
     `sort` = versions（版数多的在前）/ recent（最近改的在前）/ path（按路径）；
     `sid` 非空则只看这一个会话。
     """
@@ -221,11 +454,12 @@ def build(cfg, *, limit: int = 200, sort: str = "versions",
         lim = max(1, min(int(limit or 200), MAX_ROWS))
     except (TypeError, ValueError):
         lim = 200
+    grp = group if group in ("topic", "session", "file") else "topic"
     cov = coverage(cfg.db, cfg.artifacts_meta)
     base = {"view_actions_api": 1, "schema": SCHEMA,
             "definitions": DEFINITIONS, "sources": SOURCES,
-            "honest": list(HONEST),
-            "sort": sort, "limit": lim, "sid_filter": sid or ""}
+            "honest": list(HONEST), "batches": BATCH_LABEL,
+            "group": grp, "sort": sort, "limit": lim, "sid_filter": sid or ""}
 
     meta = Path(cfg.artifacts_meta) if cfg.artifacts_meta else None
     if meta is None or not meta.is_file():
@@ -233,8 +467,10 @@ def build(cfg, *, limit: int = 200, sort: str = "versions",
             "configured": False, "coverage": cov,
             "totals": {"sessions_registered": cov["registered_sessions"],
                        "files": 0, "pairs": 0, "pairs_in_topics": 0,
-                       "versions": 0, "changed_chars": 0},
+                       "versions": 0, "changed_chars": 0,
+                       "core_pairs": 0, "bulk_pairs": 0},
             "rows": [], "rows_total": 0, "truncated": False,
+            "groups": [], "groups_total": 0, "empty_groups": [],
             "topics_available": False,
             "hint": HINT_UNCONFIGURED,
         })
@@ -248,6 +484,7 @@ def build(cfg, *, limit: int = 200, sort: str = "versions",
         ts = tidx.get(p["sid"]) or []
         p["topics"] = [{"id": t["id"], "name": t["name"]} for t in ts]
         p["topic_names"] = "、".join(t["name"] for t in ts) or ""
+        p["bucket"] = _bucket_of(p["n_versions"])
     if sort == "recent":
         pairs.sort(key=lambda p: (p["last_ts"], p["n_versions"]), reverse=True)
     elif sort == "path":
@@ -257,6 +494,7 @@ def build(cfg, *, limit: int = 200, sort: str = "versions",
     rows_total = len(pairs)
     rows = pairs[:lim]
     in_topics = sum(1 for p in pairs if p["topics"])
+    core_pairs = sum(1 for p in pairs if p["bucket"] == "core")
     base.update({
         "configured": True,
         "coverage": cov,
@@ -269,13 +507,25 @@ def build(cfg, *, limit: int = 200, sort: str = "versions",
             # 键名与 `definitions`/行字段统一用 changed_chars，不叫 chars
             # ——同一个数在三个地方两个名字，迟早有人对不上账。
             "changed_chars": sum(p["changed_chars"] for p in pairs),
+            "core_pairs": core_pairs,
+            "bulk_pairs": rows_total - core_pairs,
         },
         "rows": rows,
         "rows_total": rows_total,
-        "truncated": rows_total > len(rows),
         "topics_available": bool(tidx),
         "hint": (HINT_EMPTY if not rows_total else ""),
     })
+    empty: list[dict] = []
+    if grp == "topic":
+        groups, empty = group_topics(pairs, cfg.topics_meta)
+    elif grp == "session":
+        groups = group_sessions(pairs)
+    else:
+        groups = []
+    base["groups"] = groups[:lim]
+    base["groups_total"] = len(groups)
+    base["empty_groups"] = empty
+    base["truncated"] = (rows_total > len(rows)) or (len(groups) > lim)
     if cfg.db and Path(cfg.db).is_file():
         base["candidates"] = _candidates(cfg.db)
     else:
@@ -288,6 +538,7 @@ def render_md(d: dict) -> str:
     """人读版（命令台/报告落地用）。数字全部来自 build()，本函数只排版。"""
     t = d.get("totals") or {}
     cv = d.get("coverage") or {}
+    grp = d.get("group") or "file"
     lines = [
         "# 产物台账（artifact_ledger · 全库）",
         "",
@@ -308,28 +559,74 @@ def render_md(d: dict) -> str:
         "| 文件路径数（不做路径归一） | %s |" % t.get("files", 0),
         "| 会话×文件 组合 | %s |" % t.get("pairs", 0),
         "| 其中能反查到主题的 | %s |" % t.get("pairs_in_topics", 0),
+        "| 其中核心产物（≥%d 版） | %s |" % (REPEAT_MIN, t.get("core_pairs", 0)),
+        "| 其余（1–2 版，含一次过） | %s |" % t.get("bulk_pairs", 0),
         "| 写入记录总条数（版数） | %s |" % t.get("versions", 0),
         "| 改动字数合计 | %s |" % t.get("changed_chars", 0),
         "",
     ]
     if d.get("hint"):
         lines += ["> %s" % d["hint"], ""]
-    rows = d.get("rows") or []
-    if rows:
-        lines += ["## 台账（按%s，前 %d 行 / 共 %d）"
-                  % ({"versions": "版数", "recent": "最近改动",
-                      "path": "路径"}.get(d.get("sort"), "版数"),
-                     len(rows), d.get("rows_total", len(rows))), "",
-                  "| 版数 | 文件 | 主题 | 首→末 | 改动字数 |",
-                  "|---|---|---|---|---|"]
-        for r in rows:
-            lines.append("| %d | %s | %s | %s → %s | %d |"
-                         % (r["n_versions"], r["file_short"],
-                            r["topic_names"] or "—",
-                            (r["first_ts"] or "—")[:10],
-                            (r["last_ts"] or "—")[:10],
-                            r["changed_chars"]))
-        lines.append("")
+    groups = d.get("groups") or []
+    if grp in ("topic", "session") and groups:
+        title = "按主题分批" if grp == "topic" else "按会话分批"
+        lines += ["## %s（前 %d 批 / 共 %d）"
+                  % (title, len(groups), d.get("groups_total", len(groups))), "",
+                  "| 批 | 会话 | 文件 | 版数 | 核心产物 | 一次过 | 主目录（版数） "
+                  "| 首→末 |",
+                  "|---|---|---|---|---|---|---|---|"]
+        for r in groups:
+            name = (r.get("topic_name") if grp == "topic" else r.get("sid")) or ""
+            once = (r.get("buckets") or {}).get("once", {}).get("pairs", 0)
+            dirs = "、".join("%s(%d)" % (x["dir"], x["versions"])
+                            for x in (r.get("top_dirs") or [])[:3]) or "—"
+            lines.append("| %s | %d | %d | %d | %d | %d | %s | %s → %s |"
+                         % (name, r.get("sessions", 0), r.get("files", 0),
+                            r.get("versions", 0),
+                            (r.get("buckets") or {}).get("core", {}).get("pairs", 0),
+                            once, dirs,
+                            (r.get("first_ts") or "—")[:10],
+                            (r.get("last_ts") or "—")[:10]))
+        eg = d.get("empty_groups") or []
+        if eg:
+            lines += ["另有 **%d 个主题**在台账里一条产物都没有：%s"
+                      "（这些主题的会话没接入产物提取，或确实没写过文件；"
+                      "这不代表这些主题没发生过工作）。"
+                      % (len(eg), "、".join(x["name"] for x in eg)), ""]
+        core_rows = [(r, c) for r in groups
+                     for c in (r.get("core_files") or [])]
+        if core_rows:
+            lines += ["### 核心产物（每个文件一行；括号里是改过它的会话数）", "",
+                      "| 批 | 文件 | 版数 | 改动字数 | 会话 | 末次 |",
+                      "|---|---|---|---|---|---|"]
+            for r, c in core_rows[:30]:
+                name = (r.get("topic_name") if grp == "topic"
+                        else r.get("sid")) or ""
+                lines.append("| %s | %s | %d | %d | %d 个 | %s |"
+                             % (name, c["file_short"], c["n_versions"],
+                                c["changed_chars"], len(c["sessions"]),
+                                (c["last_ts"] or "—")[:10]))
+            lines.append("")
+    else:
+        rows = d.get("rows") or []
+        if rows:
+            lines += ["## 台账（按%s，前 %d 行 / 共 %d）"
+                      % ({"versions": "版数", "recent": "最近改动",
+                          "path": "路径"}.get(d.get("sort"), "版数"),
+                         len(rows), d.get("rows_total", len(rows))), "",
+                      "| 版数 | 批次 | 文件 | 主题 | 首→末 | 改动字数 |",
+                      "|---|---|---|---|---|---|"]
+            bl = d.get("batches") or BATCH_LABEL
+            for r in rows:
+                lines.append("| %d | %s | %s | %s | %s → %s | %d |"
+                             % (r["n_versions"],
+                                bl.get(r.get("bucket"), "—"),
+                                r["file_short"],
+                                r["topic_names"] or "—",
+                                (r["first_ts"] or "—")[:10],
+                                (r["last_ts"] or "—")[:10],
+                                r["changed_chars"]))
+            lines.append("")
     cand = d.get("candidates") or {}
     if "revisions" in cand:
         ra = cand["revisions"]["account"]

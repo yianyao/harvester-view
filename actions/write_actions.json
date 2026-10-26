@@ -626,6 +626,36 @@
      "label": "字符预算（可空=生成器默认；调大会多带锚点）"
     }
    }
+  },
+  {
+   "action_id": "chain_generate",
+   "cmd": "chain-generate",
+   "risk": "reversible",
+   "target": "repo_files",
+   "summary": "用本机模型为主题 {id} 自动写 chain 长文（两道门全过才落草稿位）",
+   "detail": "**不需要 Agent**：出包 → 本机模型按包代笔 → chain-validate（结构/锚点）+ chain-audit（引文逐字）全过才写 exports/chains/<主题 id>.md；不过就把门禁报错回喂重试，最多 max_attempts 次。为什么要这条：v0.82 的链靠 Agent 读 1.9 万字包手写，每条都是几千字输出 + 多轮核对，16 个主题就是 16 次这样的开销（用户 2026-10-26：「不能老是在 WorkBuddy 中耗费 token 干这活」）。**模型走你自己环境变量里的 key，费用不经 WorkBuddy**。**不可复现**：同库同参数跑两次文本不同（temperature=0 也不保证），frontmatter 记 model 以区分手写链。预演不调用模型、不产生费用。覆盖草稿位前先备份 .bak-<时间戳>。",
+   "allow": [
+    "id_",
+    "max_attempts",
+    "model"
+   ],
+   "params": {
+    "id": {
+     "map": "id_",
+     "required": true,
+     "label": "主题 id（要自动生成哪条链）"
+    },
+    "max_attempts": {
+     "map": "max_attempts",
+     "required": false,
+     "label": "最多调用模型几次（可空=2；每次约 1–3 分钟）"
+    },
+    "model": {
+     "map": "model",
+     "required": false,
+     "label": "模型名（可空=默认 deepseek-ai/DeepSeek-V4.1-Flash）"
+    }
+   }
   }
  ]
 }

@@ -207,6 +207,22 @@ async function main() {
   ok(typeof els["btn-chain-empty-build"].onclick === "function",
      "④ 空态按钮已绑定处理函数");
 
+  /* ⑤ 自动写链（v0.83，用户 2026-10-26「不能老是在 WorkBuddy 中耗费 token
+     干这活」）：入口必须长在主题工具栏，必须走 B 档动作（写草稿位），
+     且必须明说"不耗 WorkBuddy 的 token / 走你自己的 key"——不然用户
+     不知道这钱是谁出的。 */
+  ok(html.includes("btn-topic-chaingen"),
+     "⑤ 工具栏有「自动写链」按钮（不用 Agent 写链）");
+  ok(/openInCmd\("chain_generate",\{id:c\.id/.test(html),
+     "⑤ 自动写链跳 B 档动作 chain_generate（写文件先给预演）");
+  ok(/btn-topic-chaingen[\s\S]{0,600}?不耗 WorkBuddy/.test(html),
+     "⑤ 按钮说明里点明「不耗 WorkBuddy 的 token」（钱从哪出要说清）");
+  const reg = JSON.parse(fs.readFileSync(
+    path.join(__dirname, "..", "actions", "actions_registry.json"), "utf8"));
+  const cg = (reg.write_actions || []).find(a => a.action_id === "chain_generate");
+  ok(!!cg, "⑤ 注册表里 chain_generate 是 B 档动作（不是偷偷执行）");
+  ok(!!cg && cg.tier === "B", "⑤ chain_generate 定档 B（写文件 → 两段提交）");
+
   if (failed) { console.error("\n" + failed + " CHECK(S) FAILED"); process.exit(1); }
   console.log("\nALL CHAINFLOW CHECKS PASSED");
 }

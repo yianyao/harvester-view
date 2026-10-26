@@ -710,6 +710,8 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
         title="切换到 chain 演进链视图（该主题已发布的长文）">chain 演进链</button>
       <button id="btn-topic-chainbuild" class="xbtn" disabled
         title="A 档动作 chain_build：出「链创作包」（判据头+主题画像+按月分桶锚点候选+格式契约+写作指令）。不代笔——演变与转折交给 Agent 写">生成链</button>
+      <button id="btn-topic-chaingen" class="xbtn" disabled
+        title="B 档动作 chain_generate：本机模型按创作包直接写出链长文，chain-validate + chain-audit 全过才落草稿位。**不用 Agent、不耗 WorkBuddy 的 token**（走你自己环境变量里的 key）。预演不花钱，执行约 1–3 分钟/次">自动写链</button>
       <button id="btn-topic-chainpub" class="xbtn" disabled
         title="B 档动作 chain_publish：把 Agent 写好的草稿过 chain-validate + chain-audit，全过才落进知识正本（跳命令台两段提交）">校验并发布</button>
       <button id="btn-topic-artifacts" class="xbtn" disabled
@@ -3742,6 +3744,7 @@ function updateTopicCmd(){
   $("btn-topic-brief").disabled=off;
   $("btn-topic-chain").disabled=off;
   $("btn-topic-chainbuild").disabled=off;
+  $("btn-topic-chaingen").disabled=off;
   $("btn-topic-chainpub").disabled=off;
   $("btn-topic-artifacts").disabled=off;
   if(cur)$("btn-topic-cmd").dataset.cmd=
@@ -6549,6 +6552,12 @@ $("btn-topic-chainpub").onclick=()=>{const c=state.topicCur;
   if(!c)return;
   openInCmd("chain_publish",{id:c.id,force:false,allow_audit:false});};
 $("btn-topic-artifacts").onclick=()=>runArtifactsFlow();
+/* v0.83 自动写链：**不用 Agent**（用户 2026-10-26「不能老是在 WorkBuddy 中
+   耗费 token 干这活」）。它写草稿位 → B 档两段提交，同 chain_export 一条规矩：
+   写文件先给预演（会用哪个模型、包多大、写到哪、最多试几次），确认才调模型。 */
+$("btn-topic-chaingen").onclick=()=>{const c=state.topicCur;
+  if(!c)return;
+  openInCmd("chain_generate",{id:c.id,max_attempts:1});};
 $("btn-topic-chain").onclick=()=>{const c=state.topicCur;
   if(c)openTopicChain(c.id);};
 $("btn-topic-brief").onclick=()=>runBrief()

@@ -134,6 +134,9 @@ COMMAND_CARD: dict[str, str] = {
     # P11 链创作包与发布（用户 2026-10-24）：build=A 档只读出包，
     # publish=B 档两道校验门后落正本——都归「主题」动词卡。
     "chain-build": "topic", "chain-publish": "topic",
+    # v0.83 模型代笔（用户 2026-10-26「不能老是在 WorkBuddy 中耗费 token
+    # 干这活」）：B 档——它写草稿位文件，写就必须两段提交。
+    "chain-generate": "topic",
     "artifacts": "artifacts",
     "cards": "kb", "cards validate": "kb", "cards new": "kb",
     # v0.74 卡片复核台账（上游）：人裁过的警告不再显示——写 cards_meta.db → B
@@ -196,6 +199,7 @@ PURPOSE: dict[str, str] = {
     "chain-audit": "审计 chain 的引文与锚点（可落裁决）",
     "chain-build": "出链创作包（生成演进链的第一步）",
     "chain-publish": "校验通过才把链发布进知识正本（B 档）",
+    "chain-generate": "本机模型按创作包代写链长文（不用 Agent，两道门把关）",
     "suggest-agents": "生成 AGENTS.md 候选条目",
     "suggest-status": "把建议状态落库（B 档）",
     "ledger-sync": "人账与库内建议对账",
@@ -245,6 +249,8 @@ TIER_OVERRIDE: dict[str, str] = {
     # 只接受过 chain-validate + chain-audit 两道门的草稿）。配套的
     # `chain-build` 只读产出创作包（不落盘）→ A，走末尾缺省，无需覆写。
     "chain-publish": "B",
+    # chain-generate 写草稿位（exports/ 是文件）→ 与 chain_export 同档：B。
+    "chain-generate": "B",
     # 长驻/需人亲手登录 → C（永不执行）
     "mcp-serve": "C", "api-serve": "C",
     # v0.49 会话抑制：查抑制表是只读 → A；其余三个写库/删副本 → B

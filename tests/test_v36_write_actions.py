@@ -509,7 +509,10 @@ class WriteHttpTest(_Fixture):
         #    首次实现曾错归 A 档，被本文件的 test_v38/test_v54 两道
         #    "A 档 writes 必须为空" 门抓红——写文件就是 B 档，不接受
         #    "exports 是临时目录所以不算写" 的解释）
-        self.assertEqual(len(b), 21)
+        # → 22（v0.83 chain_generate：本机模型代写链长文，写草稿位 → B。
+        #    用户 2026-10-26「不能老是在 WorkBuddy 中耗费 token 干这活」：
+        #    生成链不再靠 Agent；但**写文件就得两段提交**这条规矩不变）
+        self.assertEqual(len(b), 22)
         for a in b:
             self.assertIn(a["risk"], ("reversible", "destructive"))
 

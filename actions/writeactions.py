@@ -1437,6 +1437,142 @@ def _exec_chain_export(p: dict, cfg) -> dict:
             "backup": str(bak) if bak else None}
 
 
+def _positive_int(raw, default: int) -> int:
+    """整数入参：空值/非法/非正一律回默认——不因一个输入框崩掉整条动作。"""
+    try:
+        v = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return default
+    return v if v > 0 else default
+
+
+def _chain_generate_args(p: dict, cfg):
+    """plan/execute 共用取参：出包（**不调模型**）+ 算草稿位。
+
+    plan 阶段绝不许碰模型——预演是"给你看清楚会干什么"，不是"先花钱再问
+    你要不要"。所以这里只做 build()（确定性、毫秒级），模型调用全在 exec。
+    """
+    err = ensure_harvester_importable()
+    if err:
+        raise WriteError(err)
+    from harvester import chainbuild as CB
+    db = _require_db(cfg)
+    tid = str(p.get("id") or "").strip()
+    if not tid:
+        raise WriteError("缺主题 id（要自动生成哪个主题的链）")
+    if cfg.topics_meta is None or not Path(cfg.topics_meta).is_file():
+        raise WriteError("未配置 topics_meta（起服时加 --topics-meta）——"
+                         "没有主题库就算不出锚点候选")
+    if not cfg.exports_root:
+        raise WriteError("未配置 exports_root（起服时加 --exports-root）"
+                         "——草稿位就在它下面")
+    try:
+        pack = CB.build(Path(db), Path(cfg.topics_meta), tid)
+    except ValueError as e:
+        raise WriteError(str(e))
+    return tid, pack, CB.render(pack), chain_draft_path(cfg, tid)
+
+
+def _plan_chain_generate(p: dict, cfg) -> dict:
+    """预演：**一分钱不花**——只报会用哪个模型、包多大、写到哪、最多试几次。"""
+    from harvester import chaingen as CG
+    tid, pack, text, out = _chain_generate_args(p, cfg)
+    try:
+        bes = CG.backends()
+    except CG.GenError as e:
+        raise WriteError(str(e))
+    if not bes:
+        raise WriteError("没有可用的模型后端：请设置 KNOWATLAS_LLM_API_KEY_SF1"
+                         "（硅基流动）或 KNOWATLAS_LLM_API_KEY（DeepSeek 官方），"
+                         "或用 HARVESTER_LLM_BACKENDS 指定其他 OpenAI 兼容服务")
+    tries = _positive_int(p.get("max_attempts"), 1) or 2
+    before = _fingerprint(out)
+    c, t = pack.get("counts") or {}, pack.get("topic") or {}
+    human = _file_human(out, before,
+                        "动作：用本机模型为主题 %s 自动写 chain 长文" % tid)
+    human += [
+        "主题：%s｜成员 %s｜锚点候选 %s（包给 %s）"
+        % (t.get("name") or "", c.get("members", 0),
+           c.get("anchor_candidates", 0), c.get("anchor_shown", 0)),
+        "模型：%s（%s）" % (bes[0]["model"], bes[0]["base_url"]),
+        "输入：创作包约 %d 字；%s" % (len(text), (
+            "只调用 1 次（不过就留 .pending 给你看差在哪——实测第 2 次重试"
+            "反而更差，模型会顺手重写全文并引入新错）" if tries <= 1 else
+            "最多调用 %d 次，不过就带着门禁报错重试" % tries)),
+        "**门不放松**：chain-validate（结构/锚点）+ chain-audit（引文逐字）"
+        "全过才写草稿位；不过就报差在哪，不写盘",
+        "**标点会按规范归位**：「」只用于逐字原文，模型写成了概括式引述的"
+        "（原文里查不到逐字对应的）会被改判成『』——只改标点、一个字不改，"
+        "改了多少会在结果里报出来",
+        "费用：走你自己环境变量里的 key（%s），不经 WorkBuddy；"
+        "一次大约输入 1.5–2 万 token"
+        % "、".join(sorted({CG._fp(k) for be in bes for k in be["keys"]})),
+        "不可复现：模型输出每次不同（temperature=0 也不保证），"
+        "frontmatter 会记 model 以区分手写链",
+        "下一步：过了就点「校验并发布」进知识正本",
+    ]
+    if (pack.get("budget") or {}).get("truncated"):
+        human.append("预算截断：另有 %s 个锚点被字符预算砍掉，"
+                     "这次写出来的链不会用到它们"
+                     % (pack.get("budget") or {}).get("budget_skipped", 0))
+    return {"target_path": str(out), "before": before, "after": None,
+            "snapshot": None, "bytes": len(text),
+            "limits": ["模型输出质量不受本项目控制：同一主题多跑几次，"
+                       "可能一次过门、一次不过",
+                       "预演不调用模型，费用只在执行时产生"],
+            "human": human, "noop": False}
+
+
+def _exec_chain_generate(p: dict, cfg) -> dict:
+    from harvester import chaingen as CG
+    tid, _pack, _text, out = _chain_generate_args(p, cfg)
+    tries = _positive_int(p.get("max_attempts"), 1) or 2
+    model = str(p.get("model") or "").strip() or None
+    db = Path(_require_db(cfg))
+    try:
+        r = CG.generate(db, Path(cfg.topics_meta), tid, out=out,
+                        max_attempts=tries, model=model, write=True)
+    except (CG.GenError, ValueError, RuntimeError) as e:
+        raise WriteError("自动写链失败：%s" % e)
+    au = r.get("audit") or {}
+    q = au.get("quotes") or {}
+    head = ("第 %d 次调用后" % len(r.get("attempts") or []))
+    if not r.get("ok"):
+        # 页面侧也要能看见「最后一版留在哪」：等了 3 分钟却只在 CLI 里报一句
+        # 「没过门」，等于让人对着空气重跑一遍。落点原样带出来（服务端定的
+        # 路径，页面不传路径进来）。
+        pend = r.get("pending")
+        if pend:
+            # 页面里读长绝对路径很累，能相对 exports_root 就相对着显示
+            show = pend
+            if cfg.exports_root:
+                try:
+                    show = str(Path(pend).relative_to(Path(cfg.exports_root)))
+                except ValueError:
+                    pass
+            tail = ("；最后一版已留档到 %s（文件名带 .pending 就是「没过门、别拿去发布」，"
+                    "发布只认草稿位，不会误搬）" % show)
+        else:
+            tail = "；本次没留下任何文件（模型没产出可用正文）"
+        raise WriteError(
+            "模型写了 %d 次都没过门，**草稿位没动**%s：%s"
+            % (len(r.get("attempts") or []), tail,
+               "；".join(r.get("blockers") or ["未知原因"])))
+    dm = r.get("demoted") or {}
+    return {"summary": (
+        "%s过两道门 → 草稿已写 %s（%d 字）｜结构 stages %s / nodes %s｜"
+        "引文逐字命中 %s/%s｜标点修正 %s 处（非逐字的「」改判『』，只改标点）"
+        "｜模型 %s"
+        % (head, r.get("path"), len(r.get("doc") or ""),
+           ((r.get("validate") or {}).get("stats") or {}).get("stages", 0),
+           ((r.get("validate") or {}).get("stats") or {}).get("nodes", 0),
+           q.get("exact", 0), q.get("total", 0), dm.get("count", 0),
+           r.get("model") or "")),
+        "path": r.get("path"), "chars": len(r.get("doc") or ""),
+        "attempts": r.get("attempts"), "usage": r.get("usage"),
+        "demoted": dm.get("count", 0), "patched": r.get("patched")}
+
+
 def _chain_publish_args(p: dict, cfg):
     """plan/execute 共用取参（同一真源）。"""
     err = ensure_harvester_importable()
@@ -1557,6 +1693,8 @@ WRITE_ACTIONS: dict[str, dict] = {
                    "execute": _exec_kb_publish},
     "chain_publish": {"plan": _plan_chain_publish,
                       "execute": _exec_chain_publish},
+    "chain_generate": {"plan": _plan_chain_generate,
+                       "execute": _exec_chain_generate},
 }
 
 

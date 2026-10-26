@@ -1260,6 +1260,137 @@
    "nested": false
   },
   {
+   "cmd": "chain-generate",
+   "card_id": "topic",
+   "tier": "B",
+   "args": [
+    {
+     "name": "--id",
+     "dest": "id_",
+     "kind": "str",
+     "default": null,
+     "required": true,
+     "choices": null,
+     "src": "topics_api",
+     "negates": null,
+     "help": "主题 id",
+     "note": null
+    },
+    {
+     "name": "--meta",
+     "dest": "meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "主题 meta 库路径（默认 topics_meta.db）",
+     "note": null
+    },
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径（只读，出包与锚点回溯）",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "草稿输出路径（缺省 exports/chains/<id>.md——与 chain-publish 的草稿位一致）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--max-chars",
+     "dest": "max_chars",
+     "kind": "int",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "创作包字符预算（默认生成器默认值）",
+     "note": "覆盖该档默认字符预算（不填=用档位预算）"
+    },
+    {
+     "name": "--max-attempts",
+     "dest": "max_attempts",
+     "kind": "int",
+     "default": 3,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "最多调用模型几次（每次都是完整一次调用；默认 3）",
+     "note": null
+    },
+    {
+     "name": "--model",
+     "dest": "model",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "覆盖优先级最高后端的模型名（兜底后端不变）",
+     "note": null
+    },
+    {
+     "name": "--no-write",
+     "dest": "no_write",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": "--no-write",
+     "help": "只生成不落盘（配合 --print / --json 看结果）",
+     "note": null
+    },
+    {
+     "name": "--print",
+     "dest": "print_doc",
+     "kind": "switch",
+     "default": false,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "把生成的全文打到 stdout",
+     "note": null
+    },
+    {
+     "name": "--json",
+     "dest": "json",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "机读出口（chain-generate/1，不含全文）",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "purpose": "本机模型按创作包代写链长文（不用 Agent，两道门把关）",
+   "nested": false
+  },
+  {
    "cmd": "chain-publish",
    "card_id": "topic",
    "tier": "B",

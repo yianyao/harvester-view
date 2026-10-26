@@ -346,6 +346,8 @@ async function main() {
   ok(!$("btn-topic-chain").disabled && !$("btn-topic-dual").disabled &&
      !$("btn-topic-brief").disabled,
      "⑩ 研读面/chain 演进链/双轨三按钮随选中主题一并启用");
+  ok(!$("btn-topic-chaingen").disabled,
+     "⑩ 自动写链按钮也随选中主题启用（v0.83：不再靠 Agent 写链）");
   state.topicCur = null;
   updateTopicCmd();
   ok($("btn-topic-chain").disabled && $("btn-topic-dual").disabled,

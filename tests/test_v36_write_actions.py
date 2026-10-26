@@ -505,7 +505,11 @@ class WriteHttpTest(_Fixture):
         # → 20（P11 chain_publish：链长文发布进知识正本，两道校验门
         #    （chain-validate + chain-audit）全过才写，可逆；同轮新增的
         #    chain_build / artifacts_flow 是 A 档只读，不计入本数）
-        self.assertEqual(len(b), 20)
+        # → 21（P12 chain_export：把链创作包写进草稿位 exports/chains/。
+        #    首次实现曾错归 A 档，被本文件的 test_v38/test_v54 两道
+        #    "A 档 writes 必须为空" 门抓红——写文件就是 B 档，不接受
+        #    "exports 是临时目录所以不算写" 的解释）
+        self.assertEqual(len(b), 21)
         for a in b:
             self.assertIn(a["risk"], ("reversible", "destructive"))
 

@@ -124,11 +124,27 @@ async function main() {
   ok(h1.includes("&lt;script&gt;"), "① 转义后原样可见（不吞内容）");
   ok(h1.includes("id='btn-cp-copy'") && h1.includes("id='btn-cp-pub'"),
      "① 复制 / 校验并发布两个按钮都在");
+  ok(h1.includes("id='btn-cp-export'"),
+     "①b 必须有「导出草稿」按钮（包 1.9 万字，手抄不叫可用）");
 
   /* 发布按钮 → 走 B 档动作 chain_publish（不造第二条写路径） */
   els["btn-cp-pub"].onclick();
   eq(cmdOpened[0][0], "chain_publish", "① 发布按钮跳 B 档动作 chain_publish");
   eq(cmdOpened[0][1].id, "tp-fix", "① 发布参数带当前主题 id");
+
+  /* ①b 导出草稿（P12）：**写文件必须走 B 档两段提交**，不许点了就偷偷写。
+     （首次实现曾错归 A 档，被 test_v38/test_v54 的 writes 门当场抓红。） */
+  els["btn-cp-export"].onclick();
+  const exCmd = cmdOpened.find(c => c[0] === "chain_export");
+  ok(!!exCmd, "①b 导出按钮跳 B 档动作 chain_export（写文件先给预演）");
+  eq(exCmd && exCmd[1].id, "tp-fix", "①b 导出按当前主题 id 走");
+  ok(!posts.some(p => p.body && p.body.action_id === "chain_export"),
+     "①b 不许绕过预演直接打执行接口（写文件 = 两段提交）");
+  // #cp-draft 只在渲染出的 HTML 里（桩 DOM 不会为它建节点），故查 h1
+  ok(h1.includes("id='cp-draft'"),
+     "①b 草稿位那行有独立锚点（Agent 要往哪写）");
+  ok(h1.includes("草稿位：") && h1.includes("校验并发布"),
+     "①b 草稿位旁指向下一步（发布）");
 
   /* ② 产物流：覆盖度透传 + 明细可读 */
   const o2 = mkEl();

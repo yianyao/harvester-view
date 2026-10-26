@@ -1351,6 +1351,92 @@ def chain_draft_path(cfg, topic_id: str) -> Path:
     return root / "chains" / ("%s.md" % (safe or "topic"))
 
 
+def write_chain_draft(cfg, topic_id: str, text: str):
+    """把创作包写进草稿位（P12）。返回 `(path, backup_or_None)`。
+
+    覆盖前备份 `.bak-<时间戳>`：草稿位里放的可能是**Agent 已经写了一半的
+    链**，重出一份包就把它冲掉是不可接受的（包是素材、草稿是成果）。
+    """
+    out = chain_draft_path(cfg, topic_id)
+    bak = _bak_copy(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8", newline="\n")
+    return out, bak
+
+
+def _chain_export_args(p: dict, cfg):
+    """plan/execute 共用取参（同一真源）：出包 + 算草稿位。不写盘。"""
+    err = ensure_harvester_importable()
+    if err:
+        raise WriteError(err)
+    from harvester import chainbuild as CB
+    db = _require_db(cfg)
+    tid = str(p.get("id") or "").strip()
+    if not tid:
+        raise WriteError("缺主题 id（要导出哪个主题的创作包）")
+    if cfg.topics_meta is None or not Path(cfg.topics_meta).is_file():
+        raise WriteError("未配置 topics_meta（起服时加 --topics-meta）——"
+                         "没有主题库就算不出锚点候选")
+    if not cfg.exports_root:
+        raise WriteError("未配置 exports_root（起服时加 --exports-root）"
+                         "——草稿位就在它下面")
+    raw = p.get("max_chars")
+    try:
+        max_chars = int(raw) if str(raw or "").strip() not in ("", "None") else None
+    except (TypeError, ValueError):
+        raise WriteError("max_chars 需要整数，收到 %r" % (raw,))
+    try:
+        d = CB.build(Path(db), Path(cfg.topics_meta), tid, max_chars=max_chars)
+    except ValueError as e:
+        raise WriteError(str(e))
+    return tid, d, CB.render(d), chain_draft_path(cfg, tid)
+
+
+def _plan_chain_export(p: dict, cfg) -> dict:
+    """预演：只说会写到哪、包里有什么、砍了几个锚点——**不写盘**。
+
+    为什么这是 B 档不是 A 档：它写文件。A 档的契约是 `writes` 为空、只读直执；
+    只要写了东西（哪怕是 exports/ 这种可再生工作产物），就得走两段提交 + 台账
+    ——`test_v38`/`test_v54` 两道门就是钉这条（P12 首次实现错归 A 档，被这两道
+    门当场抓红，判据是 `writes` 字段非空，不给"exports 不算写库"的解释留口子）。
+    """
+    tid, d, text, out = _chain_export_args(p, cfg)
+    before = _fingerprint(out)
+    c, b, t = d.get("counts") or {}, d.get("budget") or {}, d.get("topic") or {}
+    human = _file_human(out, before,
+                        "动作：为主题 %s 生成链创作包并写到草稿位" % tid)
+    human += [
+        "主题：%s｜成员 %s｜时间桶 %s｜锚点候选 %s，包给 %s（预算 %s 字）"
+        % (t.get("name") or "", c.get("members", 0), c.get("buckets", 0),
+           c.get("anchor_candidates", 0), c.get("anchor_shown", 0),
+           b.get("max_chars", 0)),
+        "包体：约 %d 字（自包含 md：判据头 + 主题画像 + 锚点候选 + "
+        "格式契约 + 写作指令 + 校验命令）" % len(text),
+        "**这是素材包，不是链**——链正文仍要 Agent 按包 §5 写；"
+        "覆盖这个文件前会先备份 .bak-<时间戳>",
+        "下一步：Agent 就地改写草稿 → 点「校验并发布」，两道门过了才进正本",
+    ]
+    if b.get("truncated"):
+        human.append("预算截断：另有 %s 个锚点被字符预算砍掉"
+                     "（调大预算或按桶重跑，不静默丢）"
+                     % b.get("budget_skipped", 0))
+    return {"target_path": str(out), "before": before, "after": None,
+            "snapshot": None, "bytes": len(text),
+            "limits": ["包体按预演时的库算；执行时以实况为准"],
+            "human": human, "noop": False}
+
+
+def _exec_chain_export(p: dict, cfg) -> dict:
+    tid, d, text, _out = _chain_export_args(p, cfg)
+    path, bak = write_chain_draft(cfg, tid, text)
+    return {"summary": "链创作包已写入 %s（%d 字）%s；交给 Agent 按 §5 写链正文，"
+                       "写完点「校验并发布」"
+                       % (path, len(text),
+                          "（原草稿已备份 %s）" % bak if bak else ""),
+            "path": str(path), "chars": len(text),
+            "backup": str(bak) if bak else None}
+
+
 def _chain_publish_args(p: dict, cfg):
     """plan/execute 共用取参（同一真源）。"""
     err = ensure_harvester_importable()
@@ -1441,6 +1527,8 @@ WRITE_ACTIONS: dict[str, dict] = {
                     "execute": _exec_card_review},
     "chain_audit_accept": {"plan": _plan_chain_audit_accept,
                            "execute": _exec_chain_audit_accept},
+    "chain_export": {"plan": _plan_chain_export,
+                     "execute": _exec_chain_export},
     "attrib_verdict": {"plan": _plan_attrib_verdict,
                        "execute": _exec_attrib_verdict},
     "topic_register": {"plan": _plan_topic_register,

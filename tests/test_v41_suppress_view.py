@@ -410,6 +410,50 @@ class SuppressPlanTest(unittest.TestCase):
                 "缺 %s，多 %s——桌面应用是日常启动方式，缺参数不报错，"
                 "只会静默少功能" % (svc, sorted(want - got), sorted(got - want)))
 
+    def test_desktop_shell_reclaims_ports_before_start(self):
+        """P12：桌面壳启动前必须**先清端口**，不许"已监听就复用"。
+
+        2026-10-26 用户令：「都用桌面应用启动还要先清端口，这个有点搞笑」。
+        旧行为是复用——复用到的可能是改代码之前起的旧服务，于是页面是新的、
+        后端是旧的，点了报"注册表里有、服务里没有"，且时好时坏（两份监听
+        随机命中）。本门钉四件事：
+
+        ① `reclaimPorts()` 在 `whenReady` 里 **await 于 startServices() 之前**；
+        ② 判据只认 python/pythonw（本项目三服务全是 python）——绝不碰
+           node/electron，否则桌面壳会杀掉自己的渲染进程；
+        ③ 走 `taskkill /T /F`（树杀：python -m 会派生子进程）；
+        ④ 旧文案 `[reuse]` 必须消失（留着说明复用路径又回来了）。
+        """
+        js = (ROOT / "desktop" / "main.js").read_text(encoding="utf-8",
+                                                      errors="replace")
+        boot = js[js.index("app.whenReady"):]
+        self.assertIn("await reclaimPorts()", boot,
+                      "桌面壳启动流程里没有 await reclaimPorts()——"
+                      "残留服务会继续占着端口，页面新后端旧")
+        self.assertLess(boot.index("await reclaimPorts()"),
+                        boot.index("startServices()"),
+                        "清端口必须**先于**起服务，顺序反了等于没清")
+        self.assertNotIn("[reuse]", js,
+                         "main.js 还留着「端口已监听就复用」的旧分支——"
+                         "复用到旧代码服务时不会有任何红字，只会静默少功能")
+        # ② 只认 python：进程名正则里不许出现 node/electron
+        m = re.search(r"function ourProc[\s\S]*?\n}", js)
+        self.assertIsNotNone(m, "main.js 里找不到 ourProc 判据函数")
+        body = m.group(0)
+        self.assertRegex(body, r"python\|pythonw",
+                         "ourProc 没限定 python/pythonw——会误杀 electron 自身")
+        self.assertNotRegex(body, r"node\|electron",
+                            "ourProc 的进程名正则里出现了 node/electron："
+                            "桌面壳是 electron，杀到自己会崩窗口")
+        # ③ 树杀
+        self.assertIn('"/T", "/F"', js, "清端口没有树杀（/T /F）——"
+                                        "launcher 死了 worker 会变僵尸")
+        # ④ 三种起法都要认（相对路径启动时命令行里没有仓库绝对路径）
+        for needle in (r"-m\s+harvester", "actionsserve", "view.py"):
+            self.assertIn(needle, body,
+                          "ourProc 漏了 `%s` 这种起法，残留服务会漏杀"
+                          % needle)
+
     def test_plan_lists_export_copies_to_delete(self):
         """`deleted` 是**逐文件一条记录**（sid + json + md），不是裸文件名。
 

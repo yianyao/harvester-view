@@ -699,6 +699,47 @@
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
   {
+   "action_id": "chain_export",
+   "tier": "B",
+   "cmd": "chain-build",
+   "subaction": null,
+   "risk": "reversible",
+   "target": "repo_files",
+   "summary": "为主题 {id} 生成链创作包并写到草稿位（exports/chains/<主题 id>.md）",
+   "detail": "把创作包写成文件，供 Agent 就地改写。**这是素材包不是链**：链正文要 Agent 按包 §5 写，写完再用「校验并发布」过两道门。为什么要落盘：包约 1.9 万字，不落盘时页面上「生成链 → 校验并发布」是断的（发布只会报草稿不存在）。**覆盖前先备份 .bak-<时间戳>**——草稿位可能已放着 Agent 写了一半的链。草稿位由服务端定（页面不传路径）。不碰知识正本、不碰任何库表。",
+   "params": [
+    {
+     "name": "id",
+     "dest": "id_",
+     "arg": "--id",
+     "kind": "str",
+     "src": "topics_api",
+     "server": false,
+     "required": true,
+     "choices": null,
+     "default": null,
+     "note": null,
+     "label": "主题 id（要导出哪个主题的创作包）"
+    },
+    {
+     "name": "max_chars",
+     "dest": "max_chars",
+     "arg": "--max-chars",
+     "kind": "int",
+     "src": "chips",
+     "server": false,
+     "required": false,
+     "choices": null,
+     "default": null,
+     "note": "覆盖该档默认字符预算（不填=用档位预算）",
+     "label": "字符预算（可空=生成器默认；调大会多带锚点）"
+    }
+   ],
+   "no_params_reason": "",
+   "writes": "repo_files（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
+   "reversible": "幂等/可回到原状（仍有台账留痕）"
+  },
+  {
    "action_id": "chain_publish",
    "tier": "B",
    "cmd": "chain-publish",
@@ -1417,8 +1458,8 @@
  "counts": {
   "cards": 13,
   "read_actions": 43,
-  "write_actions": 20,
-  "write_reversible": 17,
+  "write_actions": 21,
+  "write_reversible": 18,
   "write_destructive": 3
  }
 }

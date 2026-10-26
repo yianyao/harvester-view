@@ -3815,9 +3815,10 @@ function renderChainPack(d,out){
     ((d.next_steps||[]).map(s=>"<li>"+esc(s)+"</li>").join(""))+"</ol>"+
     "<div style='margin-top:10px'>"+
     "<button id='btn-cp-copy' class='xbtn'>复制创作包</button>"+
+    "<button id='btn-cp-export' class='xbtn'>导出草稿（落盘）</button>"+
     "<button id='btn-cp-pub' class='xbtn'>校验并发布（B 档）</button>"+
     "</div>"+
-    "<div class='sub2' style='margin-top:6px'>草稿位："+
+    "<div class='sub2' id='cp-draft' style='margin-top:6px'>草稿位："+
     esc(String(d.draft_path||""))+"（Agent 把链写到这个路径，再点发布）</div>"+
     "</div>";
   h+="<details class='card'><summary>完整创作包（"+esc(String(d.chars||0))+
@@ -3829,6 +3830,15 @@ function renderChainPack(d,out){
     try{await navigator.clipboard.writeText(String(d.pack||""));
       cp.textContent="已复制 ✓";setTimeout(()=>{cp.textContent="复制创作包";},1500);}
     catch(e){showBanner("warn","浏览器拒绝了剪贴板——展开下面的包手动全选复制");}
+  };
+  /* P12 导出草稿：包约 1.9 万字，靠人手复制粘贴建文件，等于让
+     「生成链 → 发布」在页面上断掉（发布只会报草稿不存在）。
+     走 B 档两段提交（写文件就得先给预演：写到哪、多少字、砍了几个锚点）。 */
+  const ex=$("btn-cp-export");
+  if(ex)ex.onclick=()=>{
+    const cur=state.topicCur;
+    if(!cur)return;
+    openInCmd("chain_export",{id:cur.id});
   };
   const pub=$("btn-cp-pub");
   if(pub)pub.onclick=()=>{

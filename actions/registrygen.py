@@ -221,6 +221,10 @@ def build() -> dict:
             # P10：零参数动作必须写明"为什么一个参数都没有"（否则就是
             # "填了不生效的黑箱"——见 test_v38 的零参数门）。
             "no_params_reason": (raw.get("no_params_reason") or ""),
+            # 真实耗时预估（**可缺省**，缺省按 1 秒兜底）。B 档原先一律按 1 秒
+            # 显示，直到 v0.83 自动写链进来：它要真调模型写 2–3 分钟，而页面
+            # 上写"预估 ~1s"，人就会以为卡死。会超过几秒的写动作请显式声明。
+            "est_sec": raw.get("est_sec"),
             "writes": ("%s（两段提交：先拿 confirm_token，带 token 再执行；"
                        "每次执行进 actions_meta.db 台账）" % raw["target"]),
             "reversible": {

@@ -32,6 +32,12 @@ P11/P12 把链的入口打通了，但**写**那一步仍是 Agent：读 1.9 万
   对着空气重跑；错误文案因此带上 `.pending` 的落点（相对 `exports_root` 显示，
   页面里读一串绝对路径太累），并区分"有留档"与"模型什么正文都没产出"两种情形
   （`test_v84_chaingen_page` 3 例钉住）。
+- **「预估 1 秒」这个坑要补掉**。B 档的 `est_sec` 原先在 `/api/actions` 里被
+  **硬编码成 1**（所有写动作都 1 秒），因为此前没有慢写动作。自动写链要 2–3 分钟，
+  真按 1 秒显示就是误导：人会以为卡死、再点一次——而第二次一定失败（confirm_token
+  一次性）。现在 `write_actions.json` 可声明 `est_sec`（缺省仍 1 秒兜底），
+  `chain_generate` 声明 180，确认框与"执行中"两处都如实说"约几分钟、别关页面
+  也别重复点"（`ChainGenerateEstSecTest` 3 例钉住接线）。
 - 页面说明里明写「**不耗 WorkBuddy 的 token**」——钱走使用者自己环境变量里的
   `KNOWATLAS_LLM_API_KEY_SF1` / `KNOWATLAS_LLM_API_KEY`，这门渲染门钉了这句。
 
@@ -45,8 +51,8 @@ P11/P12 把链的入口打通了，但**写**那一步仍是 Agent：读 1.9 万
 
 同轮登记：`commands.json` 62 命令 / `actions_registry.json` A 43 / B 22；glossary 加
 「自动写链」术语与工具栏说明；`test_v36` B 档 21 → 22；新增 `test_v84_chaingen_page`
-3 例（失败带落点 / 无留档明说 / 成功摘要四个数齐）；`render_chainflow` +5 断言、
-`render_dualtrack` +1 断言（自动写链按钮随选中主题启用）。
+6 例（失败带落点 / 无留档明说 / 成功摘要四个数齐 + 真实预估的三处接线）；
+`render_chainflow` +5 断言、`render_dualtrack` +1 断言（自动写链按钮随选中主题启用）。
 
 ## P12（2026-10-26）：桌面壳启动前清端口 · 导出草稿落盘 · 第一条真链
 
@@ -1300,7 +1306,7 @@ A：导出走浏览器下载（看下载栏）；复制依赖剪贴板权限，�
 
 ## 测试
 
-> **基线（2026-10-26 实测）**：Python 全量 `Ran 441 tests / OK（skipped=5）`；
+> **基线（2026-10-26 实测）**：Python 全量 `Ran 444 tests / OK（skipped=5）`；
 > node 渲染门 23 支逐文件全 PASSED（清单见下，**缺 node 时套件里转 skip，不是通过**）。
 > 加/删用例后请回来改这一行——它是读者判断"我自己跑对了没"的唯一依据
 > （上面各小节里出现的旧数字是**当时**的记录，不随本轮变动）。

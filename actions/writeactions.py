@@ -1507,6 +1507,8 @@ def _plan_chain_generate(p: dict, cfg) -> dict:
         "费用：走你自己环境变量里的 key（%s），不经 WorkBuddy；"
         "一次大约输入 1.5–2 万 token"
         % "、".join(sorted({CG._fp(k) for be in bes for k in be["keys"]})),
+        "**用时：一次约 90–180 秒**（模型写 + 两道门校验）。确认后这一段时间"
+        "页面显示「执行中」，**别关页面也别重复点**——跑完会直接告诉你结果",
         "不可复现：模型输出每次不同（temperature=0 也不保证），"
         "frontmatter 会记 model 以区分手写链",
         "下一步：过了就点「校验并发布」进知识正本",

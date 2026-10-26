@@ -2280,7 +2280,9 @@ def make_handler(cfg: Config):
                       "target_path": str(cfg.default_for(a.get("target")) or ""),
                       "reversible": a.get("reversible"),
                       "writes": a.get("writes") or "",
-                      "est_sec": 1,
+                      # 写动作的真实预估（注册表可声明；缺省 1 秒）。自动写链
+                      # 要 2–3 分钟，硬写 1 秒会让人以为卡死。
+                      "est_sec": a.get("est_sec") or 1,
                       "params": {p["name"]: {
                           "type": p["kind"], "src": p["src"],
                           "default": p["default"], "label": p["label"],
@@ -2341,6 +2343,9 @@ def make_handler(cfg: Config):
                 self._json({
                     "status": "needs_confirm", "action_id": aid, "tier": "B",
                     "risk": prev.get("risk"), "target": prev.get("target"),
+                    # 慢动作（自动写链 2–3 分钟）的确认框要能说清"要等多久、
+                    # 期间别关页面"——预演本身不含这项，从注册表带出来。
+                    "est_sec": rspec.get("est_sec") or 1,
                     "target_path": prev.get("target_path"),
                     "preview": prev, "human": prev.get("human") or [],
                     "confirm_token": conf["token"],

@@ -5307,11 +5307,18 @@ async function runWriteActionWith(spec,params,outId,opts){
 function showConfirmDialog(r,outId){
   const risk=r.risk||"reversible";
   const bad=risk==="destructive";
+  /* 慢动作（≥30 秒）必须提前讲清"执行期间是什么状态"：自动写链要 2-3 分钟，
+     不说清楚人就会以为卡死、去点第二次。est_sec 由注册表给出。 */
+  const est=Number(r.est_sec||0);
+  const slow=est>=30;
+  const estLine=slow?("<div class='sub2'>预计约 "+
+    (est>=120?Math.round(est/60)+" 分钟":est+" 秒")+
+    "（模型真在写）——确认后页面显示「执行中」，<b>别关页面、别重复点</b></div>"):"";
   const lines=(r.human||[]).map(h=>"<div"+(bad?" class='errline'":"")+">"+
-    h+"</div>").join("");
+    esc(h).replace(/\*\*/g,"")+"</div>").join("");
   const html="<div class='confirm-box"+(bad?" danger":"")+"'>"+
     "<h4>"+(bad?"⚠ 破坏性动作":"将写什么（请逐行核对）")+"</h4>"+
-    lines+
+    lines+estLine+
     "<div class='sub2'>目标库："+esc(r.target_path||r.target||"")+
     "　风险："+(bad?"<span class='errline'>destructive（会丢信息）</span>"
                    :"reversible（可回到原状）")+
@@ -5338,7 +5345,13 @@ async function confirmWrite(){
   const pw=state.pendingWrite;
   if(!pw){showBanner("warn","没有待确认的写动作");return;}
   const box=$(pw.outId||"job-out");
-  box.innerHTML="<div class='empty'>执行中…</div>";
+  /* 慢动作（≥30 秒）如实说"要等多久"：自动写链 2-3 分钟，只写"执行中…"
+     会让人以为卡死、去点第二次（第二次会因为 token 一次性直接报"被拒"）。 */
+  const estSec=Number((pw.preview&&pw.preview.est_sec)||0);
+  box.innerHTML="<div class='empty'>执行中…"+
+    (estSec>=30?("（预计约 "+(estSec>=120?Math.round(estSec/60)+" 分钟"
+                                :estSec+" 秒")+"，别关页面也别重复点）"):"")+
+    "</div>";
   const r=await actJson("/api/actions/run",{action_id:pw.spec.action_id,
     params:pw.params,confirm_token:pw.token,view_actions_api:1});
   state.pendingWrite=null;

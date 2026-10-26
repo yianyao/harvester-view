@@ -487,6 +487,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "attrib_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -570,6 +571,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "cards_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -641,6 +643,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "cards_root（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -695,6 +698,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -736,6 +740,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "repo_files（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -790,6 +795,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": 180,
    "writes": "repo_files（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -844,6 +850,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "knowledge_chain（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -902,6 +909,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "repo_files（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -916,6 +924,7 @@
    "detail": "单向：**正本 → 镜像**，只喂不收。逐文件「缺失或正本较新才覆盖」，**永不删除镜像里多出来的文件**；只碰 `cards/` 与 `topics/` 两个子目录。幂等：正本没变时重跑 = 0 复制。镜像位由服务端定（页面不传路径）。",
    "params": [],
    "no_params_reason": "两个参数（正本根 knowledge/、镜像位 ~/.workbuddy/knowledge）都是起服时定死的路径，页面**不能**传——让人指路等于给「把知识库发到任意目录」留后门；要写什么由预演逐行给出（会复制几个、跳过几个、镜像位在哪）。",
+   "est_sec": null,
    "writes": "kb_mirror（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -957,6 +966,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "keywords_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -998,6 +1008,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -1052,6 +1063,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "会丢信息（源主题行/历史 run 删除后页面上找不回）"
   },
@@ -1080,6 +1092,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -1134,6 +1147,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "repo_files（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -1205,6 +1219,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "suggestions_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -1259,6 +1274,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -1287,6 +1303,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "会丢信息（源主题行/历史 run 删除后页面上找不回）"
   },
@@ -1328,6 +1345,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -1382,6 +1400,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "会丢信息（源主题行/历史 run 删除后页面上找不回）"
   },
@@ -1423,6 +1442,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -1464,6 +1484,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   },
@@ -1505,6 +1526,7 @@
     }
    ],
    "no_params_reason": "",
+   "est_sec": null,
    "writes": "topics_meta（两段提交：先拿 confirm_token，带 token 再执行；每次执行进 actions_meta.db 台账）",
    "reversible": "幂等/可回到原状（仍有台账留痕）"
   }

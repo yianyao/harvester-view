@@ -42,6 +42,13 @@ rem v0.81 P0-2/P0-3: --reviews-meta and --chain-root pinned EXPLICITLY.
 rem Both defaults are cwd-relative ("cards_meta.db" / "knowledge/topics"),
 rem so starting from another directory silently loses the human review
 rem ledger and the chain docs (the page would show a false empty state).
+rem 2026-10-26 (user order): a start must begin from a CLEAN slate.
+rem Clear any service left over from a previous session/session window
+rem before starting. Without this the page can be new code while the
+rem back end is an old process -- the action then fails with a message
+rem that blames "old process", and one forgotten window is enough to
+rem reproduce it. Selection rule identical to desktop/main.js.
+call "%~dp0reclaim.cmd"
 start "harvester api-serve :8765" /D "%SRV%" %PY% -m harvester api-serve --db "%SRV%\harvester.db" --cards-root "%CARDS_ROOT%" --topics-meta "%SRV%\topics_meta.db" --keywords-meta "%SRV%\keywords_meta.db" --suggestions-meta "%SRV%\suggestions_meta.db" --chain-root "%CHAIN_ROOT%" --reviews-meta "%SRV%\cards_meta.db" --corpus-watermark
 rem v0.49: --exports-root is REQUIRED. session_suppress must purge stale
 rem export copies of a suppressed sid; without it cfg.exports_root=None and
@@ -63,7 +70,8 @@ start "" http://127.0.0.1:8088/
 echo.
 echo [done] Browser is opening http://127.0.0.1:8088/ - if not, open it by hand.
 echo [done] A FAIL line above means that service died: read its console window.
-echo [done] To stop everything: close the three harvester console windows.
+echo [start] Closing THIS window does NOT stop the services.
+echo [start] Stop all three in one click: double-click stop.cmd.
 pause
 exit /b 0
 

@@ -126,7 +126,10 @@ function ourProc(name, cmdline) {
   const c = String(cmdline || "").toLowerCase().replace(/\\/g, "/");
   return /\B-m\s+harvester\b/.test(c)          // api-serve 等全部子命令
       || c.includes("actionsserve")            // 动作面
-      || c.includes("view.py");                // 视图
+      // `view.py` 前面必须有边界（空格/斜杠/串首）：否则 `test_view.py`、
+      // `render_view.py` 这类**测试/工具脚本**也会被认成本项目的视图服务，
+      // 启动器一跑就把正在跑的测试进程杀掉（与 reclaim.cmd 同判据）。
+      || /(^|[\/\s])view\.py/.test(c);
 }
 
 function parseProc(line) {

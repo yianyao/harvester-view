@@ -61,6 +61,13 @@ rem v0.81 P0-2/P0-3: --reviews-meta and --chain-root are pinned EXPLICITLY.
 rem Both defaults are cwd-relative ("cards_meta.db" / "knowledge/topics"),
 rem so starting from another directory silently loses the human review
 rem ledger (card_review would fail) and the chain docs (false empty state).
+rem 2026-10-26 (user order): a start must begin from a CLEAN slate.
+rem Clear any service left over from a previous session/session window
+rem before starting. Without this the page can be new code while the
+rem back end is an old process -- the action then fails with a message
+rem that blames "old process", and one forgotten window is enough to
+rem reproduce it. Selection rule identical to desktop/main.js.
+call "%~dp0reclaim.cmd"
 start "harvester api-serve :8765" /D "%SRV%" %PY% -m harvester api-serve --db "%SRV%\harvester.db" --cards-root "%CARDS_ROOT%" --topics-meta "%SRV%\topics_meta.db" --keywords-meta "%SRV%\keywords_meta.db" --suggestions-meta "%SRV%\suggestions_meta.db" --chain-root "%CHAIN_ROOT%" --reviews-meta "%SRV%\cards_meta.db" --corpus-watermark
 rem v0.81 P0-1: the VIEW is a THREE-service system. Without actions-serve
 rem the landing page (today workbench), command console, work items,
@@ -74,4 +81,5 @@ start "harvester-view :8088" /D "%~dp0" %PY% view.py --no-open
 timeout /t 3 /nobreak >nul
 start "" http://127.0.0.1:8088/
 echo [start] api-serve + actions-serve + view launched with: %PY%
-echo [start] Close the three console windows to stop.
+echo [start] Closing THIS window does NOT stop the services.
+echo [start] Stop all three in one click: double-click stop.cmd.

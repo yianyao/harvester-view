@@ -54,6 +54,14 @@ class WriteError(Exception):
     """参数/前置条件不满足 → 400（与"服务坏了"区分开）。"""
 
 
+#: `normalize_params` 认识的参数 kind（真源 = 上游 cli 的 arg fact）。
+#: **注册表声明了新 kind 却没人在这里处理，必须 fail loud**——2026-10-26
+#: 的教训：A 档 `_clean_params` 不认识 `enum`，页面点下去只报一句
+#: 「动作参数类型未定义」，而那句提示把人引向"重启服务"，重启也修不好。
+#: 门：`tests/test_v92_action_params.py` 遍历两个档位的全部参数真跑一遍。
+PARAM_KINDS = ("str", "float", "int", "enum", "switch", "bool")
+
+
 # ---------- 只读小工具（预演与执行共用，保证口径同一） ----------
 
 def _topics_con(meta: Path):
@@ -1714,13 +1722,32 @@ def normalize_params(spec: dict, params: dict, cfg) -> dict:
             # 服务端已定的路径类参数：不取客户端值，由调用方在 execute 前注入
             continue
         val = params.get(name, p.get("default"))
-        if p["kind"] == "bool":
-            val = bool(val)
+        if p["kind"] not in PARAM_KINDS:
+            # 与 A 档 `_clean_params` 的 else 分支同义：注册表写了一个本函数
+            # 不认识的 kind，**不许当成 str 悄悄放过去**（"没实现"和"实现了"
+            # 在行为上必须能区分，否则下次又是"点了没反应"）。门：test_v92。
+            raise WriteError("写动作参数类型未定义：%s=%r（已知：%s）"
+                             % (name, p["kind"], "/".join(PARAM_KINDS)))
+        # 注册表里开关类参数的 kind 名是 `switch`（不是 `bool`）；
+        # 2026-10-26 修：此前只认 `bool`，于是 force/allow_audit/vacuum/
+        # keep_sources 四个开关全被 str() 成 "False"——而 "False" 是真值，
+        # 下游 `if params.get(x)` 会把它当"开"。两个 kind 名都要认。
+        if p["kind"] in ("bool", "switch"):
+            val = bool(val) and str(val).strip().lower() not in ("0", "false", "no", "off", "")
         elif p["kind"] == "int" and val not in (None, ""):
             try:
                 val = int(val)
             except (TypeError, ValueError):
                 raise WriteError("%s 需要整数，收到 %r" % (name, val))
+        elif p["kind"] == "enum" and val not in (None, ""):
+            # 取值受限的参数（verdict/type/status）：写库前先卡住，别把
+            # 拼错的裁决写进台账——B 档落库了才发现，返工代价比读大。
+            s = str(val)
+            choices = [str(c) for c in (p.get("choices") or [])]
+            if choices and s not in choices:
+                raise WriteError("%s 只能取 %s 之一，收到 %r"
+                                 % (name, "/".join(choices), s))
+            val = s
         elif val in (None, ""):
             val = None
         else:

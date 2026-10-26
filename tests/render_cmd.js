@@ -498,6 +498,23 @@ state.act.health = { version_ok: true };
 renderVersionBar();
 check("恢复匹配后黄条消失", verEl.style.display === "none");
 
+/* 旧代码检测（P14 2026-10-26）：磁盘改过、进程没换 → 红条 + 给具体修法。
+   判据由服务端给（code_stale），页面不许自己比指纹。 */
+state.act.health = { version_ok: true, code_stale: true,
+  started_at: "2026-10-26T09:00:00+08:00" };
+renderVersionBar();
+check("在跑旧代码 → 红条（err 而不是 warn）",
+  verEl.style.display === "block" && verEl.className === "err");
+check("在跑旧代码 → 说清症状与修法（含 stop.cmd 与启动时间）",
+  verEl.innerHTML.includes("这套服务在跑旧代码") &&
+  verEl.innerHTML.includes("stop.cmd") &&
+  verEl.innerHTML.includes("2026-10-26T09:00:00"));
+check("在跑旧代码 → 不许把 markdown 星号漏到页面上",
+  !verEl.innerHTML.includes("**"));
+state.act.health = { version_ok: true };
+renderVersionBar();
+check("换回干净 health → 红条消失", verEl.style.display === "none");
+
 /* ---------- v0.49 会话抑制：已抑制清单与「恢复」 ----------
  * 用户 2026-10-13 批准清单 ①–⑦、⑧ 不做。本段钉住 view 侧三条：
  *  ① 「已抑制」是**服务端全量清单**（`/api/suppressed`），不是对当前页做筛选

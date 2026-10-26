@@ -284,6 +284,9 @@ h3.sec{font-size:14px;margin:18px 0 6px}
 .qcard .qgo{color:var(--accent);font-size:12px}
 #ledger-out{max-height:300px;overflow:auto;font-size:12px}
 #verbar{margin:8px 14px 0;padding:7px 10px;border-radius:5px}
+/* 版本握手条以前只设了 className 却没设配色，等于"报了但看不出是警告"。 */
+#verbar.warn{display:block;background:var(--warn-bg);color:var(--warn-ink)}
+#verbar.err{display:block;background:var(--err-bg);color:var(--err-ink)}
 .confirm-box{border:1px solid var(--accent);border-radius:6px;padding:9px 11px;
   background:var(--bg)}
 .confirm-box.danger{border-color:var(--err-ink);background:var(--err-bg)}
@@ -2677,12 +2680,22 @@ function renderLedger(d,out){
         "其余只计数（只读）'>打主题评审包 →</button></td></tr>";
     }
     h+="</tbody></table>";
+    /* 空主题折起来（2026-10-26 用户令：「折叠啊」）。真库 17 个主题里 14 个
+       在台账里零产物——平铺 14 行会把真信号淹掉，一句话列出 14 个名字又
+       等于把噪音塞进正文。折叠块两头都占：默认只占一行，点开才是清单。 */
     const eg=d.empty_groups||[];
-    if(eg.length)
-      h+="<div class='sub2'>另有 "+eg.length+" 个主题在台账里一条产物都没有："+
-        esc(eg.map(x=>x.name).join("、"))+
-        "（这些主题的会话没接入产物提取，或确实没写过文件——"
-        +"不代表这些主题没发生过工作）。</div>";
+    if(eg.length){
+      h+="<details style='margin:6px 0'><summary class='sub2'>"+
+        "另有 "+eg.length+" 个主题在台账里一条产物都没有（点开看是哪几个）"+
+        "</summary><div style='padding:4px 0 2px 14px'>"+
+        "<table><thead><tr><th>主题</th><th class='num'>注册会话</th></tr></thead><tbody>"+
+        eg.map(x=>"<tr><td>"+esc(x.name||"")+"</td><td class='num'>"+
+          Number(x.members_registered||0)+"</td></tr>").join("")+
+        "</tbody></table>"+
+        "<div class='sub2'>这些主题的会话没接入产物提取，或确实没写过文件——"+
+        "不代表这些主题没发生过工作。注册会话多、产物却是 0 的，先查提取链路。"+
+        "</div></div></details>";
+    }
     if(d.truncated)
       h+="<div class='sub2'>只列了前 "+groups.length+" 行 / 共 "+
         Number(d.groups_total||groups.length)+" 行。</div>";
@@ -5234,17 +5247,32 @@ async function loadCmdData(manual){
   loadLedger(true).catch(()=>{});
 }
 /* P3-5：版本握手黄条。只有 version_ok===false 才出现（服务端说"不匹配"）；
-   动作面不可达时另有红条，不重复报。 */
+   动作面不可达时另有红条，不重复报。
+   P14（2026-10-26）：**先看代码新旧**。页面是每次从磁盘读的，python 服务
+   却是启动那一刻的代码——磁盘改了、进程没换，页面就是"新壳套旧后端"，
+   点新动作只会得到一句看不懂的报错。判据由服务端给（/api/health 的
+   code_stamp vs code_stamp_now），页面不自己算，免得两处判据分叉。 */
 function renderVersionBar(){
   const bar=$("verbar");
   if(!bar)return;
   const health=state.act.health;
-  if(!health||health.version_ok){bar.style.display="none";bar.innerHTML="";return;}
+  if(!health){bar.style.display="none";bar.innerHTML="";return;}
+  if(health.code_stale){
+    bar.style.display="block";
+    bar.className="err";
+    bar.innerHTML="⚠ <b>这套服务在跑旧代码</b>：磁盘上的动作代码已经改过，"+
+      "而 8766 这个进程还是启动时那一份（启动于 "+esc(String(health.started_at||"?"))+
+      "）。页面上的新按钮点了会报「参数类型未定义 / 参数不认识」这类错。"+
+      "修法：关掉桌面应用再打开（启动前会自动清掉残留进程），"+
+      "命令行方式则双击 <b>stop.cmd</b> 再运行启动脚本。";
+    return;
+  }
+  if(health.version_ok){bar.style.display="none";bar.innerHTML="";return;}
   bar.style.display="block";
   bar.className="warn";
   bar.innerHTML="⚠ 版本不匹配：harvester "+esc(String(health.harvester_version))+
     " ≠ 命令注册表适配版本 "+esc(String(health.commands_adapter_version))+
-    "　→ **B 档写动作已禁用**（A 档只读不受影响）。请对齐版本后重启动作面。";
+    "　→ <b>B 档写动作已禁用</b>（A 档只读不受影响）。请对齐版本后重启动作面。";
 }
 function writeDisabled(){
   return state.act.versionOk===false;

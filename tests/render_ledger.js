@@ -253,6 +253,16 @@ const PACK = {
   check("空主题折成一句（不占一行空表）",
     t2.includes("另有 1 个主题") && t2.includes("空主题") &&
     t2.includes("不代表这些主题没发生过工作"));
+  /* 折叠（2026-10-26 用户令「折叠啊」）：默认只占一行 summary，点开才是清单。
+     判据三样：details/summary 在、清单里的数字在、名字过了 esc。 */
+  check("空主题是折叠块（details + summary），不是平铺正文",
+    t2.includes("<details") && t2.includes("<summary class='sub2'>") &&
+    t2.includes("点开看是哪几个"));
+  check("折叠块里给每个空主题一行（含注册会话数）",
+    t2.includes("<th class='num'>注册会话</th>") &&
+    /<td>空主题<\/td><td class='num'>0<\/td>/.test(t2));
+  check("折叠块排在主题表之后（不插在表中间）",
+    t2.indexOf("</tbody></table>") < t2.indexOf("另有 1 个主题"));
   check("三个视角切换按钮都在，当前视角点亮",
     t2.includes("data-ledger-group='topic'") &&
     t2.includes("data-ledger-group='file'") &&

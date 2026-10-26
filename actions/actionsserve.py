@@ -31,6 +31,7 @@ CORS 头、POST 405 全部不变（additive）；顶层 `viewserver.py` 退化�
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -1799,6 +1800,18 @@ def _clean_params(action: dict, raw: dict, cfg: Config | None = None) -> dict:
                 raise ValueError("%s 需要整数，收到 %r" % (name, val))
         elif kind in ("text", "sid", "topic_id", "level", "path"):
             out[name] = str(val)
+        elif kind == "enum":
+            # 取值受限的参数（2026-10-26 补：`group`/`mode`/`sort` 都声明成
+            # enum，但本函数当时不认识这个类型 → 页面点下去报
+            # 「动作参数类型未定义: group=enum」。**重启也修不好**——不是
+            # 旧进程的问题，是声明跑在实现前面。门：test_v92 遍历全部
+            # 动作的 params，逐个类型真跑一遍。
+            s = str(val)
+            choices = [str(c) for c in (spec.get("choices") or [])]
+            if choices and s not in choices:
+                raise ValueError("%s 只能取 %s 之一，收到 %r"
+                                 % (name, "/".join(choices), s))
+            out[name] = s
         elif kind == "bool":
             # 开关类参数（P10 `save`）：页面可能传 1/"1"/true/"on"，
             # 统一收成 0/1；认不出的值不当真也不静默 —— 当 0 处理即可，
@@ -1894,6 +1907,37 @@ def _iso() -> str:
 
 # ---------- /api/health：版本握手（D4） ----------
 
+#: 这个**进程实际加载的代码**指纹（导入期算一次，此后不变）。
+#: 为什么需要它：2026-10-26 主机上同时跑着两整套服务（两个 api-serve +
+#: 两个 actions-serve + 两个 view），页面连到哪套看谁先绑上端口——于是
+#: "页面是新代码、后端是旧代码"确实会发生，而肉眼看不见。报错信息当时
+#: 只会说「若刚升级代码就重启」，重启一个窗口又不够。
+#: 现在的判据：`code_stamp`（加载时）≠ `code_stamp_now`（此刻磁盘）即
+#: `code_stale=true`，页面顶栏直接红条告诉人「这一套在跑旧代码」。
+def _code_files() -> list[Path]:
+    here = Path(__file__).resolve().parent
+    return sorted(list(here.glob("*.py")) + [here.parent / "cardlib.py"])
+
+
+def code_stamp(paths=None) -> str:
+    """(文件名, 大小, mtime) 的 sha1 前 12 位。**只看元信息不看内容**：
+    内容哈希在大仓库上每次请求都要读几 MB，元信息足以发现"改过代码"。"""
+    h = hashlib.sha1()
+    for p in (paths if paths is not None else _code_files()):
+        try:
+            st = Path(p).stat()
+        except OSError:
+            h.update(("%s:missing;" % Path(p).name).encode("utf-8"))
+            continue
+        h.update(("%s:%d:%d;" % (Path(p).name, st.st_size,
+                                 int(st.st_mtime))).encode("utf-8"))
+    return h.hexdigest()[:12]
+
+
+_PROC_CODE_STAMP = code_stamp()      # 本进程加载时（模块导入那一刻）
+_STARTED_AT = _iso()
+
+
 def load_commands(path: Path) -> dict:
     """读静态命令注册表。损坏 → 抛错（fail loud，由 health/commands 端点
     渲染成黄条，绝不静默给一个空表）。"""
@@ -1967,9 +2011,18 @@ def health(cfg: Config) -> dict:
         reg_error = "actions_registry.json 不可读/损坏（fail loud）: %s" % e
     hv = getattr(harvester, "__version__", None) if harvester else None
     version_ok = bool(hv and adapter_version and hv == adapter_version)
+    # 旧代码检测（2026-10-26）：进程导入时算的指纹 vs 此刻磁盘上的指纹。
+    # 不等 = 这个进程加载的是**改之前的代码**（典型场景：改了 actions/*.py
+    # 但只重启了其中一个窗口 / 机器上还活着上一整套服务）。
+    stamp_now = code_stamp()
     return {
         "ok": (_HARVESTER_IMPORT_ERROR is None and cmd_error is None
                and reg_error is None and not reg_problems),
+        "started_at": _STARTED_AT,
+        "pid": os.getpid(),
+        "code_stamp": _PROC_CODE_STAMP,
+        "code_stamp_now": stamp_now,
+        "code_stale": _PROC_CODE_STAMP != stamp_now,
         "view_actions_api": VIEW_ACTIONS_API,
         "service": "harvester-view 动作面 + 本地只读数据面",
         # 归并自 P1 viewserver 的三项（既有字段一个不少）：

@@ -414,6 +414,9 @@ def group_topics(pairs: list[dict], topics_meta) -> tuple[list[dict], list[dict]
     out.sort(key=lambda r: (r["kind"] == "unfiled",
                             -r["buckets"]["core"]["pairs"],
                             -r["versions"]))
+    # 空主题默认按「注册会话多的在前」排：注册了 20 个会话却一条产物都没有，
+    # 和注册了 0 个会话，是两种不同的问题（前者要查提取链路，后者是空主题）。
+    empty.sort(key=lambda x: (-x["members_registered"], x["name"]))
     return out, empty
 
 

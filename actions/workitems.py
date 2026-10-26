@@ -1231,7 +1231,7 @@ def _targets_all(g) -> list[dict]:
 #: 新加 target 必须在这里登记——`_targets_all` 用 `KINDS[tid]` 直取，漏登记
 #: 会 KeyError（fail loud），不会被默默当成"待处理"而重新变成警报。
 KINDS: dict[str, str] = {
-    # ---- 四队列：都是"有人要动手的活" ----
+    # ---- 待办队列（卡片级）：都是"有人要动手的活"（几张由 QUEUE_TARGETS 定） ----
     "queue:decide": sev.KIND_ACTION,          # 待你裁决
     "queue:repair": sev.KIND_ACTION,          # 待修补
     "queue:distill": sev.KIND_ACTION,         # 待蒸馏

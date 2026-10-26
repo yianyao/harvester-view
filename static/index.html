@@ -462,7 +462,7 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
 <div id="freshbar" style="display:none"></div>
 
 <!-- ============ Tab 0: 今日工作台（P3-3） ============
-  数据源：/api/overview（服务端算好四队列 + 三环；**每个数字带 source 与
+  数据源：/api/overview（服务端算好队列卡 + 三环；**每个数字带 source 与
   definition**）。本视图只渲染，不二次聚合、不自己编数。 -->
 <section class="tab" id="tab-home">
   <main>
@@ -474,14 +474,17 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
       卡片右上角的「累计」徽章就是这个意思）。环标题的「有 N 段有积压」只数待处理段。
       判据只有一处（`actions/severity.py`）：累计量永不发黄、比率必须样本 ≥20 且 ≥10%。</p>
     <div id="home-daily"></div>
-    <h3 class="sec">四队列（点数字去处理）</h3>
-    <p class="legend">四队列和下面的闭环健康是<b>一本账的两种看法</b>：闭环健康是三条流水线的库存体检（问题攒了多少、卡在哪一段）；四队列是从这些库存里捞出的、按<b>下一步动作</b>分的四队活（裁决/修补/蒸馏/验证）。队列里的每一条活，都来自环上某一段的明细——点数字进处理单就能看到。</p>
+    <h3 class="sec">待办队列（点数字去处理）</h3>
+    <p class="legend">队列卡和下面的闭环健康是<b>一本账的两种看法</b>：闭环健康是三条流水线的库存体检（问题攒了多少、卡在哪一段）；队列卡是从这些库存里捞出的、按<b>下一步动作</b>分的活。队列里的每一条活，都来自环上某一段的明细——点数字进处理单就能看到。<b>卡片有几张由服务端登记表决定</b>（`workitems.KINDS`），页面上不写死数量：新加一队活就多一张卡，这里不用说"第几张"。</p>
     <div id="home-queues" class="queue-grid"><div class="empty">加载中…</div></div>
     <div id="home-qdetail"></div>
     <h3 class="sec">闭环健康（积压量 = 卡在哪一段）</h3>
-    <p class="legend">每根环是一条流水线的三段：<b>有料</b>（数据在位）→ <b>已行动</b>／
-      <b>待鉴定</b>（裁决与行动是否发生）→ <b>待验证</b>／<b>待确认</b>
-      （效果与产物是否验收）。注意：环上各段数的是<b>不同的账</b>（如错误面数次数、已行动数规矩条数），
+    <p class="legend">每根环是一条流水线，按「有料 → 有没有行动 → 有没有验收」切成几段
+      （<b>段数不固定</b>：错误环与主题环各三段，skill 环目前只有两段——「修复」那一段
+      还没有台账，修没修好现在数不出来，所以不硬凑第三段）。
+      各段名字：<b>有料</b>（数据在位）→ <b>已行动</b>／<b>待鉴定</b>（裁决与行动是否发生）→
+      <b>待验证</b>／<b>待确认</b>（效果与产物是否验收）。
+      注意：环上各段数的是<b>不同的账</b>（如错误面数次数、已行动数规矩条数），
       不互为子集；只有明确标注「是…的子集」的除外。每段下方：灰字=<b>口径</b>（这个数怎么算的）；
       青色等宽字=<b>真源</b>（由哪个函数现算出来，备查——平时不用管，两处数字打架时以真源那处为准）。</p>
     <div id="home-rings"><div class="empty">加载中…</div></div>
@@ -6471,11 +6474,11 @@ function renderCmdBrowsable(){
 }
 
 /* ---------- Tab 0: 今日工作台（P3-3） ----------
-   纪律：**只渲染服务端给的四队列与三环**，不在这里做任何二次聚合
+   纪律：**只渲染服务端给的队列卡与三环**，不在这里做任何二次聚合
    （页面自己算一遍，就会有两套数字；口径冲突时没人说得清哪个对）。 */
 async function loadOverview(){
   const out=$("home-queues");
-  out.innerHTML="<div class='empty'>正在现算四队列与三环（约 2–4 秒）…</div>";
+  out.innerHTML="<div class='empty'>正在现算队列卡与三环（约 2–4 秒）…</div>";
   $("home-rings").innerHTML="";
   try{ await loadGlossary(); }catch(e){}
   $("home-intro").innerHTML=panelIntro("home");
@@ -6485,7 +6488,7 @@ async function loadOverview(){
     out.innerHTML=errorBox("工作台数据不可用："+d.__err+
       "（需要动作面在 8766 运行）");
     $("home-banner").innerHTML="<span class='errline'>动作面不可达</span> —— "+
-      "工作台的四队列与三环由本仓动作面现算（/api/overview）。";
+      "工作台的队列卡与三环由本仓动作面现算（/api/overview）。";
     return;
   }
   state.ov=d;
@@ -6529,7 +6532,7 @@ function homeFootHtml(d){
 }
 /* P5-⑤（用户 2026-10-16 批准）：「昨日报告」卡。
    数据源：主仓 /api/report-daily（文件名白名单 daily-YYYY-MM-DD.md，
-   服务端只读）。纪律同四队列：**只渲染服务端给的内容**（md_head 原样
+   服务端只读）。纪律同队列卡：**只渲染服务端给的内容**（md_head 原样
    展示，页面不解析不二次聚合）；found=false 是诚实空态，照实说，不装。 */
 async function loadDailyCard(){
   const box=$("home-daily");
@@ -6575,7 +6578,7 @@ async function fetchReportFile(name){
 }
 /* P5 后续（用户 2026-10-17 批准）：报告族 md 索引区（五报告各自 --out，
    这里把服务端报告目录里实际存在的 .md 列出来，mtime 新→旧）。
-   纪律同四队列：只渲染服务端给的内容——文件名/全文/hint 全 esc 原样展示，
+   纪律同队列卡：只渲染服务端给的内容——文件名/全文/hint 全 esc 原样展示，
    页面不解析 md 不二次聚合；目录不存在/没有 .md 是诚实空态，照实说。 */
 async function loadReportsIndex(){
   const box=$("rep-index");
@@ -6746,7 +6749,7 @@ function renderRings(d){
           "<div class='arms'>"+cold.map(a=>armHtml(a)).join("")+"</div></details>")
         :"")+"</div>";
   }).join("");
-  /* 闭环健康的每一段与四队列走**同一条动线**（用户 2026-10-13：当前不能跳转、
+  /* 闭环健康的每一段与队列卡走**同一条动线**（用户 2026-10-13：当前不能跳转、
      也无建议）——每段都带 target 与 suggestion，于是都点得动。 */
   bindWorkGo(box);
 }
@@ -6789,7 +6792,7 @@ async function loadWork(target){
 }
 function renderWorkHead(d){
   const rc=(d.reconcile||[]).filter(r=>!r.ok);
-  const grp=d.group==="queue"?"四队列":(d.group==="detail"?"队列明细":"闭环健康");
+  const grp=d.group==="queue"?"待办队列":(d.group==="detail"?"队列明细":"闭环健康");
   const ms=(d.metrics||[]).map(m=>"<span>"+esc(m.label)+"："+m.value+" "+
     esc(m.unit||d.unit||"")+"</span>").join("");
   const by=(d.reconcile||[]).map(r=>r.metric+"="+r.by).join("；");
@@ -7252,7 +7255,7 @@ $("btn-cmd-run").onclick=()=>runCmdAction()
 function tourSteps(){
   return [
     {tab:"home",name:"今日工作台",title:"第 1 页 · 今日工作台：你现在在哪",
-     body:"四队列=今天要动手的活，按下一步动作分四类（裁决/修补/蒸馏/验证）；闭环健康=三条流水线的库存体检（问题攒了多少、卡在哪一段）。队列里的活就是从环的明细里捞出来的。每个数字带两行小字：灰字=口径（怎么算的），青色等宽字=真源（哪个函数算的，备查）。",
+     body:"待办队列=今天要动手的活，按下一步动作分类（卡片有几张由服务端登记表决定，不在这里写死）；闭环健康=三条流水线的库存体检（问题攒了多少、卡在哪一段）。队列里的活就是从环的明细里捞出来的。每个数字带两行小字：灰字=口径（怎么算的），青色等宽字=真源（哪个函数算的，备查）。",
      todo:"在「闭环健康」找第一段（错误面），看一眼全库错误数——旅程从「把错误看清楚」开始。"},
     {tab:"reports",name:"报告",title:"第 2 页 · 报告：机械事实（AI 只陈述，不替你下结论）",
      body:"反复踩的坑会被归一成「错误模式」，按次数排序；这里没有 AI 编的故事，只有从库里数出来的事实。真库案例：「Edit 前先 Read」类错误模式累计上百次——改文件前没先读，踩了又踩。",

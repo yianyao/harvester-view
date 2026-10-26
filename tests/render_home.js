@@ -109,6 +109,12 @@ const OV = {
       definition: "已采纳但 A/B 样本不足、下不了结论的条数",
       suggestion: "只能等样本或放宽门槛", owner: "人", level: "warn",
       reconcile_ok: false, where: "报告页 → G1/G2 对照（跑 harvest-eval）" },
+    { queue_id: "artifact", label: "待评审产物", question: "哪批产物还没人看过？",
+      count: 2, unit: "批", target: "queue:artifact", metric: "batches",
+      source: "artledger.group_topics",
+      definition: "有核心产物、且没有任何卡的锚点指向这批会话的批次数",
+      suggestion: "挑核心产物多的批先打主题评审包", owner: "人", level: "watch",
+      reconcile_ok: true, where: "报告页 → 产物台账（同源可对账）" },
   ],
   queue_details: {
     repair: [
@@ -153,11 +159,11 @@ const OV = {
     db_mtime: "2026-10-12 14:32:24", stale: true },
 };
 
-/* ① 四队列：label/数字/问题/口径/真源/建议 六件套 */
+/* ① 队列卡：label/数字/问题/口径/真源/建议 六件套 */
 renderQueues(OV);
 const q = $("home-queues").innerHTML;
-check("四队列都渲染", ["待你裁决", "待修补", "待蒸馏", "待验证"]
-  .every(l => q.includes(l)));
+check("每张卡都渲染（清单来自夹具，不写死张数）",
+  OV.queues.every(x => q.includes(x.label)));
 check("数字原样出现（页面不做二次加工）",
   OV.queues.every(x => q.includes(">" + x.count + "</span>")));
 check("口径逐条显示（P3-3 验收：口径在页面可见）",
@@ -169,7 +175,7 @@ check("处理建议逐条显示（用户 2026-10-13 新需求）",
   "队列卡必须带「这批该怎么处理」，否则用户点进去还是不知道做什么");
 check("零积压的队列有视觉弱化（class=zero）", q.includes("qcard zero"));
 check("每张卡都可点（整卡含数字都是入口）",
-  (q.match(/data-qgo=/g) || []).length === 4);
+  (q.match(/data-qgo=/g) || []).length === OV.queues.length);
 check("对账断了的卡会响亮报警（不许静默）",
   q.includes("对账断了"));
 /* v0.64（用户 2026-10-14 批注：「去处理」去向与「明细同步在」语义混淆）：

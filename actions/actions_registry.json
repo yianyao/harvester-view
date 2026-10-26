@@ -133,6 +133,12 @@
    "est_sec": null
   },
   {
+   "action_id": "artifact_ledger",
+   "tier": "A",
+   "cmd": null,
+   "est_sec": null
+  },
+  {
    "action_id": "artifacts_flow",
    "tier": "A",
    "cmd": null,
@@ -265,6 +271,12 @@
    "est_sec": null
   },
   {
+   "action_id": "report_growth",
+   "tier": "A",
+   "cmd": "report-growth",
+   "est_sec": null
+  },
+  {
    "action_id": "report_harness",
    "tier": "A",
    "cmd": "report-harness",
@@ -292,6 +304,12 @@
    "action_id": "report_traces",
    "tier": "A",
    "cmd": "report-traces",
+   "est_sec": null
+  },
+  {
+   "action_id": "review_pack",
+   "tier": "A",
+   "cmd": null,
    "est_sec": null
   },
   {
@@ -776,7 +794,7 @@
      "server": false,
      "required": false,
      "choices": null,
-     "default": 3,
+     "default": 1,
      "note": null,
      "label": "最多调用模型几次（可空=2；每次约 1–3 分钟）"
     },
@@ -1533,7 +1551,7 @@
  ],
  "counts": {
   "cards": 13,
-  "read_actions": 43,
+  "read_actions": 46,
   "write_actions": 22,
   "write_reversible": 19,
   "write_destructive": 3

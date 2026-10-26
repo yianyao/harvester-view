@@ -64,6 +64,12 @@ READ_ACTIONS: dict[str, object] = {
     # v0.81 P1-3 skill 治理档案（《优化方案》C1）：视图侧聚合（cmd=None
     # 先例同 kgraph）——进程内 skilljoin + G4 聚合，无 CLI 对应命令。
     "skill_matrix": None,
+    # P2 #14（《优化方案》D1'/D2'，2026-10-26）：产物台账与评审包都是
+    # **视图侧只读分析**（D1' 原文「新分析动作 artifact_ledger」）——没有对应
+    # CLI，故 None（cmd=None 先例同 kgraph/skill_matrix）。台账要反查主题、
+    # 评审包要把四个人读面拼成一包，都不适合做成上游命令。
+    "artifact_ledger": None,
+    "review_pack": None,
     # P11 链创作包 / 产物流（用户 2026-10-24「要补一个生成链的命令给我」
     # 「产出物的分析不见了」）：
     # - chain_build：进程内调上游 harvester.chainbuild（确定性出包，不落盘），
@@ -78,6 +84,8 @@ READ_ACTIONS: dict[str, object] = {
     "adapters": "adapters",
     "search": "search",
     "read": "read",
+    # P2 #12（2026-10-26）：个人成长总线，按月聚合；A 档只读（不写任何库）。
+    "report_growth": "report-growth",
     "pack": "pack",
     "cards_validate": "cards validate",
     "cards_index_md": "cards index-md",

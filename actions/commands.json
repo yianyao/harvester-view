@@ -1328,12 +1328,12 @@
      "name": "--max-attempts",
      "dest": "max_attempts",
      "kind": "int",
-     "default": 3,
+     "default": 1,
      "required": false,
      "choices": null,
      "src": "none",
      "negates": null,
-     "help": "最多调用模型几次（每次都是完整一次调用；默认 3）",
+     "help": "最多调用模型几次（每次约 1–3 分钟。默认 1：实测第 2 次重试反而更差——模型会顺手重写全文并引入新错；确实想再试一次再传 2）",
      "note": null
     },
     {
@@ -3399,6 +3399,101 @@
    "subactions": null,
    "help": null,
    "purpose": "错误三分类与失败翼（G2）",
+   "nested": false
+  },
+  {
+   "cmd": "report-growth",
+   "card_id": "errors",
+   "tier": "A",
+   "args": [
+    {
+     "name": "--db",
+     "dest": "db",
+     "kind": "str",
+     "default": "harvester.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "索引库路径",
+     "note": null
+    },
+    {
+     "name": "--topics-meta",
+     "dest": "topics_meta",
+     "kind": "str",
+     "default": "topics_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "主题库（活跃主题口径；不存在则该列为 0，不报错）",
+     "note": null
+    },
+    {
+     "name": "--cards-root",
+     "dest": "cards_root",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "知识卡片目录（新卡口径；不给则该列为 0）",
+     "note": null
+    },
+    {
+     "name": "--suggestions-meta",
+     "dest": "suggestions_meta",
+     "kind": "str",
+     "default": "suggestions_meta.db",
+     "required": false,
+     "choices": null,
+     "src": "server",
+     "negates": null,
+     "help": "建议台账（采纳班规口径；不存在则该项为 0）",
+     "note": null
+    },
+    {
+     "name": "--months",
+     "dest": "months",
+     "kind": "int",
+     "default": 12,
+     "required": false,
+     "choices": null,
+     "src": "none",
+     "negates": null,
+     "help": "看最近几个月（默认 12；0 或负数按 12 处理）",
+     "note": null
+    },
+    {
+     "name": "--out",
+     "dest": "out",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "auto_out",
+     "negates": null,
+     "help": "报告输出路径（缺省打印到 stdout）",
+     "note": "缺省打印到 stdout；命令台自动命名 reports/<动词>-<日期>.md"
+    },
+    {
+     "name": "--json",
+     "dest": "json",
+     "kind": "str",
+     "default": null,
+     "required": false,
+     "choices": null,
+     "src": "chips",
+     "negates": null,
+     "help": "机读出口（growth/1）：schema + db_fingerprint + data（与文本同一个聚合函数）；'-'=stdout，缺省仍出文本",
+     "note": null
+    }
+   ],
+   "subactions": null,
+   "help": null,
+   "purpose": "个人成长总线：按月看活跃主题/新卡/错误率/采纳班规",
    "nested": false
   },
   {

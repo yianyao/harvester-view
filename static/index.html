@@ -443,12 +443,15 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
     <button data-tab="triage">蒸馏队列</button>
 <button data-tab="attrib">归因台</button>
     <button data-tab="reports">报告</button>
-    <button data-tab="agg">中台</button>
     <button data-tab="topics">主题</button>
     <button data-tab="cmd">命令台</button>
   </nav>
   <select id="upstream" title="切换上游实例"></select>
   <button id="btn-tour" title="新手引导：跟随五页走完一次真实班规闭环（约 5 分钟）">5 分钟之旅</button>
+  <!-- P2 #13（2026-10-26）：中台（跨实例搜索 / facets 对比）不再是平级主 tab——
+       它是"偶尔用一次"的运维功能，混在主线（看活 / 看错 / 看主题）里抢注意力。
+       降格成顶栏一个按钮，页面本身一像素没删。 -->
+  <button id="btn-agg" title="中台：跨实例搜索关键字 + 各上游 facets 对比（偶尔用的运维页，已从主 tab 降到这里）">跨实例</button>
   <span class="meta" id="meta"></span>
 </header>
 <div id="banner"></div>
@@ -517,6 +520,16 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
            整段删除，只在上面迁移句留一笔带过的操作口。 -->
       </div></details>
     <div id="work-head"><div class="empty">这里会列出你选中的那一项的处理单（还没选：回「今日工作台」点任意数字）。</div></div>
+    <!-- P2 #13：三处错误入口互指（用户 2026-10-26 起：同一个东西三处长得不一样，
+         谁也不提别人）。这里是"该不该修"的角度，另两处给直达。 -->
+    <div class="sub2" style="margin:2px 0 8px">
+      同一个坑在三个页面各有口径：本页按<b>该不该修</b>排成活；全库按<b>归一模式</b>排序
+      （带类目、人话、下一步、样例锚点）在
+      <a href="javascript:void(0)" class="anchor" data-goto-reports="errors">报告·错误 →</a>；
+      只看<b>某个主题成员</b>里的错误在
+      <a href="javascript:void(0)" class="anchor" data-goto-tab="topics">主题·研读面 →</a>。
+      数字不一致是口径不同，不是账错。
+    </div>
     <div id="work-pkg"></div>
     <div id="work-items"></div>
     <div id="work-foot" class="sub2"></div>
@@ -648,6 +661,8 @@ body.kg-full #kg-chart{height:calc(100vh - 132px)}
       <option value="skillmatrix">skill 治理档案（每 skill 一行）</option>
       <option value="agents">G2 建议条目（AGENTS.md 候选）</option>
       <option value="cards">G3 卡片校验</option>
+      <option value="growth">个人成长总线（按月：活跃主题/新卡/错误率/采纳班规）</option>
+      <option value="ledger">产物台账（全库：写过哪些文件、改了几版、属哪个主题）</option>
     </select>
     <label>窗口（天）<input type="number" id="rep-days" value="30" min="0"
       style="width:72px">（0=全库）</label>
@@ -902,6 +917,19 @@ function patternPlain(p){
   const hit=ps.find(x=>x.pattern===p);
   return hit?hit.plain:"";
 }
+/* 归一模式 → 下一步该咋办 + 依据（用户 2026-10-26：「有的能看明白，有看不明白，
+   最好还说一声下一步该咋办」）。码本身是工具自己抛的，没有公开文档——所以
+   「依据」必须如实标：人工核对过原文的标来源，按名字猜的标「名称推断」。 */
+function patternNext(p){
+  const ps=(glossary.data||{}).patterns||[];
+  const hit=ps.find(x=>x.pattern===p);
+  return hit?(hit.next||""):"";
+}
+function patternFrom(p){
+  const ps=(glossary.data||{}).patterns||[];
+  const hit=ps.find(x=>x.pattern===p);
+  return hit?(hit.from||""):"";
+}
 const CLASS_LABEL={env:"环境类",tool_interface:"用法类",
   context:"上下文类",unclassified:"未归类"};
 function clsLabel(c){return CLASS_LABEL[c]||c;}
@@ -1127,6 +1155,9 @@ function switchTab(name){
   kgFullSync();
   for(const b of document.querySelectorAll("#tabs button"))
     b.classList.toggle("on",b.dataset.tab===name);
+  /* 中台已降格成顶栏按钮（P2 #13）：它不在 #tabs 里，要单独点亮，
+     否则进这页时整条 tab 栏没有一个高亮，看起来像"哪个页都不是"。 */
+  {const ba=$("btn-agg"); if(ba)ba.classList.toggle("on",name==="agg");}
   for(const sec of document.querySelectorAll("section.tab"))
     sec.style.display=sec.id==="tab-"+name?"":"none";
   /* P10 第 7 条：图谱页从隐藏变可见后画布尺寸才正确，必须重排一次
@@ -1148,6 +1179,17 @@ function switchTab(name){
     if(name==="topics") loadTopics().catch(()=>{});
     if(name==="cmd") loadCmdData().catch(()=>{});
   }
+}
+/* P2 #13：三处"错误模式"入口互相指路。
+   同一个东西（会话里反复踩的坑）在三个页面各有一套口径：
+   报告·错误=全库按归一模式排（带类别/样例锚点）；主题·研读面=只算该主题成员；
+   处理单=从这些错误里捞出"该不该修"的活。以前谁也不提别人，用户只能靠猜。
+   这里给一条统一通道：切页 + 把报告的 kind 拨到该看的那一档。 */
+function gotoReports(kind){
+  switchTab("reports");
+  const sel=$("rep-kind");
+  if(sel&&kind&&sel.value!==kind)sel.value=kind;
+  if(typeof loadReport==="function")loadReport().catch(()=>{});
 }
 for(const b of document.querySelectorAll("#tabs button"))
   b.onclick=()=>switchTab(b.dataset.tab);
@@ -2481,6 +2523,285 @@ async function runSkillMatrix(out){
   if(job.status==="failed")throw new Error(job.error||"动作失败（无详情）");
   return job.result||{};
 }
+/* ---------- P2 #12（2026-10-26）：个人成长总线（按月） ----------
+   走 A 档动作 report_growth —— 进程内真跑 `harvester report-growth`，
+   数字真源在上游 harvester/growth.py，页面不重算任何口径。
+   它回答的是「我这段时间在推进什么、踩坑有没有变少」，所以**只把四件事
+   并排放在同一张月表上**：活跃主题 / 新卡 / 每会话错误 / 采纳的班规。
+   趋势≠因果——那句免责由后端 `honest` 给，页面原样透出，不自己改写。 */
+async function runGrowthReport(out){
+  const spec=actionSpec("report_growth");
+  if(!spec)throw new Error("注册表里没有 report_growth"
+    +"（重新生成 actions_registry.json 后刷新）");
+  const r=await actJson("/api/actions/run",{action_id:"report_growth",
+    params:{months:12},view_actions_api:1});
+  if(r.__err)throw new Error("成长总线动作入队失败："+r.__err);
+  const job=await waitJob(r.job_id,()=>{
+    out.innerHTML="<div class='empty'>按月聚合中（A 档动作 report_growth，约 "+
+      esc(String(spec.est_sec||3))+"s）…</div>";});
+  if(job.__err)throw new Error("作业查询失败："+job.__err);
+  if(job.status==="failed")throw new Error(job.error||"动作失败（无详情）");
+  const res=job.result||{}, j=res.json||{};
+  if(!j.data){
+    throw new Error(j.error||res.json_error||
+      ("动作没给出机读结构（退出码 "+
+       (res.exit_code===undefined?"—":res.exit_code)+"）："+
+       String(res.stdout||"").slice(0,300)));
+  }
+  return j.data;
+}
+function renderGrowth(d,out){
+  const ms=d.months||[];
+  if(!ms.length){
+    out.innerHTML="<div class='empty'>索引库里还没有带时间的会话——"
+      +"先跑一次采集更新（harvester update），这页就有月表了。</div>";
+    return;
+  }
+  const t=d.totals||{};
+  let h="<div class='sub2'>看最近 "+esc(String(d.months_requested||ms.length))+
+    " 个月｜主题总数 "+esc(String(d.topics_total||0))+"｜生成于 "+
+    esc(d.generated_at||"")+"</div>";
+  h+="<table><thead><tr><th>月份</th><th class='num'>会话</th>"+
+    "<th class='num'>工具步</th><th class='num'>错误</th>"+
+    "<th class='num' title='错误步数 ÷ 会话数（不是百分比）'>每会话错误</th>"+
+    "<th class='num'>活跃主题</th><th class='num'>新卡</th>"+
+    "<th class='num'>采纳班规</th></tr></thead><tbody>";
+  for(const x of ms){
+    const rate=(x.err_per_session===null||x.err_per_session===undefined)
+      ?"—":"<span title='不是百分比：错误步数÷会话数'>"+
+         Number(x.err_per_session).toFixed(2)+"</span>";
+    h+="<tr"+(x.thin?" style='opacity:.6'":"")+"><td>"+esc(x.month)+
+      (x.thin?" <span class='sub2'>(样本少)</span>":"")+"</td>"+
+      "<td class='num'>"+Number(x.sessions||0)+"</td>"+
+      "<td class='num'>"+Number(x.steps||0)+"</td>"+
+      "<td class='num'>"+Number(x.errors||0)+"</td>"+
+      "<td class='num'>"+rate+"</td>"+
+      "<td class='num'>"+Number(x.active_topics||0)+"</td>"+
+      "<td class='num'>"+Number(x.new_cards||0)+"</td>"+
+      "<td class='num'>"+Number(x.rules_adopted||0)+"</td></tr>";
+  }
+  h+="</tbody></table>";
+  h+="<div class='sub2'>合计：会话 "+Number(t.sessions||0)+"｜错误 "+
+    Number(t.errors||0)+"｜新卡 "+Number(t.new_cards||0)+"｜采纳班规 "+
+    Number(t.rules_adopted||0)+"</div>";
+  /* 口径：每个数字怎么算的（后端给，页面只排版） */
+  const defs=d.definitions||{}, srcs=d.sources||{};
+  h+="<h4 class='sec'>每个数字怎么算的</h4><ul style='margin:4px 0 0 18px;padding:0'>";
+  for(const k of Object.keys(defs))
+    h+="<li><b>"+esc(k)+"</b>："+esc(defs[k])+
+       "<span class='sub2'>（来源："+esc(srcs[k]||"—")+"）</span></li>";
+  h+="</ul>";
+  /* 别读过头：后端写好的边界，原样透出 */
+  if((d.honest||[]).length){
+    h+="<h4 class='sec'>别把这张表读过头</h4><ul style='margin:4px 0 0 18px;"
+      +"padding:0'>";
+    for(const x of d.honest)h+="<li>"+esc(x)+"</li>";
+    h+="</ul>";
+  }
+  out.innerHTML=h;
+}
+
+/* ---------- P2 #14（2026-10-26）：产物台账 + 评审包 ----------
+   两个都是 A 档动作（cmd=None 视图侧只读分析）：
+   artifact_ledger（全库「会话 × 文件」台账，带主题反查与覆盖度）
+   review_pack（把「一个文件为什么被改成这样」的材料打成一包）。
+   与报告页其它档一样走动作通道（入队 + 轮询），不重算任何口径。 */
+async function runLedgerReport(out){
+  if(!(state.act&&state.act.actions&&state.act.actions.length))
+    await loadCmdData().catch(()=>{});
+  const spec=actionSpec("artifact_ledger");
+  if(!spec)throw new Error("注册表里没有 artifact_ledger"
+    +"（重新生成 actions_registry.json 后刷新）");
+  const r=await actJson("/api/actions/run",{action_id:"artifact_ledger",
+    params:{limit:300,sort:"versions"},view_actions_api:1});
+  if(r.__err)throw new Error("台账动作入队失败："+r.__err);
+  const job=await waitJob(r.job_id,()=>{
+    out.innerHTML="<div class='empty'>翻台账中（A 档动作 artifact_ledger，约 "+
+      esc(String(spec.est_sec||4))+"s）…</div>";});
+  if(job.__err)throw new Error("作业查询失败："+job.__err);
+  if(job.status==="failed")throw new Error(job.error||"动作失败（无详情）");
+  /* cmd=None 的视图侧动作：`job.result` **就是**结构本身（没有 CLI 层，
+     所以没有 json.data 那一层包装——别去按 _cli_report 的形状取） */
+  const d=job.result||{};
+  if(!d.schema)throw new Error("动作没给出机读结构（缺 schema 字段）");
+  return d;
+}
+async function runReviewPack(sid,file_path,box){
+  const r=await actJson("/api/actions/run",{action_id:"review_pack",
+    params:{sid:sid,file_path:file_path||""},view_actions_api:1});
+  if(r.__err)throw new Error("评审包动作入队失败："+r.__err);
+  const job=await waitJob(r.job_id,()=>{
+    box.innerHTML="<div class='empty'>打评审包中（版本序列 + 打磨候选 + 错误模式 + 卡片命中，约 4s）…</div>";});
+  if(job.__err)throw new Error("作业查询失败："+job.__err);
+  if(job.status==="failed")throw new Error(job.error||"动作失败（无详情）");
+  return job.result||null;   /* 同上：cmd=None 动作的结果就是结构本身 */
+}
+function renderLedger(d,out){
+  const cv=d.coverage||{}, t=d.totals||{};
+  if(!d.configured){
+    out.innerHTML="<div class='empty'>"+esc(d.hint||"产物台账没接上")+"</div>";
+    return;
+  }
+  let h="<div class='sub2'>"+esc(cv.line_text||"覆盖度未知")+"</div>";
+  h+="<div class='sub2'>有写记录的会话 "+Number(t.sessions_registered||0)+
+    "｜文件路径 "+Number(t.files||0)+"（不做路径归一）｜会话×文件 "+
+    Number(t.pairs||0)+"｜其中能反查到主题的 "+Number(t.pairs_in_topics||0)+
+    "｜写入记录 "+Number(t.versions||0)+" 条</div>";
+  if(d.hint)h+="<div class='empty'>"+esc(d.hint)+"</div>";
+  const rows=d.rows||[];
+  if(rows.length){
+    h+="<table><thead><tr><th>版数</th><th>文件</th><th>主题</th>"+
+      "<th>首→末</th><th class='num'>改动字数</th><th>动作</th>"+
+      "</tr></thead><tbody>";
+    for(const r of rows){
+      h+="<tr><td class='num'>"+Number(r.n_versions)+"</td>"+
+        "<td title='"+esc(r.file_path)+"'>"+esc(r.file_short)+
+        (r.tools&&r.tools.length?"":" <span class='sub2' title='源里没落上工具名——空就显示空，不猜'>工具名未登记</span>")+
+        "</td><td>"+(r.topic_names?esc(r.topic_names):"<span class='sub2'>—</span>")+
+        "</td><td class='t-date'>"+esc((r.first_ts||"—").slice(0,10))+" → "+
+        esc((r.last_ts||"—").slice(0,10))+"</td>"+
+        "<td class='num'>"+Number(r.changed_chars)+"</td>"+
+        "<td><button class='xbtn' data-rp-sid=\""+esc(r.sid)+
+        "\" data-rp-file=\""+esc(r.file_path)+
+        "\" title='把「这个文件为什么被改成这样」的材料打成一包（只读）'>打评审包 →</button></td></tr>";
+    }
+    h+="</tbody></table>";
+    if(d.truncated)
+      h+="<div class='sub2'>只列了前 "+rows.length+" 行 / 共 "+
+        Number(d.rows_total||rows.length)+" 行——要看更多，在命令台把"
+        +" artifact_ledger 的「最多几行」调大，或按会话过滤。</div>";
+  }
+  h+="<div id='rp-box'></div>";
+  const cand=d.candidates||{};
+  if(cand.revisions){
+    const ra=cand.revisions.account||{}, na=(cand.nags||{}).account||{};
+    h+="<h4 class='sec'>为什么改这么多版（全库候选，只列不裁决）</h4>"+
+      "<ul style='margin:4px 0 0 18px;padding:0'>"+
+      "<li>打磨候选（相邻两轮问话相似度 0.80–0.90）："+Number(ra.n_band||0)+
+      " 对｜反转词命中（只认轮次开头）："+Number(ra.n_turn_words||0)+" 轮</li>"+
+      "<li>反复叮嘱候选："+Number(na.n_groups||0)+" 组｜命中 "+Number(na.n_hits||0)+" 轮</li>"+
+      "<li class='sub2'>这两行是全库账目，与「报告 → 打磨/反转」同源（同一实现现算，不复刻阈值）；"
+      +"候选只列不裁决，是打磨还是推翻重来由人甄别。</li></ul>";
+  }
+  const defs=d.definitions||{}, srcs=d.sources||{};
+  h+="<h4 class='sec'>每个数字怎么算的</h4><ul style='margin:4px 0 0 18px;padding:0'>";
+  for(const k of Object.keys(defs))
+    h+="<li><b>"+esc(k)+"</b>："+esc(defs[k])+
+       "<span class='sub2'>（来源："+esc(srcs[k]||"—")+"）</span></li>";
+  h+="</ul>";
+  if((d.honest||[]).length){
+    h+="<h4 class='sec'>别把这面读过头</h4><ul style='margin:4px 0 0 18px;padding:0'>";
+    for(const x of d.honest)h+="<li>"+esc(x)+"</li>";
+    h+="</ul>";
+  }
+  out.innerHTML=h;
+  for(const b of out.querySelectorAll("[data-rp-sid]"))
+    b.onclick=()=>openReviewPack(b.dataset.rpSid,b.dataset.rpFile,out);
+}
+async function openReviewPack(sid,file_path,out){
+  const box=out.querySelector("#rp-box");
+  if(!box)return;
+  box.innerHTML="<div class='empty'>打评审包中…</div>";
+  let d;
+  try{ d=await runReviewPack(sid,file_path,box); }
+  catch(e){ box.innerHTML=errorBox("评审包失败："+e.message); return; }
+  if(!d){ box.innerHTML=errorBox("评审包没有返回结构"); return; }
+  renderReviewPack(d,box);
+  box.scrollIntoView({behavior:"smooth",block:"start"});
+}
+function renderReviewPack(d,box){
+  if(!d.configured||!((d.versions||[]).length)){
+    box.innerHTML="<div class='panel-intro'><b>评审包</b><div class='sub2'>"+
+      esc(d.hint||"这个会话/文件没有可打包的材料")+"</div></div>";
+    return;
+  }
+  const t=d.target||{}, rev=d.revisions||{}, pr=rev.process||{}, th=rev.thresholds||{};
+  let h="<div class='panel-intro'><b>评审包：这个文件为什么被改成这样</b>"+
+    "<div class='sub2'>会话 "+esc(d.sid)+"<br>文件 "+esc(d.file_path)+
+    (d.auto_picked?"（自动挑的：这个会话里改得最多的那个）":"")+"</div>"+
+    "<div class='sub2'>"+Number(t.n_versions||0)+" 版｜改动 "+
+    Number(t.changed_chars||0)+" 字｜"+esc((t.first_ts||"—").slice(0,19))+" → "+
+    esc((t.last_ts||"—").slice(0,19))+"</div>"+
+    "<div><button class='xbtn' id='rp-copy' title='整段复制，交给任何 Agent（或自己读）'>复制整包（Markdown）</button></div></div>";
+  h+="<h4 class='sec'>1 版本序列</h4><table><thead><tr><th>版</th><th>时间</th>"+
+    "<th>旧→新（字符）</th><th>新内容开头</th></tr></thead><tbody>";
+  for(const v of (d.versions||[]))
+    h+="<tr><td class='num'>#"+Number(v.seq)+"</td><td class='t-date'>"+
+      esc((v.ts||"—").slice(0,19))+"</td><td class='num'>"+Number(v.old_len)+
+      "→"+Number(v.new_len)+"</td><td style='max-width:520px;overflow:hidden;"+
+      "text-overflow:ellipsis;white-space:nowrap' title=\""+
+      esc(v.new_preview)+"\">"+esc(v.new_preview)+"</td></tr>";
+  h+="</tbody></table>";
+  if(d.versions_truncated)
+    h+="<div class='sub2'>只列前 "+(d.versions||[]).length+" 版；全量用 "
+      +"`python -m harvester artifacts show --sid "+esc(d.sid)+"`</div>";
+  h+="<h4 class='sec'>2 改动前后，你在磨什么</h4>"+
+    "<div class='sub2'>打磨候选（相邻两轮问话相似度 "+Number(th.band||0.8)+"–"+
+    Number(th.dup||0.9)+"）："+Number(pr.band_pairs||0)+" 对｜反转词命中（只认轮次开头）："+
+    Number(pr.turn_words||0)+" 轮｜每版之前平均磨 "+
+    Number(pr.band_per_version||0)+" 轮</div>";
+  const tl=d.timeline||[];
+  if(tl.length){
+    h+="<table><thead><tr><th>时间</th><th>类型</th><th>内容</th>"+
+      "<th>落在第几版之前</th></tr></thead><tbody>";
+    for(const x of tl)
+      h+="<tr><td class='t-date'>"+esc((x.ts||"—").slice(0,19))+"</td><td>"+
+        esc(x.kind)+"</td><td>"+(x.kind==="打磨候选"
+        ?("相似度 "+Number(x.jaccard||0)+"（rowid "+Number(x.rowid_a||0)+"↔"+
+          Number(x.rowid_b||0)+"）")
+        :("「"+esc(x.word||"")+"」（rowid "+Number(x.rowid||0)+"）"))+
+        "</td><td>"+(x.before_version==null?"—":"#"+Number(x.before_version))+
+        "</td></tr>";
+    h+="</tbody></table>";
+  }else{
+    h+="<div class='empty'>这个会话里没有打磨/反转候选（相邻两轮都不够像，或没有转折词打头）</div>";
+  }
+  const eg=(d.errors||{}).groups||[];
+  h+="<h4 class='sec'>3 这个会话踩过的错（按归一模式聚）</h4>";
+  if(!eg.length){
+    h+="<div class='empty'>这个会话没有错误步——不是「改得对」，只是「没报错」</div>";
+  }else{
+    h+="<table><thead><tr><th class='num'>次数</th><th>类别</th><th>归一模式</th>"+
+      "<th>首条原文</th><th>之后有没有重试</th></tr></thead><tbody>";
+    for(const g of eg)
+      h+="<tr><td class='num'>×"+Number(g.n)+"</td><td>"+esc(g["class"])+
+        "</td><td>"+esc(g.pattern)+"</td><td style='max-width:420px'>"+
+        esc(g["first"].text)+"</td><td>"+
+        (g["first"].resolved?"有":"没有（放弃）")+"</td></tr>";
+    h+="</tbody></table>";
+  }
+  h+="<h4 class='sec'>4 相关历史卡</h4>";
+  if(!(d.cards||[]).length){
+    h+="<div class='empty'>没有卡命中：要么还没为这类问题建过卡，要么触发词没登记"
+      +"——`cards new` 建卡时把 triggers 填上，下次就能命中</div>";
+  }else{
+    h+="<table><thead><tr><th>卡</th><th>为什么出现在这里</th><th>置信度</th>"+
+      "</tr></thead><tbody>";
+    for(const c of d.cards)
+      h+="<tr><td>"+esc(c.title||c.path)+"<div class='sub2'>"+esc(c.path)+
+        "</div></td><td>"+esc(c.why)+"</td><td>"+
+        (c.confidence==null?"—":Number(c.confidence))+"</td></tr>";
+    h+="</tbody></table>";
+  }
+  h+="<h4 class='sec'>5 锚点清单（复核时按这里回原文）</h4>"+
+    "<table><thead><tr><th>类型</th><th>指向</th><th>备注</th></tr></thead><tbody>";
+  for(const a of (d.anchors||[]))
+    h+="<tr><td>"+esc(a.kind)+"</td><td>"+esc(a.ref)+"</td><td>"+
+      esc(a.note)+"</td></tr>";
+  h+="</tbody></table>";
+  h+="<h4 class='sec'>6 怎么用（三步）</h4><ol style='margin:4px 0 0 18px;padding:0'>";
+  for(const s of (d.steps||[]))h+="<li>"+esc(s)+"</li>";
+  h+="</ol>";
+  if((d.honest||[]).length){
+    h+="<h4 class='sec'>别把这个包读过头</h4><ul style='margin:4px 0 0 18px;padding:0'>";
+    for(const x of d.honest)h+="<li>"+esc(x)+"</li>";
+    h+="</ul>";
+  }
+  box.innerHTML=h;
+  const cb=box.querySelector("#rp-copy");
+  if(cb)cb.onclick=()=>copyText(d.md||"",cb);
+}
+
 async function loadReport(manual){
   const kind=$("rep-kind").value;
   state.repKind=kind;
@@ -2501,6 +2822,10 @@ async function loadReport(manual){
       ? await api("/api/harness?"+p.toString())
       : kind==="skillmatrix"
       ? await runSkillMatrix(out)
+      : kind==="growth"
+      ? await runGrowthReport(out)
+      : kind==="ledger"
+      ? await runLedgerReport(out)
       : await api("/api/reports/"+kind+"?"+p.toString());
     state.repLast=d;
     /* P1-3：卡片本体来自 view 仓本地服务（决策 D9）；失败不阻断校验页 */
@@ -2523,6 +2848,8 @@ async function loadReport(manual){
     else if(kind==="skillmatrix")renderSkillMatrix(d,out);
     else if(kind==="agents")renderAgents(d,out);
     else if(kind==="cards")renderCards(d,out);
+    else if(kind==="growth")renderGrowth(d,out);
+    else if(kind==="ledger")renderLedger(d,out);
     bindAnchors(out);
     renderRepConcl(kind,d);
     if(glossary.loaded)applyTermTooltips(out);
@@ -2531,7 +2858,12 @@ async function loadReport(manual){
     /* skill 治理档案走的是全库扫描的动作，时间窗选择器对它无效——明说，
        不让"选了近 7 天却拿到全库"变成静默的口径欺骗。 */
     const win=daysVal("rep-days");
-    $("rep-meta").textContent=(kind==="skillmatrix"
+    $("rep-meta").textContent=(kind==="growth"
+      ?"口径=按月分桶（会话按开始时间归月；「窗口（天）」选择器对本档无效）｜"
+      :kind==="ledger"
+      ?("口径=全库产物台账（不按时间窗过滤；覆盖度见表格上方那行——"
+        +"只接 dsh 一个源，「窗口（天）」选择器对本档无效）｜")
+      :kind==="skillmatrix"
       ?"口径=全部数据（skill 调用点全库扫描，时间窗选择器对本档无效）｜"
       :(win
       ?("口径=近 "+win+" 天窗口内（全库口径见工作台「闭环健康」，两边数字不同是口径不同不是账错）｜")
@@ -3114,6 +3446,13 @@ function renderErrors(d,out){
   /* 同一套阈值（第③步）：模式表原先 slice(0,60) 静默截断，尾部不报数。 */
   const pMin=repMinOf();
   const pGate=repGate(pats.map(x=>({count:x.count,t:x})), pMin);
+  /* 三处错误入口互指（P2 #13）：这页是**全库口径**，说清另两处是什么口径，
+     并给直达入口（以前三处各说各的，用户得自己猜为什么数字对不上）。 */
+  html+="<div class='sub2'>这页是<b>全库口径</b>（按归一模式排，带类目与样例锚点）。"
+    +"同一个坑的另外两处：<a href='javascript:void(0)' class='anchor' "
+    +"data-goto-tab='topics'>主题·研读面</a>只数<b>某个主题成员</b>里的错误；"
+    +"<a href='javascript:void(0)' class='anchor' data-goto-tab='work'>处理单</a>"
+    +"把它们按<b>该不该修</b>排成活。三处数字不同是口径不同，不是账错。</div>";
   html+=repMinChips();
   html+=pGate.over.length?("<table><thead><tr><th class='num'>次数</th>"+
     "<th>模式</th><th>类别</th><th>工具</th>"+
@@ -3123,6 +3462,9 @@ function renderErrors(d,out){
     pGate.over.slice(0,60).map(row=>{
       const x=row.t;
       const pl=patternPlain(x.pattern);   /* P1-1 模式人话（未收录不显示） */
+      /* v0.83：同一张表也补「下一步该咋办」——研读面那边已经有了，
+         两处口径同源（都读 glossary.patterns），不另写一份。 */
+      const nx=patternNext(x.pattern), frm=patternFrom(x.pattern);
       let attCell="";
       if(ATTOK){
         const a=x.attrib;
@@ -3147,7 +3489,10 @@ function renderErrors(d,out){
       " data-pat2=\""+esc(x.pattern)+"\" title='把本模式命中的**全部**会话"+
       "列出来（数字皆门第二跳；样例只有 3 条，代表不了全部）'>x"+
       x.count+"</a></td><td>"+esc(x.pattern)+
-      (pl?"<div class='sub2'>人话："+esc(pl)+"</div>":"")+"</td><td>"+
+      (pl?"<div class='sub2'>人话："+esc(pl)+"</div>":"")+
+      (nx?"<div class='sub2'>下一步："+esc(nx)+
+          (frm?" <span class='sub2'>（依据："+esc(frm)+"）</span>":"")+"</div>":"")+
+      "</td><td>"+
       esc(x["class"])+"</td><td>"+esc(x.tools.join("/"))+"</td>"+
       attCell+
       "<td style='max-width:190px;word-break:break-all'>"+
@@ -3167,6 +3512,8 @@ function renderErrors(d,out){
       if(state.repLast)renderErrors(state.repLast,out);};
   wireRepThresh(out);
   if(typeof bindPatternDrill==="function")bindPatternDrill(out);
+  /* P2 #13：本页的 data-goto-tab 外链由全局事件委托接线（boot 处），
+     这里不重复绑（双绑会跑两次）。 */
 }
 /* P2-5 第二跳入口接线：模式次数 / 「会话列表 →」都通向命中会话清单 */
 function bindPatternDrill(root){
@@ -3505,8 +3852,14 @@ function renderTopics(d,out){
       (t.keywords?"<div class='sub2'>"+esc(kwText(t.keywords))+"</div>":"")+
       "</td><td class='num'>"+t.members_count+"</td>"+
       "<td class='num'"+(names?" title=\""+esc(names)+"\"":"")+">"+
-      (nc?(nc+(names?" <span class='sub2'>"+esc(names.slice(0,18))+
-        (names.length>18?"…":"")+"</span>":"")):"<span class='sub2'>—</span>")+
+      (nc?(nc+" 条"+
+        (names?"<div class='sub2' style='word-break:break-all;text-align:left;"
+                +"white-space:normal'>"+esc(names)+"</div>":"")+
+        /* 用户 2026-10-26 在这一列批「在哪看」：链名原先截到 18 字加省略号，
+           点整行进研读面（那里只有结论摘要）。现在名不截断，就近给「看链 →」。 */
+        "<a href='javascript:void(0)' class='anchor' data-chain-open=\""+
+        esc(t.id)+"\">看链 →</a>")
+       :"<span class='sub2'>—</span>")+
       "</td><td class='t-date'>"+
       esc((t.first_activity||"?").slice(0,10))+" ~ "+
       esc((t.last_activity||"?").slice(0,10))+"</td></tr>";}).join("")+
@@ -3524,8 +3877,15 @@ async function loadTopics(){
   renderTopics(d,$("topics-list"));
   for(const tr of $("topics-list").querySelectorAll("tr[data-tid]"))
     tr.onclick=()=>openTopic(tr.dataset.tid);
+  /* 「看链 →」是行内的独立入口：不 stopPropagation 的话会被行的 onclick
+     抢走（结果又回到研读面，还是看不到链全文——用户问的就是这个）。 */
+  for(const a of $("topics-list").querySelectorAll("[data-chain-open]"))
+    a.onclick=(e)=>{e.stopPropagation();
+      openTopicChain(a.dataset.chainOpen).catch(err=>
+        showBanner("err","链全文加载失败："+err.message));};
   $("topics-meta").textContent=(d.topics||[]).length
-    ?("主题 "+d.topics.length+" 个｜点击查看演进链"):"";
+    ?("主题 "+d.topics.length+" 个｜点行看研读面（聚合数字）；有链的行点「看链 →」"
+      +"看链全文"):"";
 }
 /* chain 长文 → 中栏时间线 + 右栏文档。404（尚无长文）降级为空态+复制命令。 */
 async function openTopic(id){
@@ -3535,7 +3895,7 @@ async function openTopic(id){
   updateTopicCmd();
   await runBrief();
 }
-async function openTopicChain(id){
+async function openTopicChain(id, idx){
   $("topics-toolbar").style.display="";
   $("topics-timeline").innerHTML="<div class='empty'>加载中…</div>";
   const res=await fetch("/u/"+state.no+"/api/topic/"
@@ -3561,10 +3921,12 @@ async function openTopicChain(id){
   if(!res.ok){ await failApi(res); return; }
   const d=await res.json();
   state.topicCur={id:id};
-  state.chainLast=d;state.chainIdx=0;   /* P4-5：供 skill 调用点挂轨道重渲染 */
+  state.chainLast=d;state.chainIdx=(idx===undefined||idx===null)
+    ?0:Math.max(0,Number(idx)||0);   /* P4-5：供 skill 调用点挂轨道重渲染；
+                                        研读面「看链全文」按链名定位到第几条 */
   updateTopicCmd();
   $("topics-right").style.display="block";
-  renderChain(d,$("topics-timeline"));
+  renderChain(d,$("topics-timeline"),state.chainIdx||0);
   bindTopicNodes($("topics-timeline"));
   bindChainSwitch($("topics-timeline"),d);
 }
@@ -4032,15 +4394,42 @@ function renderBrief(d,out){
       " 次'>"+esc(x.gram)+" <span class='sub2'>"+x.count+"</span></span>")
       .join(" · ")||"<div class='empty'>（无）</div>";
   h+="</div><div class='sub2'>"+esc(q.definition||"")+"</div>";
-  /* 错误模式 */
+  /* 错误模式
+     用户 2026-10-26：「这堆会话里的错误模式（60 条错误）」表里的 FS_xxx 看不懂，
+     「有的能看明白，有的看不明白，最好还说一声下一步该咋办」。所以一格给三层：
+     ① 人话（这是什么坑）② 原始码（原样保留，方便搜/对账）③ 下一步该咋办 + 依据出处。
+     码是工具自己抛的、没有公开文档 → 依据必须如实标（人工核对过的标来源，
+     按名字猜的标「名称推断」），不许写成官方定义。 */
   h+="<h4 class='sec'>这堆会话里的错误模式（"+esc(String(e.total||0))+" 条错误）</h4>";
-  h+=(e.patterns||[]).length
-    ?"<table><thead><tr><th>模式</th><th>类</th><th class='num'>次数</th>"+
-     "<th class='num'>未解决</th></tr></thead><tbody>"+
-     e.patterns.map(x=>"<tr><td>"+esc(x.pattern)+"</td><td>"+esc(x["class"])+
-       "</td><td class='num'>"+x.count+"</td><td class='num'>"+
-       x.given_up+"</td></tr>").join("")+"</tbody></table>"
-    :"<div class='empty'>（成员会话里没有错误步骤——这不是坏消息）</div>";
+  if((e.patterns||[]).length){
+    h+="<div class='sub2'>读法：每格第一行是<b>人话</b>（这是什么坑），第二行是"
+      +"工具抛的<b>原始码</b>（原样保留，方便搜和跟工具方对账），第三行是"
+      +"<b>下一步该咋办</b>，末尾小字写明这句解释的依据。</div>";
+    /* 三处错误入口互指（P2 #13）：这里是"只看这个主题"的切片 */
+    h+="<div class='sub2'>这一节只数<b>该主题成员会话</b>里的错误。"
+      +"想看全库同一批坑排了个什么序（带类目与样例锚点）→ "
+      +"<a href='javascript:void(0)' class='anchor' data-goto-reports='errors'>"
+      +"报告·错误 →</a>；想按「该不该修」排队 → "
+      +"<a href='javascript:void(0)' class='anchor' data-goto-tab='work'>"
+      +"处理单 →</a></div>";
+    h+="<table><thead><tr><th style='max-width:520px'>模式（人话 / 原始码 / 下一步）</th>"
+      +"<th>类</th><th class='num'>次数</th><th class='num'>未解决</th>"
+      +"</tr></thead><tbody>"+
+      e.patterns.map(x=>{
+        const pl=patternPlain(x.pattern), nx=patternNext(x.pattern),
+              frm=patternFrom(x.pattern);
+        const cls=clsLabel(x["class"]);
+        return "<tr><td style='max-width:520px'>"+
+          (pl?"<b>"+esc(pl)+"</b>":"<b class='sub2'>（未收录人话）</b>")+
+          "<div class='sub2' style='word-break:break-all'>"+esc(x.pattern)+"</div>"+
+          (nx?"<div><span class='pill known'>下一步</span> "+esc(nx)+"</div>":"")+
+          (frm?"<div class='sub2'>依据："+esc(frm)+"</div>":"")+
+          "</td><td title='"+esc(x["class"]||"")+"'>"+esc(cls)+
+          "</td><td class='num'>"+x.count+"</td><td class='num'>"+
+          x.given_up+"</td></tr>";}).join("")+"</tbody></table>";
+  }else{
+    h+="<div class='empty'>（成员会话里没有错误步骤——这不是坏消息）</div>";
+  }
   h+="<div class='sub2'>"+esc(e.definition||"")+"</div>";
   /* skill 行为 */
   h+="<h4 class='sec'>skill 行为</h4>";
@@ -4051,34 +4440,75 @@ function renderBrief(d,out){
       "</div>"
     :"<div class='empty'>（该主题成员没有 skill 调用记录）</div>";
   h+="<div class='sub2'>"+esc(sk.definition||"")+"</div>";
-  /* 重复会话 */
-  h+="<h4 class='sec'>重复会话（H40 口径）</h4><div class='sub2'>";
-  h+=du.error?("本次不可得："+esc(du.error))
-    :("独立代表 "+esc(String(du.reps??"?"))+"｜重复并入 "+
-      esc(String(du.duplicates??"?"))+"｜边界带 "+esc(String(du.band_pairs??0)));
-  h+="</div><div class='sub2'>"+esc(du.definition||"")+"</div>";
-  /* 健康 */
-  h+="<h4 class='sec'>健康</h4><div class='sub2'>";
-  h+=(hh.members_not_in_index&&hh.members_not_in_index.length)
-    ?("不在索引库 "+hh.members_not_in_index.length+" 个（如 "+
-      esc(hh.members_not_in_index[0])+"）")
-    :"不在索引库 0 个";
-  h+=(hh.noise_registered&&hh.noise_registered.length)
-    ?"｜⚠ 既在主题又登记零散 "+hh.noise_registered.length+" 个"
-    :"｜零散矛盾 0";
+  /* 重复会话
+     用户 2026-10-26：「这个意思是重复会话1，边办带3？其他38个会话正常？」
+     ——三个数并排没人看得懂谁跟谁。改成一整句人话，再给口径。 */
+  h+="<h4 class='sec'>重复会话（同一件事被问了好几遍吗）</h4><div>";
+  if(du.error){
+    h+="<div class='sub2'>本次不可得："+esc(du.error)+"</div>";
+  }else{
+    const reps=Number(du.reps??0), dups=Number(du.duplicates??0),
+          band=Number(du.band_pairs??0);
+    h+="<div>这堆会话里：<b>"+reps+"</b> 条各自独立（没有跟别人重复）";
+    h+=dups?("；<b>"+dups+"</b> 条与别的会话内容重复，<b>已并入</b>它的代表，"
+            +"不单独计数"):"；没有发现完全重复的会话";
+    h+=band?("；另有 <b>"+band+"</b> 对“像但没到判重线”（叫边界带，"
+            +"<b>仍然算两条独立会话</b>，只是提醒你它们在讲同一件事）")
+          :"；也没有处在“像但没到判重线”的会话对";
+    h+="。</div>";
+    h+="<div class='sub2'>怎么判的：把每条会话的用户消息当文本，算 2-gram 相似度——"
+      +"重叠 ≥0.90 判为重复（并入代表，保留一条），0.80–0.90 只记成边界带、"
+      +"<b>不判重</b>。所以「边界带 3」不是 3 条重复会话，是 3 对相似的会话。</div>";
+  }
   h+="</div>";
-  /* chain 结论层（已发布才有的语义结论） */
-  h+="<h4 class='sec'>chain 结论层（语义结论只来自已发布长文）</h4>";
+  if(du.definition)h+="<div class='sub2'>"+esc(du.definition)+"</div>";
+  /* 健康
+     用户 2026-10-26：「这是表示健康，啥健康？」——原来只丢两个 0，
+     没说这两个 0 在检查什么。改成：先说这项检查是什么、0 代表什么。 */
+  h+="<h4 class='sec'>健康检查（两条“账对不对”的自检）</h4>";
+  {
+    const miss=(hh.members_not_in_index||[]), noise=(hh.noise_registered||[]);
+    h+="<div class='sub2'>只查两件事，跟“数据质量好坏”无关——查的是"
+      +"<b>主题这本账和全库索引、噪声账是否对得上</b>：</div>";
+    h+="<ul style='margin:4px 0 0 18px;padding:0'>";
+    h+="<li>① <b>成员会话都在全库索引里</b>：不在索引库 <b>"+miss.length+"</b> 个"
+      +(miss.length
+        ?"——<span class='errline'>有成员查不到原文（如 "+esc(miss[0])+
+         "），点开会是空页</span>"
+        :"＝正常（每个成员都能在“会话检索”里找到原文）")
+      +"</li>";
+    h+="<li>② <b>没有会话同时被记成“主题成员”和“零散噪声”</b>：矛盾 <b>"
+      +noise.length+"</b> 个"
+      +(noise.length
+        ?"——<span class='errline'>同一会话两边都记账，统计会重复（如 "+
+         esc(noise[0])+"）</span>"
+        :"＝正常（同一会话没有被两边重复记账）")
+      +"</li>";
+    h+="</ul>";
+    if(!miss.length&&!noise.length)
+      h+="<div class='sub2'>两项都 0 → 这本账自洽。它<b>不说明</b>数据全、"
+        +"结论对，只说明“没有对不上的账”。</div>";
+  }
+  /* 链的结论（已发布才有的语义结论）
+     用户 2026-10-26：「这句补充看不懂，啥叫只来自已？」「思绪链内容在哪？」
+     → 标题改人话；每条链给一个「看全文」入口（原来只有工具栏那个按钮，
+     藏在上面没人找得到）。 */
+  h+="<h4 class='sec'>链的结论（这块只从已发布的链里摘，机器不自己编）</h4>";
   if(ch.configured===false){
     h+="<div class='empty'>"+esc(ch.honest||"")+"</div>";
   }else if(!(ch.chains||[]).length){
-    h+="<div class='empty'>"+esc(ch.honest||"该主题还没有已发布的 chain")+
-      "——聚合层上面就是机器能给的全部；语义结论由 Agent 消费喂料起草"+
-      "（去命令台，已预填 topic pack）。</div>";
+    h+="<div class='empty'>"+esc(ch.honest||"该主题还没有已发布的链")+
+      "——上面这些聚合数字就是机器能给的全部；再往下的“结论”要人/模型读过"
+      +"素材后写出来（写链的按钮在左上工具栏：「生成链」「自动写链」）。</div>";
   }else{
+    h+="<div class='sub2'>为什么单列一块：下面的结论句来自<b>已经发布进知识正本的链"
+      +"长文</b>（也就是有人/模型读过素材、过了两道校验门之后写下的判断），"
+      +"不是机器从会话里数出来的。机器自己不给结论，也不替它改写。</div>";
     for(const c of ch.chains){
       h+="<div class='dt-file'><b>"+esc(c.name)+"</b> <span class='sub2'>"+
-        c.stages+" 阶段 / "+c.nodes+" 节点</span>";
+        c.stages+" 阶段 / "+c.nodes+" 节点</span>"
+        +" <a href='javascript:void(0)' class='anchor' data-chain-full=\""+
+        esc(c.name||"")+"\">看链全文 →</a>";
       h+=c.conclusion?"<details open><summary>「"+esc(c.conclusion.title)+
         "」</summary><pre class='dt-pre'>"+esc(c.conclusion.text)+
         "</pre></details>":"";
@@ -4090,6 +4520,20 @@ function renderBrief(d,out){
   h+="<div class='sub2'>机器聚合=确定性数据重排（来源见各节数字旁）；"+
      "语义结论=人/Agent 的研读判断。两层不混装。</div>";
   out.innerHTML=h;
+  /* 「看链全文 →」（用户 2026-10-26：「思绪链内容在哪」）：研读面只摘结论，
+     全文在链视图里。原来只有工具栏那个按钮，藏上面没人找得到——这里就近给入口。
+     按链名定位到第几条（后端 chains[] 顺序与这里一致）。 */
+  for(const el of out.querySelectorAll("[data-chain-full]")){
+    el.onclick=()=>{
+      const id=(state.topicCur||{}).id;
+      if(!id)return;
+      const idx=(ch.chains||[]).findIndex(c=>c.name===el.dataset.chainFull);
+      openTopicChain(id, Math.max(0,idx)).catch(e=>
+        showBanner("err","链全文加载失败："+e.message));
+    };
+  }
+  /* 三处错误入口互指（P2 #13）：data-goto-* 的点击由**全局委托**接线
+     （见 boot 处的 document 监听），渲染侧不再各绑一份——两处都绑会双跑。 */
 }
 /* v0.78 ts 精确锚点：双轨视图里所有候选锚统一在此绑跳转——带 data-dt-ts
    的走 gotoAnchorTs（一跳原文精确到回合），只有 sid 的保持旧口径开会话。
@@ -6668,6 +7112,18 @@ function maybeAutoTour(){
   }catch(e){}
 }
 $("btn-tour").onclick=()=>tourStart();
+/* P2 #13：三处错误入口互指的链接用**事件委托**统一接线——静态页里的
+   （处理单顶部说明）和渲染出来的（研读面 / 报告）都走这一处，
+   不用每加一处就再绑一次（漏绑的后果是"点了没反应"，最难发现的那种）。 */
+document.addEventListener("click",(e)=>{
+  const a=e.target&&e.target.closest?e.target.closest("a[data-goto-reports],a[data-goto-tab]"):null;
+  if(!a)return;
+  e.preventDefault();
+  if(a.dataset.gotoReports)gotoReports(a.dataset.gotoReports);
+  else switchTab(a.dataset.gotoTab);
+});
+/* P2 #13：中台降格成顶栏按钮（页面没删，只是不再跟主线 tab 抢位置） */
+$("btn-agg").onclick=()=>switchTab("agg");
 /* ===== P5-1 tour end ===== */
 
 /* ===== P5-2 三身份与新鲜度（provenance+freshbar） =====

@@ -233,6 +233,33 @@ def _action_topic_list(cfg: Config, params: dict) -> dict:
     return {"view_actions_api": VIEW_ACTIONS_API, "topics": topics}
 
 
+def _action_report_growth(cfg: Config, params: dict) -> dict:
+    """A 档：个人成长总线（P2 #12，2026-10-26）。
+
+    只读三本账（+ 卡片目录）按月聚合；人读文本走 stdout、机读结构走
+    `result["json"]["data"]`（`_cli_report_both` 的约定——两样都要，
+    `--json -` 会把 stdout 让给 JSON，那是回归）。
+
+    数字真源在 `harvester.growth`：这里只拼参数，不重算、不改口径。
+    """
+    db = Path(cfg.db)
+    if not db.is_file():
+        raise RuntimeError("索引库不存在：%s（先跑采集更新）" % db)
+    try:
+        months = int(params.get("months") or 12)
+    except (TypeError, ValueError):
+        months = 12
+    argv = ["report-growth", "--db", str(db), "--months", str(months)]
+    # 三本可选账如实带上（缺哪个，那一列就是 0——命令里已按"诚实空态"处理）
+    if cfg.topics_meta:
+        argv += ["--topics-meta", str(cfg.topics_meta)]
+    if cfg.cards_root:
+        argv += ["--cards-root", str(cfg.cards_root)]
+    if cfg.suggestions_meta:
+        argv += ["--suggestions-meta", str(cfg.suggestions_meta)]
+    return _cli_report_both(argv)
+
+
 def _action_topic_pack(cfg: Config, params: dict) -> dict:
     """A 档：主题蒸馏包（`topic pack` 的进程内版，2026-10-13 用户要求：
     主题页分层选择后直接跳命令台执行，不用手抄命令）。
@@ -442,6 +469,33 @@ def _action_skill_matrix(cfg: Config, params: dict) -> dict:
     非上游口径**（页头明示）。只读，不写任何库与文件。"""
     from . import skillmatrix
     return skillmatrix.build_matrix(cfg.db, cfg.topics_meta, cfg.chain_root)
+
+
+def _action_artifact_ledger(cfg: Config, params: dict) -> dict:
+    """A 档：产物台账（P2 #14 ·《优化方案》D1'，cmd=None 视图侧分析）。
+
+    与 `dualtrack._artifacts_track` 同一张表、同一分组键 `(sid, file_path)`，
+    差别只在**不过滤主题成员**：双轨是「先有主题再看待产物」，本面是
+    「先看有哪些产物，再反查落在哪个主题」。只读三本账 + 卡片目录，零写盘。
+    """
+    from . import artledger
+    return artledger.build(
+        cfg, limit=_num(params.get("limit")) or 200,
+        sort=str(params.get("sort") or "versions"),
+        sid=str(params.get("sid") or "").strip())
+
+
+def _action_review_pack(cfg: Config, params: dict) -> dict:
+    """A 档：评审包（P2 #14 ·《优化方案》D2'）——一个文件为什么被改成这样。
+
+    只读拼装：版本序列（artifacts_meta）+ 打磨/反转候选（revisions 同一实现）
+    + 本会话错误（errstats 同一实现）+ 卡片命中（cardlib）+ 锚点清单。
+    结论回填走 `cards new`（B 档两段提交），本动作不造任何写路径。
+    """
+    from . import reviewpack
+    return reviewpack.build(cfg,
+                            sid=str(params.get("sid") or "").strip(),
+                            file_path=str(params.get("file_path") or "").strip())
 
 
 def _action_kgraph(cfg: Config, params: dict) -> dict:
@@ -1037,6 +1091,18 @@ ACTIONS: dict[str, dict] = {
         "writes": "",
         "handler": _action_report_errors,
     },
+    "report_growth": {
+        "tier": "A",
+        "label": "个人成长总线（按月）",
+        "desc": "按月看四件事：活跃主题 / 新卡 / 错误率（每会话错误数）/ 采纳的"
+                "班规。**只把事实并排，趋势不是因果**；每个数字都带口径与来源。",
+        "params": {"months": {"type": "int", "src": "chips", "default": 12,
+                              "label": "看几个月"}},
+        "est_sec": 3,
+        "reversible": "幂等（只读三本账，不写任何库）",
+        "writes": "",
+        "handler": _action_report_growth,
+    },
     "topic_list": {
         "tier": "A",
         "label": "主题档案（注册表清单）",
@@ -1177,6 +1243,43 @@ ACTIONS: dict[str, dict] = {
         "reversible": "幂等（只读三库与 chain 文件，产物返回页面不落盘）",
         "writes": "",
         "handler": _action_skill_matrix,
+    },
+    "artifact_ledger": {
+        "tier": "A",
+        "label": "产物台账（全库：写过哪些文件、改了几版、属于哪个主题）",
+        "desc": "全库翻一遍 AI 写/改过哪些文件：每个「会话 × 文件」一行，带版数、"
+                "首末时间、改动字数，并反查它落在哪个主题里。页头带覆盖度"
+                "（只接 dsh 一个源，已登记 N / 全会话 M），**本面不代表全库**。"
+                "只读，不落盘，不代跑提取。",
+        "params": {"limit": {"type": "int", "src": "chips", "default": 200,
+                             "label": "最多几行"},
+                   "sort": {"type": "text", "src": "chips",
+                            "default": "versions",
+                            "choices": ["versions", "recent", "path"],
+                            "label": "排序（versions=版数多在前 / "
+                                     "recent=最近改在前 / path=按路径）"},
+                   "sid": {"type": "text", "required": False,
+                           "label": "只看某个会话（可空，从页面进来会带上）"}},
+        "est_sec": 4,
+        "reversible": "幂等（只读三本账，不写任何库）",
+        "writes": "",
+        "handler": _action_artifact_ledger,
+    },
+    "review_pack": {
+        "tier": "A",
+        "label": "评审包（一个文件为什么被改成这样）",
+        "desc": "把「为什么改成这样」的材料打成一个包：版本序列 + 改动前后的"
+                "打磨/反转候选 + 本会话踩过的错 + 相关历史卡 + 锚点清单，整段"
+                "可复制交给任何 Agent 评。**时间相邻不是因果、过程指标不是"
+                "质量分**，包里明写。结论回填走 `cards new`（两段提交）。",
+        "params": {"sid": {"type": "sid", "src": "sessions_api",
+                           "default": None, "label": "会话 id"},
+                   "file_path": {"type": "text", "required": False,
+                                 "label": "文件路径（可空：空则自动挑改得最多的）"}},
+        "est_sec": 4,
+        "reversible": "幂等（只读四本账与卡片目录，产物返回页面不落盘）",
+        "writes": "",
+        "handler": _action_review_pack,
     },
     # ---- v0.63 白名单补全（用户 2026-10-14「还有哪些没加的？都加上」）----
     # 覆盖 commands.json 里**全部剩余 A 档命令**；执行一律走进程内真 CLI

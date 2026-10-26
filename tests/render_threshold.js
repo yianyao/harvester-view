@@ -41,6 +41,9 @@ const hitQ = () => true;
 const anchor = (sid, seq) => "<a>" + sid + "#" + seq + "</a>";
 const clsLabel = c => c;
 const patternPlain = () => "";
+/* v0.83：renderErrors 还要 patternNext / patternFrom（错误模式的「下一步该咋办」与依据出处）。这里给空桩：本门验的是别的东西，三层文案的断言在 render_brief.js。 */
+const patternNext = () => "";
+const patternFrom = () => "";
 let state = { repMin: undefined, repLast: null, errChip: "" };
 const bindPatternDrill = () => {};
 

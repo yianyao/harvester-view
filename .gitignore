@@ -8,4 +8,5 @@ actions/actions_meta.db*
 docs/
 .DS_Store
 .playwright-cli/
-
+# 套件/门禁的临时输出（跑套件时重定向出来的日志，本机产物）
+_*.log

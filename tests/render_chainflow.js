@@ -105,7 +105,7 @@ async function main() {
   eval(extract("pollChainBuild", "jid"));
   eval(extract("runArtifactsFlow", ""));
   eval(extract("pollArtifactsFlow", "jid"));
-  eval(extract("openTopicChain", "id"));
+  eval(extract("openTopicChain", "id, idx"));
 
   /* ① 创作包视图：不把包当链 + 转义 + 报截断 */
   const o1 = mkEl();

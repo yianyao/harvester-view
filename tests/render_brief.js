@@ -61,11 +61,32 @@ function actApi(path) {
   return Promise.resolve(r);
 }
 
+/* v0.83：研读面错误模式表要显示「人话 / 原始码 / 下一步」，用到这组 helper。
+   它们是真实代码（不重写一份），连 CLASS_LABEL 常量一起从页面里取——
+   常量跨两行，故单独用正则抓；漏同步会直接 ReferenceError（不是静默少功能）。 */
+const glossary = { loaded: true, data: { patterns: [
+  { pattern: "FS_STALE_VERSION", plain: "改文件前没重新读：记的版本和磁盘对不上。",
+    next: "继续改同一个文件之前再 Read 一次；别拿旧内容重试 Edit。",
+    from: "设计文档 2026-10-22（人工核对过原文）" },
+  { pattern: "FILE_NOT_FOUND", plain: "要读的文件不存在。",
+    next: "先确认路径再读。", from: "名称推断（本项目自定义）" } ] } };
+{
+  /* 注：不能直接 eval("const CLASS_LABEL=…")——const 绑在 eval 自己的作用域里，
+     出了这句就没了（实测 ReferenceError，而 var/globalThis 才对外可见）。 */
+  const mCL = html.match(/^const CLASS_LABEL=\{[\s\S]*?\};/m);
+  if (!mCL) throw new Error("extract fail: CLASS_LABEL");
+  globalThis.CLASS_LABEL = eval("(" +
+    mCL[0].replace(/^const CLASS_LABEL=/, "").replace(/;\s*$/, "") + ")");
+}
+eval(extract("patternPlain", "p"));
+eval(extract("patternNext", "p"));
+eval(extract("patternFrom", "p"));
+eval(extract("clsLabel", "c"));
 eval(extract("runBrief", ""));
 eval(extract("pollBrief", "jid"));
 eval(extract("renderBrief", "d,out"));
 eval(extract("openTopic", "id"));
-eval(extract("openTopicChain", "id"));
+eval(extract("openTopicChain", "id, idx"));
 
 const FIXTURE = {
   view_actions_api: 1, kind: "topic-brief", topic_id: "t-fix",
@@ -80,8 +101,8 @@ const FIXTURE = {
   questions: { top: [{ gram: "钩子", count: 12 }, { gram: "节奏", count: 9 }],
     n_user_msgs: 40, source: "kwstats.extract_grams",
     definition: "成员 user 消息 2/3-gram，停用词过滤" },
-  errors: { patterns: [{ pattern: "FILE_NOT_FOUND", "class": "context",
-              count: 3, given_up: 1 }], total: 3,
+  errors: { patterns: [{ pattern: "FS_STALE_VERSION", "class": "tool_interface",
+              count: 84, given_up: 1 }], total: 84,
             source: "errstats.pattern_stats",
             definition: "成员错误按归一模式聚类" },
   skills: { skills: [{ skill: "pdf-text-extractor", calls: 5, ok: 5 }],
@@ -114,7 +135,13 @@ async function main() {
   ok(html1.includes("研读面 ·"), "渲染研读面标题");
   ok(html1.includes("构成与活跃"), "构成节存在");
   ok(html1.includes("钩子"), "高频问题节有真数据");
-  ok(html1.includes("FILE_NOT_FOUND"), "错误模式节有真数据");
+  ok(html1.includes("FS_STALE_VERSION"), "错误模式节有真数据（原始码保留）");
+  /* 用户 2026-10-26 批注：光有码看不懂，要人话 + 下一步该咋办 + 依据 */
+  ok(html1.includes("改文件前没重新读"), "错误模式格有人话");
+  ok(html1.includes("下一步") && html1.includes("再 Read 一次"),
+     "错误模式格有「下一步该咋办」");
+  ok(html1.includes("依据：设计文档 2026-10-22"), "解释的依据如实标出来");
+  ok(html1.includes("用法类"), "类别显示成人话（tool_interface → 用法类）");
   ok(html1.includes("元结论"), "chain 结论层渲染");
   ok(html1.includes("待补"), "chain 未决层渲染");
   ok(html1.includes("机器聚合=确定性数据重排"), "分层标注尾注在");
@@ -145,7 +172,7 @@ async function main() {
 
   /* ⑥ 结构门：六节 + 结论层标题齐 */
   for (const sec of ["构成与活跃", "高频问题", "错误模式", "skill 行为",
-                     "重复会话", "健康", "chain 结论层"])
+                     "重复会话", "健康检查", "链的结论"])
     ok(html1.includes(sec) || src.includes(sec), "结构节存在：" + sec);
 
   console.log(failed ? ("\nFAILED: " + failed) : "\nALL PASSED");

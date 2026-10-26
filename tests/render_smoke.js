@@ -49,6 +49,9 @@ const bindCardAnchors = root => {};
 const clsLabel = c => ({ env: "环境类", tool_interface: "用法类",
   context: "上下文类" }[c] || c);
 const patternPlain = () => "";
+/* v0.83：renderErrors 还要 patternNext / patternFrom（错误模式的「下一步该咋办」与依据出处）。这里给空桩：本门验的是别的东西，三层文案的断言在 render_brief.js。 */
+const patternNext = () => "";
+const patternFrom = () => "";
 const state = { cardsBodies: [], errChip: "" };
 
 /* 数据夹具：Edit 带 roots（2 根因，count 5+2=7），Bash 无 roots（降级
@@ -260,10 +263,16 @@ check("关键词解析失败时原样显示，不吞内容",
 check("成员数随数据渲染", tOut.innerHTML.includes("7"));
 check("行带 data-tid（点击接线载体，3 行）",
   (tOut.innerHTML.match(/data-tid=/g) || []).length === 3);
-/* v0.25：一个主题可以有多条 chain，列表要看得见"有几条链" */
+/* v0.25：一个主题可以有多条 chain，列表要看得见"有几条链"。
+   v0.83（用户 2026-10-26 在那一列批「在哪看」）：链名不再截到 18 字加省略号，
+   并就近给「看链 →」入口（点了直接开链全文，不再只是进研读面）。 */
 check("链列显示条数与链名", tOut.innerHTML.includes(">链<") &&
-  tOut.innerHTML.includes("2 <span class='sub2'>思维链：叙事节奏") &&
+  tOut.innerHTML.includes("2 条") &&
+  tOut.innerHTML.includes("思维链：叙事节奏") &&
   tOut.innerHTML.includes("思维链：吾好梦中救人"));
+check("链列给「看链 →」入口（点了开链全文，不是停在研读面）",
+  tOut.innerHTML.includes("data-chain-open=") &&
+  tOut.innerHTML.includes("看链 →"));
 check("无链主题显示占位符而非空白", tOut.innerHTML.includes("—"));
 check("0 成员类目灰显（自己类目还没挂成员）",
   tOut.innerHTML.includes("opacity:.55"));

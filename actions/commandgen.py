@@ -125,6 +125,10 @@ COMMAND_CARD: dict[str, str] = {
     # P5-⑤ 每日速览（2026-10-16 批准）：四队列+三报告聚合，只读；
     # 归「错误分析」卡（它的三段报告全在这卡里，队列数字是附加项）
     "report-daily": "errors",
+    # P2 #12（2026-10-26）：个人成长总线按月聚合四个事实列，只读；
+    # 归「错误分析」卡的邻居没有更贴的卡——它数的就是"人的变化"，
+    # 与错误率同一视角，故同卡（不新造动词卡：本仓卡是动词，不是主题）。
+    "report-growth": "errors",
     "report-skill": "skill", "report-skill-join": "skill",
     "triage": "triage", "topic-candidates": "triage",
     "topic-consolidate": "triage",
@@ -185,6 +189,7 @@ PURPOSE: dict[str, str] = {
     "report-chains": "工具链失败模式：长回合/连击/循环/空转",
     "report-harness": "每个数据源（harness 身份）的体检画像",
     "report-daily": "四队列 + 三段报告的每日速览",
+    "report-growth": "个人成长总线：按月看活跃主题/新卡/错误率/采纳班规",
     "report-skill": "单个 skill 的行为画像（G4）",
     "report-skill-join": "chain 锚点与 skill 调用点交叉",
     "attrib": "错误模式 → 根因候选（候选，不是裁决）",

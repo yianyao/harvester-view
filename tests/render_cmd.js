@@ -50,6 +50,9 @@ function applyTermTooltips() {}
 function api() { return Promise.resolve({ topics: [] }); }
 function encodeAll(o) { return JSON.stringify(o); }
 function patternPlain() { return ""; }
+/* v0.83：renderErrors 还要 patternNext / patternFrom（错误模式的「下一步该咋办」与依据出处）。这里给空桩：本门验的是别的东西，三层文案的断言在 render_brief.js。 */
+const patternNext = () => "";
+const patternFrom = () => "";
 function repFilter() { return { q: "", only: false }; }
 function hitQ() { return true; }
 function copyText(t, btn) { if (btn) btn.textContent = "已复制"; }
